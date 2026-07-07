@@ -22,7 +22,11 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-svg": "15.15.4",
+    "react-native-worklets": "0.10.0",
     "zustand": "^5.0.14"
+  },
+  "overrides": {
+    "react-native-worklets": "0.10.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
