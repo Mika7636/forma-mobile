@@ -1,10 +1,50 @@
+import { useEffect } from 'react'
+import { ActivityIndicator, View } from 'react-native'
+import FormaLogo from '../components/ui/FormaLogo'
+import { COLORS } from '../constants/theme'
+import OnboardingScreen from '../screens/OnboardingScreen'
+import { useAuthStore } from '../store/authStore'
 import AuthStack from './AuthStack'
 import MainTabs from './MainTabs'
 
-// Week 2 will replace this with a real auth check (authStore + Firebase auth
-// state). For now it's hardcoded to true so the main tab bar shows immediately.
-const IS_LOGGED_IN = true
+/** Centered FORMA splash shown while the persisted session is restoring. */
+function SplashScreen() {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: COLORS.white,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <FormaLogo />
+      <ActivityIndicator color={COLORS.teal} style={{ marginTop: 24 }} />
+    </View>
+  )
+}
 
 export default function RootNavigator() {
-  return IS_LOGGED_IN ? <MainTabs /> : <AuthStack />
+  const initialize = useAuthStore((s) => s.initialize)
+  const loading = useAuthStore((s) => s.loading)
+  const user = useAuthStore((s) => s.user)
+  const profile = useAuthStore((s) => s.profile)
+
+  // Attach the Firebase auth-state listener once. It restores a persisted
+  // session (AsyncStorage) and loads the Firestore profile before flipping
+  // `loading` off.
+  useEffect(() => {
+    const unsubscribe = initialize()
+    return unsubscribe
+  }, [initialize])
+
+  if (loading) return <SplashScreen />
+
+  if (!user) return <AuthStack />
+
+  // Logged in but hasn't finished onboarding (or the profile couldn't load) →
+  // run the setup wizard before granting access to the app.
+  if (!profile || !profile.onboardingCompleted) return <OnboardingScreen />
+
+  return <MainTabs />
 }
