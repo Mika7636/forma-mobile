@@ -1,2 +1,246 @@
-// Placeholder — Firestore session CRUD. Ported & adapted from web in Week 2.
-export {}
+// Firestore session CRUD + the FORMA "coach in your pocket" write path. When a
+// session is logged we derive its training estimates (load, calories, HR zone,
+// pace) from the user's profile, persist it under /users/{uid}/sessions, then
+// run conflict detection against the last 48h and persist any conflicts under
+// /users/{uid}/conflicts. Ported & adapted from the web app (same forma-sp1
+// Firestore project) for React Native.
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  where,
+  type DocumentData,
+} from 'firebase/firestore'
+import { db } from '../config/firebase'
+import { estimateCalories } from '../algorithms/calories'
+import { detectConflicts } from '../algorithms/conflictDetector'
+import { estimateHRZone } from '../algorithms/heartRate'
+import { calculatePace } from '../algorithms/pace'
+import { calculateLoadScore } from '../algorithms/sRPE'
+import { startOfWeek } from '../utils/dates'
+import type { Conflict } from '../types/conflict'
+import type { Session, SessionHRZone, SportType } from '../types/session'
+import type { User } from '../types/user'
+
+/** Sports that record a distance and therefore get a pace/speed estimate. */
+export const DISTANCE_SPORTS: SportType[] = ['running', 'swimming', 'cycling']
+
+export function isDistanceSport(sport: SportType | null): boolean {
+  return sport != null && DISTANCE_SPORTS.includes(sport)
+}
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+/** The raw inputs the Log screen collects; everything else is derived here. */
+export interface LogSessionInput {
+  sport: SportType
+  /** When the workout happened (defaults to now on the screen). */
+  date: Date
+  durationMinutes: number
+  rpe: number
+  distanceKm?: number
+  notes?: string
+  /** Optional manually-entered average heart rate from a wearable. */
+  avgBpm?: number
+}
+
+function sessionsCol(userId: string) {
+  return collection(db, 'users', userId, 'sessions')
+}
+
+function conflictsCol(userId: string) {
+  return collection(db, 'users', userId, 'conflicts')
+}
+
+/**
+ * Normalise a Firestore session doc into the in-memory {@link Session} model.
+ * Firestore stores `date`/`createdAt` as Timestamps; the algorithms and UI work
+ * with ISO strings, so we convert here (tolerating already-string values from
+ * older/web writes).
+ */
+function toSession(id: string, data: DocumentData): Session {
+  const toISO = (value: unknown, fallback: string): string => {
+    if (value && typeof (value as Timestamp).toDate === 'function') {
+      return (value as Timestamp).toDate().toISOString()
+    }
+    return typeof value === 'string' ? value : fallback
+  }
+
+  const dateISO = toISO(data.date, new Date().toISOString())
+  return {
+    id,
+    userId: data.userId,
+    sport: data.sport,
+    date: dateISO,
+    durationMinutes: data.durationMinutes,
+    distanceKm: data.distanceKm,
+    rpe: data.rpe,
+    loadScore: data.loadScore,
+    notes: data.notes,
+    createdAt: toISO(data.createdAt, dateISO),
+    estimatedCalories: data.estimatedCalories,
+    estimatedHRZone: data.estimatedHRZone,
+    pace: data.pace ?? null,
+    avgBpm: data.avgBpm,
+  }
+}
+
+/**
+ * The live training estimates for a set of inputs. Exposed so the Log screen can
+ * preview calories / HR zone / pace / load as the user drags the sliders —
+ * exactly what {@link logSession} persists, without a Firestore round-trip.
+ */
+export interface SessionEstimates {
+  loadScore: number
+  estimatedCalories: number
+  estimatedHRZone: SessionHRZone
+  hrZoneColor: string
+  pace: string | null
+}
+
+export function computeEstimates(
+  input: {
+    sport: SportType
+    durationMinutes: number
+    rpe: number
+    distanceKm?: number
+  },
+  profile: Pick<User, 'weightKg' | 'maxHR'> | null,
+): SessionEstimates {
+  const { sport, durationMinutes, rpe, distanceKm } = input
+  const safeDuration = durationMinutes > 0 ? durationMinutes : 0
+  const hr = estimateHRZone(rpe, profile?.maxHR)
+  return {
+    loadScore: safeDuration > 0 ? safeDuration * rpe : 0,
+    estimatedCalories: estimateCalories(sport, safeDuration, rpe, profile?.weightKg),
+    estimatedHRZone: { zone: hr.zone, name: hr.name, hrRange: hr.hrRange },
+    hrZoneColor: hr.color,
+    pace: isDistanceSport(sport)
+      ? calculatePace(sport, safeDuration, distanceKm)
+      : null,
+  }
+}
+
+/**
+ * Persist a session, then detect & persist any training conflicts it triggers.
+ *
+ * Steps:
+ *  1. Derive load / calories / HR zone / pace from the inputs + profile.
+ *  2. Write the session to /users/{uid}/sessions/{auto-id}.
+ *  3. Fetch the last 7 days of sessions (covers the 48h conflict window and the
+ *     current-week budget check) and run {@link detectConflicts}.
+ *  4. Persist every conflict to /users/{uid}/conflicts/{auto-id}.
+ *
+ * Returns the saved session plus its conflicts so the UI can react (show the
+ * success toast, or the conflict modal).
+ */
+export async function logSession(
+  userId: string,
+  input: LogSessionInput,
+  profile: User,
+): Promise<{ session: Session; conflicts: Conflict[] }> {
+  const { sport, date, durationMinutes, rpe, distanceKm, notes, avgBpm } = input
+
+  const loadScore = calculateLoadScore(durationMinutes, rpe)
+  const estimatedCalories = estimateCalories(sport, durationMinutes, rpe, profile.weightKg)
+  const hr = estimateHRZone(rpe, profile.maxHR)
+  const estimatedHRZone: SessionHRZone = {
+    zone: hr.zone,
+    name: hr.name,
+    hrRange: hr.hrRange,
+  }
+  const hasDistance = isDistanceSport(sport) && distanceKm != null && distanceKm > 0
+  const pace = hasDistance ? calculatePace(sport, durationMinutes, distanceKm) : null
+
+  // Firestore rejects `undefined`, so build the doc conditionally. `date` and
+  // `createdAt` are stored as Timestamps to match the web app's schema (keeps
+  // the shared dashboard cross-platform read working).
+  const docData: DocumentData = {
+    userId,
+    sport,
+    date: Timestamp.fromDate(date),
+    durationMinutes,
+    rpe,
+    loadScore,
+    estimatedCalories,
+    estimatedHRZone,
+    pace,
+    notes: notes?.trim() ?? '',
+    createdAt: serverTimestamp(),
+  }
+  if (hasDistance) docData.distanceKm = distanceKm
+  if (avgBpm != null && avgBpm > 0) docData.avgBpm = avgBpm
+
+  const ref = await addDoc(sessionsCol(userId), docData)
+
+  const session: Session = {
+    id: ref.id,
+    userId,
+    sport,
+    date: date.toISOString(),
+    durationMinutes,
+    distanceKm: hasDistance ? distanceKm : undefined,
+    rpe,
+    loadScore,
+    notes: notes?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    estimatedCalories,
+    estimatedHRZone,
+    pace,
+    avgBpm: avgBpm != null && avgBpm > 0 ? avgBpm : undefined,
+  }
+
+  // Pull recent training for the conflict engine. A single `where` on `date`
+  // needs no composite index. The just-written session is included and filtered
+  // out by id inside detectConflicts.
+  const cutoff = Timestamp.fromMillis(Date.now() - SEVEN_DAYS_MS)
+  const recentSnap = await getDocs(query(sessionsCol(userId), where('date', '>=', cutoff)))
+  const recentSessions = recentSnap.docs.map((d) => toSession(d.id, d.data()))
+
+  // Weekly budget check needs hours trained this calendar week (incl. the new
+  // session, which is already in recentSessions).
+  const weekStart = startOfWeek(new Date()).getTime()
+  const weeklyMinutes = recentSessions
+    .filter((s) => new Date(s.date).getTime() >= weekStart)
+    .reduce((sum, s) => sum + s.durationMinutes, 0)
+  const currentWeeklyHours = weeklyMinutes / 60
+
+  const detected = detectConflicts(session, recentSessions, profile, currentWeeklyHours)
+
+  // Persist each conflict with a real id so the dashboard can key/resolve them.
+  const conflicts: Conflict[] = []
+  for (const conflict of detected) {
+    const conflictRef = doc(conflictsCol(userId))
+    const saved: Conflict = { ...conflict, conflictId: conflictRef.id }
+    await setDoc(conflictRef, saved)
+    conflicts.push(saved)
+  }
+
+  return { session, conflicts }
+}
+
+/**
+ * Delete a session and any conflicts that reference it — either as the trigger
+ * (the session just logged) or as the earlier clashing session. Used by the
+ * conflict modal's "Undo session" action.
+ */
+export async function deleteSession(userId: string, sessionId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, 'sessions', sessionId))
+
+  const [triggered, clashing] = await Promise.all([
+    getDocs(query(conflictsCol(userId), where('triggerSessionId', '==', sessionId))),
+    getDocs(query(conflictsCol(userId), where('conflictingSessionId', '==', sessionId))),
+  ])
+
+  const refs = new Map<string, ReturnType<typeof doc>>()
+  for (const snap of [triggered, clashing]) {
+    snap.docs.forEach((d) => refs.set(d.id, d.ref))
+  }
+  await Promise.all([...refs.values()].map((r) => deleteDoc(r)))
+}

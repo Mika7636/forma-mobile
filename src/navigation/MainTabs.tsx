@@ -5,8 +5,9 @@ import LogScreen from '../screens/LogScreen'
 import PlannerScreen from '../screens/PlannerScreen'
 import ProgressScreen from '../screens/ProgressScreen'
 import SettingsScreen from '../screens/SettingsScreen'
+import type { MainTabsParamList } from './types'
 
-const Tab = createBottomTabNavigator()
+const Tab = createBottomTabNavigator<MainTabsParamList>()
 
 /** FORMA brand teal, used for the active tab tint. */
 const FORMA_TEAL = '#1D9E75'
