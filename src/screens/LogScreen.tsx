@@ -26,6 +26,7 @@ import Animated, {
 import Slider from '@react-native-community/slider'
 import * as Haptics from 'expo-haptics'
 import ConflictModal from '../components/log/ConflictModal'
+import LiveTracker, { type LiveResult } from '../components/log/LiveTracker'
 import PrimaryButton from '../components/ui/PrimaryButton'
 import { COLORS } from '../constants/theme'
 import { SPORT_OPTIONS, type SportOption } from '../constants/training'
@@ -34,11 +35,14 @@ import {
   deleteSession,
   isDistanceSport,
   logSession,
+  type LogSessionInput,
 } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
 import type { Conflict } from '../types/conflict'
 import type { SportType } from '../types/session'
 import type { LogScreenProps } from '../navigation/types'
+
+type LogMode = 'quick' | 'live'
 
 /* --- RPE zones -------------------------------------------------------- */
 const ZONE_GREEN = '#22c55e'
@@ -111,6 +115,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   )
 
   const [sport, setSport] = useState<SportType | null>(null)
+  const [mode, setMode] = useState<LogMode>('quick')
   const [duration, setDuration] = useState('')
   const [distance, setDistance] = useState('')
   const [rpe, setRpe] = useState(5)
@@ -172,6 +177,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
 
   const resetForm = () => {
     setSport(null)
+    setMode('quick')
     setDuration('')
     setDistance('')
     setRpe(5)
@@ -183,8 +189,18 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const handleSelectSport = (value: SportType) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     setSport(value)
-    if (!isDistanceSport(value)) setDistance('')
+    // Live tracking only makes sense for distance sports; reset the mode when a
+    // non-distance sport (combat, football, gym…) is picked.
+    if (!isDistanceSport(value)) {
+      setDistance('')
+      setMode('quick')
+    }
   }
+
+  const sportLabel = useMemo(
+    () => SPORT_OPTIONS.find((o) => o.value === sport)?.label ?? '',
+    [sport],
+  )
 
   const handleRpeChange = (raw: number) => {
     const next = Math.round(raw)
@@ -196,28 +212,19 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   }
 
   const goBackToPlannerOrReset = () => {
+    setMode('quick')
     if (fromPlanner) navigation.navigate('Planner')
     else resetForm()
   }
 
-  const handleSave = async () => {
-    if (!canSave || !sport || !user || !profile || saving) return
+  // Shared write path for both Quick Log and Live Tracking. Persists the
+  // session, then either surfaces conflicts or shows the success toast + resets.
+  const logAndHandle = async (input: LogSessionInput) => {
+    if (!user || !profile || saving) return
     Keyboard.dismiss()
     setSaving(true)
     try {
-      const { session, conflicts: detected } = await logSession(
-        user.uid,
-        {
-          sport,
-          date: logDate ?? new Date(),
-          durationMinutes: durationNum,
-          rpe,
-          distanceKm: showDistance ? distanceNum : undefined,
-          notes: notes.trim() || undefined,
-          avgBpm: avgBpmNum,
-        },
-        profile,
-      )
+      const { session, conflicts: detected } = await logSession(user.uid, input, profile)
       setSaving(false)
 
       if (detected.length > 0) {
@@ -230,12 +237,43 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       showToast(
         `Session saved! ${session.loadScore} AU · ${session.estimatedCalories} kcal`,
       )
+      setMode('quick')
       setTimeout(goBackToPlannerOrReset, 1000)
     } catch {
       setSaving(false)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
       showToast('Could not save session. Please try again.')
     }
+  }
+
+  const handleSave = () => {
+    if (!canSave || !sport) return
+    logAndHandle({
+      sport,
+      date: logDate ?? new Date(),
+      durationMinutes: durationNum,
+      rpe,
+      distanceKm: showDistance ? distanceNum : undefined,
+      notes: notes.trim() || undefined,
+      avgBpm: avgBpmNum,
+      trackingMode: 'quick',
+    })
+  }
+
+  const handleSaveLive = (result: LiveResult) => {
+    if (!sport) return
+    logAndHandle({
+      sport,
+      date: logDate ?? new Date(),
+      durationMinutes: result.durationMinutes,
+      rpe: result.rpe,
+      distanceKm: result.distanceKm > 0 ? result.distanceKm : undefined,
+      notes: result.notes,
+      trackingMode: 'live',
+      routeCoordinates: result.routeCoordinates,
+      averagePace: result.averagePace,
+      averageSpeed: result.averageSpeed,
+    })
   }
 
   const handleKeepSession = () => {
@@ -259,6 +297,59 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       showToast('Session undone.')
       setTimeout(goBackToPlannerOrReset, 700)
     }
+  }
+
+  // Full-screen live tracker. Rendered instead of the log form while the user is
+  // in Live mode; the conflict modal + toast ride along so save feedback still
+  // shows over it.
+  if (mode === 'live' && sport) {
+    return (
+      <>
+        <LiveTracker
+          sport={sport}
+          sportLabel={sportLabel}
+          weightKg={profile?.weightKg}
+          saving={saving}
+          onExit={() => setMode('quick')}
+          onComplete={handleSaveLive}
+        />
+        {toast ? (
+          <Animated.View
+            entering={FadeInDown.duration(220)}
+            exiting={FadeOut.duration(200)}
+            style={{
+              position: 'absolute',
+              left: 16,
+              right: 16,
+              bottom: 40,
+              backgroundColor: COLORS.teal,
+              borderRadius: 14,
+              paddingVertical: 14,
+              paddingHorizontal: 18,
+              elevation: 8,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.white,
+                fontSize: 14,
+                fontWeight: '700',
+                textAlign: 'center',
+              }}
+            >
+              {toast}
+            </Text>
+          </Animated.View>
+        ) : null}
+        <ConflictModal
+          visible={conflicts != null}
+          conflicts={conflicts ?? []}
+          undoing={undoing}
+          onKeep={handleKeepSession}
+          onUndo={handleUndoSession}
+        />
+      </>
+    )
   }
 
   return (
@@ -336,6 +427,23 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 )}
               />
             )}
+
+            {/* Mode toggle — Quick Log vs Track Live (distance sports only) */}
+            {showDistance ? (
+              <Animated.View
+                entering={FadeInDown.duration(200)}
+                exiting={FadeOutUp.duration(160)}
+                style={{ paddingHorizontal: 20, marginTop: 20 }}
+              >
+                <ModeToggle
+                  mode={mode}
+                  onSelect={(next) => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    setMode(next)
+                  }}
+                />
+              </Animated.View>
+            ) : null}
 
             {/* Duration */}
             <View style={{ paddingHorizontal: 20 }}>
@@ -482,6 +590,31 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 {RPE_DESCRIPTIONS[rpe]}
               </Text>
             </View>
+
+            {/* Prominent live calorie estimate — updates as duration/RPE change,
+                for every sport (Part 4/5). */}
+            {estimates && durationNum > 0 ? (
+              <Animated.View
+                entering={FadeIn.duration(200)}
+                style={{
+                  marginTop: 16,
+                  marginHorizontal: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#FFF7ED',
+                  borderWidth: 1,
+                  borderColor: '#FED7AA',
+                  borderRadius: 16,
+                  paddingVertical: 14,
+                }}
+              >
+                <Text style={{ fontSize: 22, marginRight: 8 }}>🔥</Text>
+                <Text style={{ fontSize: 24, fontWeight: '800', color: '#EA580C' }}>
+                  Est. {estimates.estimatedCalories} kcal
+                </Text>
+              </Animated.View>
+            ) : null}
 
             {/* Training load */}
             <View
@@ -766,6 +899,64 @@ function SportCard({
         </Text>
       </Pressable>
     </Animated.View>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Mode toggle — Quick Log vs Track Live segmented control              */
+/* ------------------------------------------------------------------ */
+function ModeToggle({
+  mode,
+  onSelect,
+}: {
+  mode: LogMode
+  onSelect: (mode: LogMode) => void
+}) {
+  const options: { value: LogMode; label: string; icon: string }[] = [
+    { value: 'quick', label: 'Quick Log', icon: '✏️' },
+    { value: 'live', label: 'Track Live', icon: '📍' },
+  ]
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        backgroundColor: COLORS.fieldBg,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: COLORS.border,
+        padding: 4,
+      }}
+    >
+      {options.map((opt) => {
+        const active = mode === opt.value
+        return (
+          <Pressable
+            key={opt.value}
+            onPress={() => onSelect(opt.value)}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 12,
+              borderRadius: 9,
+              backgroundColor: active ? COLORS.teal : 'transparent',
+            }}
+          >
+            <Text style={{ fontSize: 15, marginRight: 6 }}>{opt.icon}</Text>
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '700',
+                color: active ? COLORS.white : COLORS.muted,
+              }}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
+        )
+      })}
+    </View>
   )
 }
 

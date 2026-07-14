@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   ActivityIndicator,
   Pressable,
@@ -29,6 +30,7 @@ export default function PrimaryButton({
   style,
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading
+  const [pressed, setPressed] = useState(false)
 
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
@@ -39,7 +41,13 @@ export default function PrimaryButton({
     <Pressable
       onPress={handlePress}
       disabled={isDisabled}
-      style={({ pressed }) => [
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      // NOTE: `style` must not be a function here. NativeWind's style interop
+      // never invokes the function form, so the button renders completely
+      // unstyled. Plain objects/arrays are applied correctly, so press feedback
+      // is tracked via onPressIn/onPressOut state instead.
+      style={[
         {
           height: 54,
           borderRadius: 12,

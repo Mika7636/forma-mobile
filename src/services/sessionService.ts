@@ -25,7 +25,13 @@ import { calculatePace } from '../algorithms/pace'
 import { calculateLoadScore } from '../algorithms/sRPE'
 import { startOfWeek } from '../utils/dates'
 import type { Conflict } from '../types/conflict'
-import type { Session, SessionHRZone, SportType } from '../types/session'
+import type {
+  RoutePoint,
+  Session,
+  SessionHRZone,
+  SportType,
+  TrackingMode,
+} from '../types/session'
 import type { User } from '../types/user'
 
 /** Sports that record a distance and therefore get a pace/speed estimate. */
@@ -48,6 +54,11 @@ export interface LogSessionInput {
   notes?: string
   /** Optional manually-entered average heart rate from a wearable. */
   avgBpm?: number
+  // --- Live GPS tracking (set by LiveTracker) ---
+  trackingMode?: TrackingMode
+  routeCoordinates?: RoutePoint[]
+  averagePace?: string
+  averageSpeed?: number
 }
 
 function sessionsCol(userId: string) {
@@ -88,6 +99,10 @@ function toSession(id: string, data: DocumentData): Session {
     estimatedHRZone: data.estimatedHRZone,
     pace: data.pace ?? null,
     avgBpm: data.avgBpm,
+    trackingMode: data.trackingMode,
+    routeCoordinates: data.routeCoordinates,
+    averagePace: data.averagePace,
+    averageSpeed: data.averageSpeed,
   }
 }
 
@@ -145,7 +160,19 @@ export async function logSession(
   input: LogSessionInput,
   profile: User,
 ): Promise<{ session: Session; conflicts: Conflict[] }> {
-  const { sport, date, durationMinutes, rpe, distanceKm, notes, avgBpm } = input
+  const {
+    sport,
+    date,
+    durationMinutes,
+    rpe,
+    distanceKm,
+    notes,
+    avgBpm,
+    trackingMode,
+    routeCoordinates,
+    averagePace,
+    averageSpeed,
+  } = input
 
   const loadScore = calculateLoadScore(durationMinutes, rpe)
   const estimatedCalories = estimateCalories(sport, durationMinutes, rpe, profile.weightKg)
@@ -176,6 +203,14 @@ export async function logSession(
   }
   if (hasDistance) docData.distanceKm = distanceKm
   if (avgBpm != null && avgBpm > 0) docData.avgBpm = avgBpm
+  // Live-tracking extras. Firestore rejects undefined, so guard each one. Route
+  // points are plain {latitude, longitude, timestamp} objects — Firestore-safe.
+  if (trackingMode) docData.trackingMode = trackingMode
+  if (routeCoordinates && routeCoordinates.length > 0) {
+    docData.routeCoordinates = routeCoordinates
+  }
+  if (averagePace) docData.averagePace = averagePace
+  if (averageSpeed != null && averageSpeed > 0) docData.averageSpeed = averageSpeed
 
   const ref = await addDoc(sessionsCol(userId), docData)
 
@@ -194,6 +229,11 @@ export async function logSession(
     estimatedHRZone,
     pace,
     avgBpm: avgBpm != null && avgBpm > 0 ? avgBpm : undefined,
+    trackingMode,
+    routeCoordinates:
+      routeCoordinates && routeCoordinates.length > 0 ? routeCoordinates : undefined,
+    averagePace,
+    averageSpeed: averageSpeed != null && averageSpeed > 0 ? averageSpeed : undefined,
   }
 
   // Pull recent training for the conflict engine. A single `where` on `date`

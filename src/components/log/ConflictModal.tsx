@@ -128,14 +128,15 @@ export default function ConflictModal({
                 onKeep()
               }}
               disabled={undoing}
-              style={({ pressed }) => ({
+              // Not a style function: NativeWind's interop never calls it, which
+              // would leave this button entirely unstyled.
+              style={{
                 height: 52,
                 borderRadius: 12,
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: COLORS.teal,
-                opacity: pressed ? 0.9 : 1,
-              })}
+              }}
             >
               <Text style={{ color: COLORS.white, fontSize: 16, fontWeight: '700' }}>
                 Got it, keep session
@@ -148,7 +149,7 @@ export default function ConflictModal({
                 onUndo()
               }}
               disabled={undoing}
-              style={({ pressed }) => ({
+              style={{
                 height: 52,
                 borderRadius: 12,
                 marginTop: 10,
@@ -157,8 +158,7 @@ export default function ConflictModal({
                 borderWidth: 1.5,
                 borderColor: DANGER,
                 backgroundColor: COLORS.white,
-                opacity: pressed ? 0.85 : 1,
-              })}
+              }}
             >
               {undoing ? (
                 <ActivityIndicator color={DANGER} />

@@ -81,16 +81,18 @@ export default function SettingsScreen() {
 
         <Pressable
           onPress={handleLogout}
-          style={({ pressed }) => ({
+          // Not a style function: NativeWind's interop never calls it, which
+          // would leave this button entirely unstyled.
+          style={{
             height: 54,
             borderRadius: 12,
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1.5,
             borderColor: COLORS.danger,
-            backgroundColor: pressed ? '#FEF2F2' : COLORS.white,
+            backgroundColor: COLORS.white,
             marginBottom: 24,
-          })}
+          }}
         >
           <Text style={{ color: COLORS.danger, fontSize: 16, fontWeight: '700' }}>
             Log Out

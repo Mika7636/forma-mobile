@@ -20,6 +20,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FORMA uses your location to track distance, pace and route while you record a live workout."
+        }
+      ]
+    ]
   }
 }
