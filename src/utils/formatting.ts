@@ -13,6 +13,28 @@ export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
+/**
+ * Group a number with thousands separators — "1240" → "1,240".
+ *
+ * Done by hand rather than via toLocaleString/Intl so the output is identical
+ * on every device regardless of the JS engine's locale data.
+ */
+export function formatThousands(value: number): string {
+  const rounded = Math.round(value)
+  const sign = rounded < 0 ? '-' : ''
+  return sign + String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+/** "1h 30m", "45m", "0m" — compact minutes label for the zone chart. */
+export function formatZoneMinutes(minutes: number): string {
+  const rounded = Math.round(minutes)
+  const h = Math.floor(rounded / 60)
+  const m = rounded % 60
+  if (h === 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
 export function formatTimeAgo(isoDate: string): string {
   const date = new Date(isoDate)
   const diffMinutes = Math.floor((Date.now() - date.getTime()) / (1000 * 60))

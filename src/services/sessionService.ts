@@ -74,8 +74,12 @@ function conflictsCol(userId: string) {
  * Firestore stores `date`/`createdAt` as Timestamps; the algorithms and UI work
  * with ISO strings, so we convert here (tolerating already-string values from
  * older/web writes).
+ *
+ * Exported because the sessions store reads the same collection and must apply
+ * exactly this normalisation — the web app writes `date` as an ISO string while
+ * this app writes a Timestamp, so both shapes are live in Firestore.
  */
-function toSession(id: string, data: DocumentData): Session {
+export function toSession(id: string, data: DocumentData): Session {
   const toISO = (value: unknown, fallback: string): string => {
     if (value && typeof (value as Timestamp).toDate === 'function') {
       return (value as Timestamp).toDate().toISOString()
