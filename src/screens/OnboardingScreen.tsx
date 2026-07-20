@@ -26,6 +26,7 @@ import {
   BUDGET_MAX,
   BUDGET_MIN,
   DEFAULT_BUDGET_HOURS,
+  DEFAULT_SPORT_INTERACTIONS,
   EXPERIENCE_OPTIONS,
   SPORT_OPTIONS,
   calculateBaselineWeeklyLoad,
@@ -34,7 +35,7 @@ import {
 import { updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
 import type { SportType } from '../types/session'
-import type { ExperienceLevel } from '../types/user'
+import type { ExperienceLevel, User } from '../types/user'
 
 const TOTAL_STEPS = 5
 const LB_PER_KG = 2.20462
@@ -67,6 +68,7 @@ export default function OnboardingScreen() {
 
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const goNext = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -106,6 +108,7 @@ export default function OnboardingScreen() {
 
   const handleFinish = async () => {
     if (!user || !experience || saving) return
+    setError(null)
     setSaving(true)
 
     const weightKg = resolveWeightKg()
@@ -120,17 +123,47 @@ export default function OnboardingScreen() {
       onboardingCompleted: true,
     }
 
+    // Merge onto the loaded profile when we have one; otherwise construct a
+    // complete base profile. RootNavigator shows onboarding for BOTH a normal
+    // first run AND a null profile (doc failed to load — e.g. the emulator
+    // WebChannel error). If we only committed when `profile` was truthy, the
+    // null case would write to Firestore but never flip the navigator, leaving
+    // the user stuck on "You're all set!" forever. Building a full User here
+    // means both the write and the in-memory commit always have a valid profile.
+    const base: User = profile ?? {
+      uid: user.uid,
+      displayName: user.displayName ?? firstName,
+      email: user.email ?? '',
+      createdAt: new Date().toISOString(),
+      sports: [],
+      weeklyBudgetHours: DEFAULT_BUDGET_HOURS,
+      experienceLevel: 'beginner',
+      onboardingCompleted: false,
+      conflictSensitivity: 'balanced',
+      sportInteractions: { ...DEFAULT_SPORT_INTERACTIONS },
+    }
+    const nextProfile: User = { ...base, ...updates }
+
     try {
-      await updateUserProfile(user.uid, updates)
+      console.log('[Onboarding] Finish tapped — writing profile', {
+        uid: user.uid,
+        hadProfile: !!profile,
+        onboardingCompleted: nextProfile.onboardingCompleted,
+      })
+      await updateUserProfile(user.uid, nextProfile)
+      console.log('[Onboarding] Firestore write succeeded')
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       setDone(true)
-      // Show the "You're all set!" beat, then commit the profile — RootNavigator
-      // flips to MainTabs once onboardingCompleted is true.
+      // Show the "You're all set!" beat, then commit the profile —
+      // RootNavigator flips to MainTabs once onboardingCompleted is true.
       setTimeout(() => {
-        if (profile) setProfile({ ...profile, ...updates })
+        console.log('[Onboarding] Committing profile → RootNavigator → MainTabs')
+        setProfile(nextProfile)
       }, 1300)
-    } catch {
+    } catch (err) {
+      console.warn('[Onboarding] Finish failed', err)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      setError("Couldn't save your profile. Check your connection and try again.")
       setSaving(false)
     }
   }
@@ -232,10 +265,12 @@ export default function OnboardingScreen() {
                   selected={experience}
                   onSelect={(e) => {
                     Haptics.selectionAsync()
+                    setError(null)
                     setExperience(e)
                   }}
                   onFinish={handleFinish}
                   saving={saving}
+                  error={error}
                 />
               ) : null}
             </ScrollView>
@@ -548,11 +583,13 @@ function ExperienceStep({
   onSelect,
   onFinish,
   saving,
+  error,
 }: {
   selected: ExperienceLevel | null
   onSelect: (e: ExperienceLevel) => void
   onFinish: () => void
   saving: boolean
+  error: string | null
 }) {
   return (
     <View style={{ flex: 1 }}>
@@ -604,6 +641,19 @@ function ExperienceStep({
       </View>
 
       <View style={{ flex: 1 }} />
+      {error ? (
+        <Text
+          style={{
+            color: COLORS.danger,
+            fontSize: 14,
+            fontWeight: '600',
+            textAlign: 'center',
+            marginBottom: 12,
+          }}
+        >
+          {error}
+        </Text>
+      ) : null}
       <PrimaryButton
         label="Finish"
         onPress={onFinish}

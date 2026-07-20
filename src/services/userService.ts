@@ -1,7 +1,7 @@
 // Firestore user-profile CRUD. Profiles live at /users/{uid} and back the
 // FORMA training model (sports, budget, experience, conflict matrix). Ported &
 // adapted from the web app for React Native (same Firestore project, forma-sp1).
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import {
   DEFAULT_BUDGET_HOURS,
@@ -56,12 +56,19 @@ export async function getUserProfile(uid: string): Promise<User | null> {
   return snapshot.data() as User
 }
 
-/** Patches an existing profile with a partial update. */
+/**
+ * Patches a profile with a partial update. Uses `setDoc(..., { merge: true })`
+ * rather than `updateDoc` so it creates-or-merges: `updateDoc` REJECTS with
+ * "No document to update" when /users/{uid} doesn't exist yet, which silently
+ * broke onboarding's Finish when the profile doc was missing (e.g. the emulator
+ * WebChannel error that drops us to onboarding with a null profile). A merge
+ * write is safe whether or not the doc already exists.
+ */
 export async function updateUserProfile(
   uid: string,
   updates: Partial<User>,
 ): Promise<void> {
-  await updateDoc(userDoc(uid), updates)
+  await setDoc(userDoc(uid), updates, { merge: true })
 }
 
 export { DEFAULT_BUDGET_HOURS }
