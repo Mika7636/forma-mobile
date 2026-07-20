@@ -5,6 +5,8 @@
 import { create } from 'zustand'
 import { buildDailyLoads, calculateATL, calculateCTL } from '../algorithms/ctlAtl'
 import { calculateForm } from '../algorithms/formScore'
+import { useAuthStore } from './authStore'
+import { daysSince } from '../utils/dates'
 import type { Session } from '../types/session'
 
 /** Matches the session-history window; CTL is a 42-day chronic average. */
@@ -45,7 +47,15 @@ export const useMetricsStore = create<MetricsState>((set) => ({
 
   recalculate: (sessions) => {
     const dailyLoads = buildDailyLoads(sessions, DAILY_LOAD_WINDOW_DAYS)
-    const ctl = calculateCTL(dailyLoads)
+
+    // Seed CTL from the onboarding baseline during the cold-start window so a
+    // new user isn't shown a false "Overreaching" Form. Read straight from the
+    // auth store (no import cycle: authStore never imports this store).
+    const profile = useAuthStore.getState().profile
+    const ctl = calculateCTL(dailyLoads, {
+      baselineCTL: profile?.baselineCTL,
+      daysSinceRegistration: profile ? daysSince(profile.createdAt) : undefined,
+    })
     const atl = calculateATL(dailyLoads)
     const form = calculateForm(ctl, atl)
 

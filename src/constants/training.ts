@@ -101,6 +101,42 @@ export function calculateBaselineWeeklyLoad(
   return Math.round(weeklyBudgetHours * 60 * EXPERIENCE_MULTIPLIER[experience])
 }
 
+type BudgetBand = 'low' | 'medium' | 'high' | 'elite'
+
+// Budget tiers map onto the CTL-baseline bands: Casual(2–5)=low, Active(6–10)=
+// medium, Serious(11–18)=high, Elite(19+)=elite.
+const BUDGET_BAND: Record<string, BudgetBand> = {
+  Casual: 'low',
+  Active: 'medium',
+  Serious: 'high',
+  Elite: 'elite',
+}
+
+// Starting CTL ("fitness") by experience × budget band. Bold cells are the
+// product-specified values; the rest are extrapolated to keep every row/column
+// monotonic (a fitter profile never seeds a lower baseline).
+//   beginner     low 20  medium 30  (high/elite extrapolated)
+//   intermediate low 35  medium 45  high 55  (elite extrapolated)
+//   advanced     medium 60  high 75  elite 90  (low extrapolated)
+const BASELINE_CTL: Record<ExperienceLevel, Record<BudgetBand, number>> = {
+  beginner: { low: 20, medium: 30, high: 40, elite: 45 },
+  intermediate: { low: 35, medium: 45, high: 55, elite: 65 },
+  advanced: { low: 50, medium: 60, high: 75, elite: 90 },
+}
+
+/**
+ * Seed the starting CTL ("fitness") from budget + experience so a brand-new
+ * user's Form Score isn't dragged deeply negative before the 42-day CTL average
+ * has real data. Consumed by {@link calculateCTL}'s baseline blend.
+ */
+export function calculateBaselineCTL(
+  weeklyBudgetHours: number,
+  experience: ExperienceLevel,
+): number {
+  const band = BUDGET_BAND[getBudgetTier(weeklyBudgetHours).label] ?? 'low'
+  return BASELINE_CTL[experience][band]
+}
+
 /**
  * Pairwise sport-conflict weights seeded onto every new user. Keys are
  * underscore-joined sport pairs; higher values mean stronger interference.

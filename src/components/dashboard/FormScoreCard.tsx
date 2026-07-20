@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { Pressable, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, {
   Easing,
@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import CountUp from './CountUp'
+import FormInfoModal from './FormInfoModal'
 import { getFormStatus } from '../../algorithms/formScore'
 
 interface HeroStyle {
@@ -47,6 +48,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
   const { status, message, color } = getFormStatus(form)
   const style = HERO_STYLES[color] ?? HERO_STYLES.green
   const rounded = Math.round(form)
+  const [infoOpen, setInfoOpen] = useState(false)
 
   // Settle-in: a subtle scale-up so the hero feels like it lands on the screen.
   const scale = useSharedValue(0.96)
@@ -105,6 +107,15 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
             ]}
           />
         ) : null}
+
+        {/* Info affordance, top-right. */}
+        <Pressable
+          onPress={() => setInfoOpen(true)}
+          hitSlop={12}
+          style={{ position: 'absolute', top: 16, right: 16, zIndex: 2 }}
+        >
+          <Text style={{ fontSize: 18 }}>ℹ️</Text>
+        </Pressable>
 
         <View style={{ flexDirection: 'row' }}>
           {/* Left: the headline score + status. */}
@@ -174,6 +185,8 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
           </View>
         </View>
       </LinearGradient>
+
+      <FormInfoModal visible={infoOpen} onClose={() => setInfoOpen(false)} />
     </Animated.View>
   )
 }

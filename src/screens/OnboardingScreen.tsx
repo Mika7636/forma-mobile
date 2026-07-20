@@ -29,6 +29,7 @@ import {
   DEFAULT_SPORT_INTERACTIONS,
   EXPERIENCE_OPTIONS,
   SPORT_OPTIONS,
+  calculateBaselineCTL,
   calculateBaselineWeeklyLoad,
   getBudgetTier,
 } from '../constants/training'
@@ -113,6 +114,7 @@ export default function OnboardingScreen() {
 
     const weightKg = resolveWeightKg()
     const baselineWeeklyLoad = calculateBaselineWeeklyLoad(budgetHours, experience)
+    const baselineCTL = calculateBaselineCTL(budgetHours, experience)
     const updates = {
       sports,
       weeklyBudgetHours: budgetHours,
@@ -120,6 +122,7 @@ export default function OnboardingScreen() {
       weightKg,
       weightUnit,
       baselineWeeklyLoad,
+      baselineCTL,
       onboardingCompleted: true,
     }
 
@@ -159,7 +162,7 @@ export default function OnboardingScreen() {
       setTimeout(() => {
         console.log('[Onboarding] Committing profile → RootNavigator → MainTabs')
         setProfile(nextProfile)
-      }, 1300)
+      }, 2600)
     } catch (err) {
       console.warn('[Onboarding] Finish failed', err)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
@@ -198,6 +201,30 @@ export default function OnboardingScreen() {
           <Text style={{ marginTop: 8, fontSize: 15, color: COLORS.muted }}>
             Building your dashboard…
           </Text>
+          <View
+            style={{
+              marginTop: 24,
+              marginHorizontal: 8,
+              backgroundColor: COLORS.tealSoft,
+              borderRadius: 16,
+              paddingVertical: 14,
+              paddingHorizontal: 18,
+              maxWidth: 320,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13.5,
+                color: COLORS.tealDark,
+                fontWeight: '600',
+                lineHeight: 20,
+                textAlign: 'center',
+              }}
+            >
+              💡 Tip: Log your workouts for the first 2 weeks and FORMA will calibrate to
+              your training level. The more you log, the smarter your insights become.
+            </Text>
+          </View>
         </Animated.View>
       </SafeAreaView>
     )

@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
+import CalibratingFormCard from '../components/dashboard/CalibratingFormCard'
 import ConflictBanner from '../components/dashboard/ConflictBanner'
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton'
 import EmptyDashboardState from '../components/dashboard/EmptyDashboardState'
@@ -18,6 +19,7 @@ import MetricGrid from '../components/dashboard/MetricGrid'
 import RecentActivity from '../components/dashboard/RecentActivity'
 import ZoneDistributionChart from '../components/dashboard/ZoneDistributionChart'
 import { COLORS } from '../constants/theme'
+import { getCalibrationState } from '../utils/calibration'
 import { useConflicts } from '../hooks/useConflicts'
 import { useMetrics } from '../hooks/useMetrics'
 import { useAuthStore } from '../store/authStore'
@@ -33,6 +35,7 @@ function getGreeting(hour: number): string {
 
 export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const displayName = useAuthStore((s) => s.user?.displayName)
+  const createdAt = useAuthStore((s) => s.profile?.createdAt)
   const {
     sessions,
     weekSessions,
@@ -48,9 +51,15 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     weeklyDistanceKm,
     budgetHours,
     sessionCount,
+    totalSessionCount,
     streak,
   } = useMetrics()
   const { conflicts, dismissConflict } = useConflicts()
+
+  // While the user is still in their calibration window, the raw Form Score is
+  // statistically noise — show the "Building Your Baseline" hero instead of a
+  // potentially alarming red card. (Blended CTL keeps the number sane too.)
+  const calibration = getCalibrationState(totalSessionCount, createdAt)
 
   const [refreshing, setRefreshing] = useState(false)
   const [showAllConflicts, setShowAllConflicts] = useState(false)
@@ -208,7 +217,16 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             <EmptyDashboardState onLogSession={goToLog} />
           ) : (
             <Animated.View entering={FadeIn.duration(280)} style={{ gap: 20 }}>
-              <FormScoreCard form={formScore} ctl={ctl} atl={atl} />
+              {calibration.isCalibrating ? (
+                <CalibratingFormCard
+                  form={formScore}
+                  ctl={ctl}
+                  atl={atl}
+                  sessionsLogged={calibration.sessionsLogged}
+                />
+              ) : (
+                <FormScoreCard form={formScore} ctl={ctl} atl={atl} />
+              )}
 
               <MetricGrid
                 weeklyLoad={weeklyLoad}

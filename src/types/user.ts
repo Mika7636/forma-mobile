@@ -22,6 +22,12 @@ export interface User {
   sportInteractions: SportInteractions
   onboardingCompleted: boolean
   baselineWeeklyLoad?: number
+  /**
+   * Seed "fitness" (CTL) from onboarding, so a new athlete isn't shown a wildly
+   * negative Form while the 42-day CTL average is still filling up. Blended out
+   * over the first 21 days by {@link calculateCTL}. Set at onboarding.
+   */
+  baselineCTL?: number
   conflictSensitivity?: ConflictSensitivity
   // Body metrics, used to derive calorie and heart-rate estimates. Optional —
   // users can skip sharing them; algorithms fall back to sensible defaults.

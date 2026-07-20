@@ -37,7 +37,10 @@ export interface DashboardMetrics {
   weeklyDistanceKm: number
   /** The user's weekly training-hours target from onboarding. */
   budgetHours: number
+  /** Sessions in the current week (7 days). */
   sessionCount: number
+  /** Sessions across the whole history window (last 42 days) — the calibration gate. */
+  totalSessionCount: number
   streak: number
 }
 
@@ -97,6 +100,7 @@ export function useMetrics(): DashboardMetrics {
     weeklyDistanceKm,
     budgetHours,
     sessionCount: weekSessions.length,
+    totalSessionCount: sessions.length,
     streak,
   }
 }

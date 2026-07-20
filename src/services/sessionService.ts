@@ -163,6 +163,7 @@ export async function logSession(
   userId: string,
   input: LogSessionInput,
   profile: User,
+  options?: { calibrating?: boolean },
 ): Promise<{ session: Session; conflicts: Conflict[] }> {
   const {
     sport,
@@ -255,7 +256,9 @@ export async function logSession(
     .reduce((sum, s) => sum + s.durationMinutes, 0)
   const currentWeeklyHours = weeklyMinutes / 60
 
-  const detected = detectConflicts(session, recentSessions, profile, currentWeeklyHours)
+  const detected = detectConflicts(session, recentSessions, profile, currentWeeklyHours, {
+    calibrating: options?.calibrating,
+  })
 
   // Persist each conflict with a real id so the dashboard can key/resolve them.
   const conflicts: Conflict[] = []

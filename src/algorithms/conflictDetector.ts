@@ -1,10 +1,18 @@
 import { Timestamp } from 'firebase/firestore'
 import type { Conflict } from '../types/conflict'
 import type { Session, SportType } from '../types/session'
-import type { User } from '../types/user'
+import type { ConflictSensitivity, User } from '../types/user'
 import { SPORT_META } from '../utils/sportMeta'
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000
+
+// One notch gentler, used during the calibration period so a new user isn't
+// buried in warnings before FORMA knows their baseline.
+const SOFTER_SENSITIVITY: Record<ConflictSensitivity, ConflictSensitivity> = {
+  strict: 'balanced',
+  balanced: 'relaxed',
+  relaxed: 'relaxed',
+}
 
 /**
  * Build the canonical matrix key for a sport pair. Keys are stored
@@ -49,15 +57,24 @@ function overlapRisk(level: number): string {
  *  - "relaxed":  only "danger" conflicts are surfaced
  *  - "balanced": all conflicts (default)
  *  - "strict":   lower RPE thresholds so warnings fire earlier
+ *
+ * Calibration (options.calibrating, for users with < 7 sessions): sensitivity
+ * is dropped one notch and volume/"budget_exceeded" conflicts are suppressed —
+ * a new user's weekly budget is a guess, and their few sessions shouldn't read
+ * as overreaching. Genuine dangers (sport overlap, back-to-back max sessions)
+ * still fire.
  */
 export function detectConflicts(
   newSession: Session,
   recentSessions: Session[],
   userProfile: User,
   currentWeeklyHours: number,
+  options?: { calibrating?: boolean },
 ): Conflict[] {
   const conflicts: Conflict[] = []
-  const sensitivity = userProfile.conflictSensitivity ?? 'balanced'
+  const calibrating = options?.calibrating ?? false
+  const baseSensitivity = userProfile.conflictSensitivity ?? 'balanced'
+  const sensitivity = calibrating ? SOFTER_SENSITIVITY[baseSensitivity] : baseSensitivity
   const sportRpeThreshold = sensitivity === 'strict' ? 6 : 7
   const cnsThreshold = sensitivity === 'strict' ? 7 : 8
 
@@ -142,9 +159,16 @@ export function detectConflicts(
     )
   }
 
+  // During calibration, drop the volume/budget warning — the budget itself is
+  // still just an onboarding estimate, and sparse early sessions shouldn't read
+  // as overreaching. Sport-overlap and CNS conflicts remain.
+  const surfaced = calibrating
+    ? conflicts.filter((c) => c.conflictType !== 'budget_exceeded')
+    : conflicts
+
   // Relaxed athletes only want to hear about the serious stuff.
   if (sensitivity === 'relaxed') {
-    return conflicts.filter((c) => c.severity === 'danger')
+    return surfaced.filter((c) => c.severity === 'danger')
   }
-  return conflicts
+  return surfaced
 }

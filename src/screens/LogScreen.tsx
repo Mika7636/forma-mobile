@@ -38,6 +38,8 @@ import {
   type LogSessionInput,
 } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
+import { useSessionHistory } from '../hooks/useSessionHistory'
+import { CALIBRATION_SESSION_TARGET } from '../utils/calibration'
 import type { Conflict } from '../types/conflict'
 import type { SportType } from '../types/session'
 import type { LogScreenProps } from '../navigation/types'
@@ -92,6 +94,9 @@ function tint(hex: string): string {
 export default function LogScreen({ route, navigation }: LogScreenProps) {
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
+  // Count-based calibration gate: a user with < 7 sessions gets gentler conflict
+  // detection (no volume warnings, sensitivity one notch softer).
+  const { sessions } = useSessionHistory()
 
   // A date handed over from the Planner: pre-fill it and send the user back
   // there after saving. Parse at local noon so the calendar day never slips.
@@ -224,7 +229,9 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     Keyboard.dismiss()
     setSaving(true)
     try {
-      const { session, conflicts: detected } = await logSession(user.uid, input, profile)
+      const { session, conflicts: detected } = await logSession(user.uid, input, profile, {
+        calibrating: sessions.length < CALIBRATION_SESSION_TARGET,
+      })
       setSaving(false)
 
       if (detected.length > 0) {

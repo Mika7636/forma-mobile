@@ -28,3 +28,4 @@ export type MainTabsParamList = {
 
 export type LogScreenProps = BottomTabScreenProps<MainTabsParamList, 'Log'>
 export type DashboardScreenProps = BottomTabScreenProps<MainTabsParamList, 'Dashboard'>
+export type ProgressScreenProps = BottomTabScreenProps<MainTabsParamList, 'Progress'>

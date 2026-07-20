@@ -42,3 +42,16 @@ export function daysBetween(start: Date | string, end: Date | string): number {
   const msPerDay = 1000 * 60 * 60 * 24
   return Math.round((endDate.getTime() - startDate.getTime()) / msPerDay)
 }
+
+/**
+ * Whole days elapsed since an ISO timestamp, floored and never negative.
+ * Used for account-age gates (CTL baseline blend, calibration UI). Returns 0
+ * for an unparseable/missing input so callers degrade gracefully.
+ */
+export function daysSince(iso: string | undefined): number {
+  if (!iso) return 0
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return 0
+  const msPerDay = 1000 * 60 * 60 * 24
+  return Math.max(0, Math.floor((Date.now() - then) / msPerDay))
+}
