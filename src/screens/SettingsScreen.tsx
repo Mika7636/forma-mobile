@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -134,6 +134,22 @@ export default function SettingsScreen() {
       saveTimer.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS)
     },
     [flush],
+  )
+
+  // Unmounting mid-debounce (log out right after typing a name) would drop the
+  // pending write, so flush it on the way out. The write is fire-and-forget:
+  // Firestore queues it locally and sends it once the tree is already gone.
+  const flushRef = useRef(flush)
+  flushRef.current = flush
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        void flushRef.current()
+      }
+    },
+    [],
   )
 
   // --- Field handlers ---
