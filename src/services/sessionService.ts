@@ -8,12 +8,14 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDocs,
   query,
   serverTimestamp,
   setDoc,
   Timestamp,
+  updateDoc,
   where,
   type DocumentData,
 } from 'firebase/firestore'
@@ -270,6 +272,123 @@ export async function logSession(
   }
 
   return { session, conflicts }
+}
+
+/** The editable fields the Session Detail modal collects; the rest is derived. */
+export interface UpdateSessionInput {
+  sport: SportType
+  date: Date
+  durationMinutes: number
+  rpe: number
+  distanceKm?: number
+  notes?: string
+  avgBpm?: number
+}
+
+/**
+ * Re-derive a session's training estimates from edited inputs, persist the
+ * changes, and re-run conflict detection for it.
+ *
+ * Mirrors {@link logSession} but for an existing doc: load / calories / HR zone
+ * / pace are recomputed, fields that no longer apply (distance when the sport
+ * becomes non-distance, a cleared BPM) are removed via {@link deleteField}, and
+ * the conflicts this session previously triggered are deleted and recomputed
+ * against the current last-7-days window. Live-tracking fields (trackingMode,
+ * route, averagePace/Speed) are left untouched.
+ */
+export async function updateSession(
+  userId: string,
+  original: Session,
+  input: UpdateSessionInput,
+  profile: User,
+  options?: { calibrating?: boolean },
+): Promise<{ session: Session; conflicts: Conflict[] }> {
+  const { sport, date, durationMinutes, rpe, distanceKm, notes, avgBpm } = input
+
+  const loadScore = calculateLoadScore(durationMinutes, rpe)
+  const estimatedCalories = estimateCalories(sport, durationMinutes, rpe, profile.weightKg)
+  const hr = estimateHRZone(rpe, profile.maxHR)
+  const estimatedHRZone: SessionHRZone = { zone: hr.zone, name: hr.name, hrRange: hr.hrRange }
+  const hasDistance = isDistanceSport(sport) && distanceKm != null && distanceKm > 0
+  const pace = hasDistance ? calculatePace(sport, durationMinutes, distanceKm) : null
+
+  const sessionRef = doc(db, 'users', userId, 'sessions', original.id)
+  const patch: DocumentData = {
+    sport,
+    date: Timestamp.fromDate(date),
+    durationMinutes,
+    rpe,
+    loadScore,
+    estimatedCalories,
+    estimatedHRZone,
+    pace,
+    notes: notes?.trim() ?? '',
+    // Drop fields that no longer apply rather than leaving stale values.
+    distanceKm: hasDistance ? distanceKm : deleteField(),
+    avgBpm: avgBpm != null && avgBpm > 0 ? avgBpm : deleteField(),
+  }
+  await updateDoc(sessionRef, patch)
+
+  const session: Session = {
+    ...original,
+    sport,
+    date: date.toISOString(),
+    durationMinutes,
+    rpe,
+    loadScore,
+    estimatedCalories,
+    estimatedHRZone,
+    pace,
+    distanceKm: hasDistance ? distanceKm : undefined,
+    notes: notes?.trim() || undefined,
+    avgBpm: avgBpm != null && avgBpm > 0 ? avgBpm : undefined,
+  }
+
+  // Conflict detection is "for this session": clear the conflicts it previously
+  // triggered, then recompute against the fresh last-7-days window (which now
+  // reflects the edit).
+  const triggeredSnap = await getDocs(
+    query(conflictsCol(userId), where('triggerSessionId', '==', original.id)),
+  )
+  await Promise.all(triggeredSnap.docs.map((d) => deleteDoc(d.ref)))
+
+  const cutoff = Timestamp.fromMillis(Date.now() - SEVEN_DAYS_MS)
+  const recentSnap = await getDocs(query(sessionsCol(userId), where('date', '>=', cutoff)))
+  const recentSessions = recentSnap.docs.map((d) => toSession(d.id, d.data()))
+
+  const weekStart = startOfWeek(new Date()).getTime()
+  const weeklyMinutes = recentSessions
+    .filter((s) => new Date(s.date).getTime() >= weekStart)
+    .reduce((sum, s) => sum + s.durationMinutes, 0)
+  const currentWeeklyHours = weeklyMinutes / 60
+
+  const detected = detectConflicts(session, recentSessions, profile, currentWeeklyHours, {
+    calibrating: options?.calibrating,
+  })
+
+  const conflicts: Conflict[] = []
+  for (const conflict of detected) {
+    const conflictRef = doc(conflictsCol(userId))
+    const saved: Conflict = { ...conflict, conflictId: conflictRef.id }
+    await setDoc(conflictRef, saved)
+    conflicts.push(saved)
+  }
+
+  return { session, conflicts }
+}
+
+/**
+ * Wipe every session and conflict for a user (Settings → "Clear All Training
+ * Data"). Leaves the profile intact.
+ */
+export async function clearTrainingData(userId: string): Promise<void> {
+  const [sessions, conflicts] = await Promise.all([
+    getDocs(sessionsCol(userId)),
+    getDocs(conflictsCol(userId)),
+  ])
+  await Promise.all(
+    [...sessions.docs, ...conflicts.docs].map((d) => deleteDoc(d.ref)),
+  )
 }
 
 /**

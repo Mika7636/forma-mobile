@@ -1,7 +1,7 @@
 // Firestore user-profile CRUD. Profiles live at /users/{uid} and back the
 // FORMA training model (sports, budget, experience, conflict matrix). Ported &
 // adapted from the web app for React Native (same Firestore project, forma-sp1).
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import {
   DEFAULT_BUDGET_HOURS,
@@ -69,6 +69,11 @@ export async function updateUserProfile(
   updates: Partial<User>,
 ): Promise<void> {
   await setDoc(userDoc(uid), updates, { merge: true })
+}
+
+/** Delete the user's profile document (used by full account deletion). */
+export async function deleteUserProfile(uid: string): Promise<void> {
+  await deleteDoc(userDoc(uid))
 }
 
 export { DEFAULT_BUDGET_HOURS }

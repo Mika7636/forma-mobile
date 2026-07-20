@@ -4,7 +4,7 @@
 // Everything here is live. The sessions store holds a Firestore snapshot
 // listener, which feeds the metrics store, so a session logged on the Log tab
 // (or on the web app, or another device) lands here with no refresh.
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
@@ -18,6 +18,7 @@ import FormScoreCard from '../components/dashboard/FormScoreCard'
 import MetricGrid from '../components/dashboard/MetricGrid'
 import RecentActivity from '../components/dashboard/RecentActivity'
 import ZoneDistributionChart from '../components/dashboard/ZoneDistributionChart'
+import SessionDetailModal from '../components/session/SessionDetailModal'
 import { COLORS } from '../constants/theme'
 import { getCalibrationState } from '../utils/calibration'
 import { useConflicts } from '../hooks/useConflicts'
@@ -66,6 +67,22 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   // See RecentActivity: NativeWind's JSX wrapper drops a function-form `style`,
   // so press feedback is tracked explicitly and the style stays an object.
   const [logPressed, setLogPressed] = useState(false)
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+    },
+    [],
+  )
+
+  const showToast = useCallback((message: string) => {
+    setToast(message)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 2200)
+  }, [])
 
   const firstName = displayName?.split(' ')[0] ?? 'Athlete'
   // Recomputed per render rather than memoised on mount: the screen re-renders
@@ -97,8 +114,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   }, [navigation])
 
   const handleSelectSession = useCallback((session: Session) => {
-    // Session detail modal arrives in Week 5.
-    console.log('Session tapped:', session.id, session.sport)
+    setSelectedSession(session)
   }, [])
 
   const handleRefresh = useCallback(async () => {
@@ -250,6 +266,40 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           )}
         </View>
       </ScrollView>
+
+      <SessionDetailModal
+        visible={selectedSession != null}
+        session={selectedSession}
+        onClose={() => setSelectedSession(null)}
+        onDeleted={() => showToast('Session deleted')}
+      />
+
+      {toast ? (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: 24,
+            backgroundColor: COLORS.ink,
+            borderRadius: 14,
+            paddingVertical: 14,
+            paddingHorizontal: 18,
+            shadowColor: '#000',
+            shadowOpacity: 0.2,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 8,
+          }}
+        >
+          <Text
+            style={{ color: COLORS.white, fontSize: 14, fontWeight: '700', textAlign: 'center' }}
+          >
+            {toast}
+          </Text>
+        </Animated.View>
+      ) : null}
     </SafeAreaView>
   )
 }

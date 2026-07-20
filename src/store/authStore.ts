@@ -4,6 +4,7 @@
 // (see src/config/firebase.ts), so sessions survive app restarts.
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -12,7 +13,8 @@ import {
 } from 'firebase/auth'
 import { create } from 'zustand'
 import { auth } from '../config/firebase'
-import { createUserProfile, getUserProfile } from '../services/userService'
+import { createUserProfile, deleteUserProfile, getUserProfile } from '../services/userService'
+import { clearTrainingData } from '../services/sessionService'
 import { friendlyAuthError } from '../utils/authErrors'
 import type { User } from '../types/user'
 
@@ -37,6 +39,12 @@ interface AuthState {
   signOut: () => Promise<void>
   /** Replaces the cached profile (e.g. after onboarding writes to Firestore). */
   setProfile: (profile: User) => void
+  /**
+   * Permanently delete the account: wipe Firestore training data + profile,
+   * then the Firebase Auth user. May reject with `auth/requires-recent-login`,
+   * which the caller should surface as "log in again to confirm".
+   */
+  deleteAccount: () => Promise<void>
   clearError: () => void
 }
 
@@ -114,6 +122,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setProfile: (profile) => set({ profile }),
+
+  deleteAccount: async () => {
+    const current = auth.currentUser
+    if (!current) throw new Error('Not signed in')
+    // Data first, then the account. If deleteUser needs a recent login it throws
+    // here and the caller re-auths; the orphaned-data window is acceptable for a
+    // user who is deliberately deleting everything.
+    await clearTrainingData(current.uid)
+    await deleteUserProfile(current.uid)
+    await deleteUser(current)
+    set({ user: null, profile: null, error: null })
+  },
 
   clearError: () => set({ error: null }),
 }))

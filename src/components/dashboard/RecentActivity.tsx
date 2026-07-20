@@ -169,6 +169,11 @@ function SessionRow({
             </View>
           ) : null}
         </View>
+
+        {/* Tap affordance — opens the session detail modal. */}
+        <Text style={{ fontSize: 22, color: COLORS.subtle, marginLeft: 8, marginTop: -2 }}>
+          ›
+        </Text>
       </Pressable>
     </Animated.View>
   )

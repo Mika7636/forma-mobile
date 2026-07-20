@@ -27,7 +27,8 @@
         {
           "locationWhenInUsePermission": "FORMA uses your location to track distance, pace and route while you record a live workout."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
