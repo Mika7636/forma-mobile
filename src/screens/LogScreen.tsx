@@ -143,6 +143,17 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     }
   }, [])
 
+  // A tab's params outlive the visit that set them, so a date handed over by the
+  // Planner would still be pinned here days later — the user would tap the Log
+  // tab and be told they're logging for last Tuesday. Drop it on the way out.
+  useEffect(
+    () =>
+      navigation.addListener('blur', () => {
+        if (paramDate) navigation.setParams({ date: undefined })
+      }),
+    [navigation, paramDate],
+  )
+
   const durationNum = parseInt(duration, 10) || 0
   const distanceNum = distance ? parseFloat(distance) : undefined
   const avgBpmNum = avgBpm ? parseInt(avgBpm, 10) : undefined
