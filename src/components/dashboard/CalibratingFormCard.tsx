@@ -40,6 +40,14 @@ export default function CalibratingFormCard({
   const logged = Math.min(sessionsLogged, target)
   const fraction = Math.max(0, Math.min(logged / target, 1))
 
+  // Even with the seeded CTL/ATL baselines, a very heavy first week can still
+  // blend to a sharply negative Form. During calibration we genuinely can't tell
+  // "overreaching" from "not enough data yet", so we never say "Overreaching" —
+  // we say "Adjusting…" and keep the calm teal treatment.
+  const status = rounded < -20
+    ? { label: 'Adjusting…', emoji: '🌀' }
+    : { label: 'Building Your Baseline', emoji: '🌱' }
+
   // Settle-in scale, matching FormScoreCard so swapping heroes isn't jarring.
   const scale = useSharedValue(0.96)
   useEffect(() => {
@@ -104,9 +112,9 @@ export default function CalibratingFormCard({
               }}
             >
               <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>
-                Building Your Baseline
+                {status.label}
               </Text>
-              <Text style={{ fontSize: 14, marginLeft: 6 }}>🌱</Text>
+              <Text style={{ fontSize: 14, marginLeft: 6 }}>{status.emoji}</Text>
             </View>
 
             <CountUp
@@ -193,7 +201,8 @@ export default function CalibratingFormCard({
               lineHeight: 18,
             }}
           >
-            Log a few more sessions this week so FORMA can learn your training pattern.
+            Your metrics are calibrating to your training level. They&apos;ll be fully
+            accurate after 2–3 weeks of consistent logging.
           </Text>
         </View>
       </LinearGradient>

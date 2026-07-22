@@ -48,15 +48,20 @@ export const useMetricsStore = create<MetricsState>((set) => ({
   recalculate: (sessions) => {
     const dailyLoads = buildDailyLoads(sessions, DAILY_LOAD_WINDOW_DAYS)
 
-    // Seed CTL from the onboarding baseline during the cold-start window so a
-    // new user isn't shown a false "Overreaching" Form. Read straight from the
-    // auth store (no import cycle: authStore never imports this store).
+    // Seed CTL *and* ATL from the onboarding baseline during the cold-start
+    // window so a new user isn't shown a false "Overreaching" Form. Blending
+    // only fitness (CTL) but not fatigue (ATL) still leaves Form deeply negative
+    // for someone who logs a full week up front, so both sides are seeded and
+    // fade to real data in step. Read straight from the auth store (no import
+    // cycle: authStore never imports this store).
     const profile = useAuthStore.getState().profile
-    const ctl = calculateCTL(dailyLoads, {
-      baselineCTL: profile?.baselineCTL,
-      daysSinceRegistration: profile ? daysSince(profile.createdAt) : undefined,
-    })
-    const atl = calculateATL(dailyLoads)
+    const daysSinceRegistration = profile ? daysSince(profile.createdAt) : undefined
+    const baselineCTL = profile?.baselineCTL
+    // Fatigue baseline sits slightly below fitness — a body that's used to this
+    // training carries some normal residual fatigue, but less than its fitness.
+    const baselineATL = baselineCTL != null ? baselineCTL * 0.9 : undefined
+    const ctl = calculateCTL(dailyLoads, { baselineCTL, daysSinceRegistration })
+    const atl = calculateATL(dailyLoads, { baselineATL, daysSinceRegistration })
     const form = calculateForm(ctl, atl)
 
     const cutoff = new Date()

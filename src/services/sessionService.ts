@@ -26,7 +26,7 @@ import { estimateHRZone } from '../algorithms/heartRate'
 import { calculatePace } from '../algorithms/pace'
 import { calculateLoadScore } from '../algorithms/sRPE'
 import { startOfWeek } from '../utils/dates'
-import type { Conflict } from '../types/conflict'
+import { conflictStorageKey, type Conflict } from '../types/conflict'
 import type {
   RoutePoint,
   Session,
@@ -69,6 +69,40 @@ function sessionsCol(userId: string) {
 
 function conflictsCol(userId: string) {
   return collection(db, 'users', userId, 'conflicts')
+}
+
+/**
+ * Persist newly-detected conflicts, skipping any that would duplicate one
+ * already stored. Dedupe is by {@link conflictStorageKey} (trigger + clashing +
+ * type), so a re-detect for the same session — a double-tapped Save, or a retry
+ * after a flaky write — never writes the same conflict twice. Also dedupes
+ * within `detected` itself. Returns the docs actually written.
+ */
+async function persistConflicts(
+  userId: string,
+  triggerSessionId: string,
+  detected: Conflict[],
+): Promise<Conflict[]> {
+  // Existing conflicts triggered by this session set the baseline of keys we
+  // must not re-write. A single-field `where` needs no composite index.
+  const existingSnap = await getDocs(
+    query(conflictsCol(userId), where('triggerSessionId', '==', triggerSessionId)),
+  )
+  const seen = new Set(
+    existingSnap.docs.map((d) => conflictStorageKey(d.data() as Conflict)),
+  )
+
+  const conflicts: Conflict[] = []
+  for (const conflict of detected) {
+    const key = conflictStorageKey(conflict)
+    if (seen.has(key)) continue
+    seen.add(key)
+    const conflictRef = doc(conflictsCol(userId))
+    const saved: Conflict = { ...conflict, conflictId: conflictRef.id }
+    await setDoc(conflictRef, saved)
+    conflicts.push(saved)
+  }
+  return conflicts
 }
 
 /**
@@ -262,14 +296,9 @@ export async function logSession(
     calibrating: options?.calibrating,
   })
 
-  // Persist each conflict with a real id so the dashboard can key/resolve them.
-  const conflicts: Conflict[] = []
-  for (const conflict of detected) {
-    const conflictRef = doc(conflictsCol(userId))
-    const saved: Conflict = { ...conflict, conflictId: conflictRef.id }
-    await setDoc(conflictRef, saved)
-    conflicts.push(saved)
-  }
+  // Persist each conflict with a real id so the dashboard can key/resolve them,
+  // skipping any that would duplicate one already stored for this session.
+  const conflicts = await persistConflicts(userId, session.id, detected)
 
   return { session, conflicts }
 }
@@ -366,13 +395,9 @@ export async function updateSession(
     calibrating: options?.calibrating,
   })
 
-  const conflicts: Conflict[] = []
-  for (const conflict of detected) {
-    const conflictRef = doc(conflictsCol(userId))
-    const saved: Conflict = { ...conflict, conflictId: conflictRef.id }
-    await setDoc(conflictRef, saved)
-    conflicts.push(saved)
-  }
+  // The previously-triggered conflicts were just deleted above, so this write is
+  // clean — but persistConflicts still guards against re-detect duplicates.
+  const conflicts = await persistConflicts(userId, session.id, detected)
 
   return { session, conflicts }
 }

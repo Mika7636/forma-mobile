@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { useAuthStore } from '../store/authStore'
-import type { Conflict } from '../types/conflict'
+import { conflictDedupeKey, type Conflict } from '../types/conflict'
 
 function detectedAtMillis(conflict: Conflict): number {
   // Stored as a Firestore Timestamp; guard for the brief locally-created window
@@ -53,14 +53,38 @@ export function useConflicts(): UseConflicts {
     return unsubscribe
   }, [uid])
 
-  const conflicts = useMemo(
-    () => [...raw].sort((a, b) => detectedAtMillis(b) - detectedAtMillis(a)),
-    [raw],
-  )
+  // Newest first, then collapse duplicates so the same advice never stacks up as
+  // two identical banners. Duplicates arise legitimately (two runs each clashing
+  // with the same gym session share one message) and from any historical
+  // double-write; keying on the advice (type + sports) rather than the doc id
+  // means we keep the newest of each and drop the rest.
+  const conflicts = useMemo(() => {
+    const sorted = [...raw].sort((a, b) => detectedAtMillis(b) - detectedAtMillis(a))
+    const seen = new Set<string>()
+    const unique: Conflict[] = []
+    for (const conflict of sorted) {
+      const key = conflictDedupeKey(conflict)
+      if (seen.has(key)) continue
+      seen.add(key)
+      unique.push(conflict)
+    }
+    return unique
+  }, [raw])
 
   async function dismissConflict(id: string) {
     if (!uid) return
-    await updateDoc(doc(db, 'users', uid, 'conflicts', id), { resolved: true })
+    // The banner shown is one representative of its dedupe group; resolve every
+    // doc that shares its advice key, or a collapsed older duplicate would pop
+    // straight back up as a banner the moment this one is marked resolved.
+    const target = raw.find((c) => c.conflictId === id)
+    const targets = target
+      ? raw.filter((c) => conflictDedupeKey(c) === conflictDedupeKey(target))
+      : raw.filter((c) => c.conflictId === id)
+    await Promise.all(
+      targets.map((c) =>
+        updateDoc(doc(db, 'users', uid, 'conflicts', c.conflictId), { resolved: true }),
+      ),
+    )
   }
 
   if (!uid) return { conflicts: [], loading: false, dismissConflict }
