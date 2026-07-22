@@ -29,6 +29,9 @@ interface SessionChipProps {
   session: Session
   /** True when an unresolved conflict names this session — tints the chip red. */
   conflicted?: boolean
+  /** Prefix the meta line with the session's time — used when a day holds more
+   *  than one session so their order/spacing is clear at a glance. */
+  showTime?: boolean
   onPress: (session: Session) => void
   /** Runs the actual Firestore delete; resolve/reject decides the animation. */
   onDelete: (session: Session) => Promise<void>
@@ -48,9 +51,18 @@ function sportVisual(session: Session) {
   }
 }
 
-/** "45 min · RPE 7 · 412 kcal" */
-function metaLine(session: Session): string {
-  const parts = [`${session.durationMinutes} min`, `RPE ${session.rpe}`]
+/** "2:30 PM · 45 min · RPE 7 · 412 kcal" (time only when requested) */
+function metaLine(session: Session, showTime: boolean): string {
+  const parts: string[] = []
+  if (showTime) {
+    parts.push(
+      new Date(session.date).toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    )
+  }
+  parts.push(`${session.durationMinutes} min`, `RPE ${session.rpe}`)
   if (session.estimatedCalories != null) parts.push(`${session.estimatedCalories} kcal`)
   if (session.distanceKm != null) parts.push(`${session.distanceKm} km`)
   return parts.join(' · ')
@@ -59,6 +71,7 @@ function metaLine(session: Session): string {
 export default function SessionChip({
   session,
   conflicted = false,
+  showTime = false,
   onPress,
   onDelete,
 }: SessionChipProps) {
@@ -263,7 +276,7 @@ export default function SessionChip({
               ) : null}
             </View>
             <Text style={{ marginTop: 2, fontSize: 12, color: COLORS.muted }} numberOfLines={1}>
-              {metaLine(session)}
+              {metaLine(session, showTime)}
             </Text>
           </View>
 

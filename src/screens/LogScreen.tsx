@@ -46,6 +46,22 @@ import type { LogScreenProps } from '../navigation/types'
 
 type LogMode = 'quick' | 'live'
 
+/**
+ * The timestamp to persist for a session.
+ *
+ * A Quick/Live log defaults to *now* (real date + time). A session logged for a
+ * specific Planner day keeps that calendar day but stamps the actual wall-clock
+ * time (from `at`, defaulting to now) — otherwise every planner-logged session
+ * would land at the noon we parse the planner date to, which is why they all
+ * read "12:00 PM". `at` lets a live session pass its true start time instead.
+ */
+function resolveSessionDate(plannerDay: Date | null, at: Date = new Date()): Date {
+  if (!plannerDay) return at
+  const d = new Date(plannerDay)
+  d.setHours(at.getHours(), at.getMinutes(), at.getSeconds(), at.getMilliseconds())
+  return d
+}
+
 /* --- RPE zones -------------------------------------------------------- */
 const ZONE_GREEN = '#22c55e'
 const ZONE_AMBER = '#f59e0b'
@@ -268,7 +284,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     if (!canSave || !sport) return
     logAndHandle({
       sport,
-      date: logDate ?? new Date(),
+      date: resolveSessionDate(logDate),
       durationMinutes: durationNum,
       rpe,
       distanceKm: showDistance ? distanceNum : undefined,
@@ -282,7 +298,12 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     if (!sport) return
     logAndHandle({
       sport,
-      date: logDate ?? new Date(),
+      // Live sessions are stamped with when tracking actually started, not when
+      // the summary was saved (which can be many minutes later).
+      date: resolveSessionDate(
+        logDate,
+        result.startedAt != null ? new Date(result.startedAt) : new Date(),
+      ),
       durationMinutes: result.durationMinutes,
       rpe: result.rpe,
       distanceKm: result.distanceKm > 0 ? result.distanceKm : undefined,

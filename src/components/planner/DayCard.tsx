@@ -186,6 +186,7 @@ export default function DayCard({
             <SessionChip
               session={session}
               conflicted={conflictedIds.has(session.id)}
+              showTime={sessions.length > 1}
               onPress={onSessionPress}
               onDelete={onSessionDelete}
             />

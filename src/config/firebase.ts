@@ -6,7 +6,7 @@ import { initializeAuth } from 'firebase/auth'
 // definitions, so TypeScript can't see it. It is valid at runtime.
 // @ts-ignore
 import { getReactNativePersistence } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import { initializeFirestore, memoryLocalCache } from 'firebase/firestore'
 
 // Same Firebase project as the FORMA web app (project id: forma-sp1) — same
 // database, same auth, same everything. Only the auth persistence wiring below
@@ -30,4 +30,21 @@ export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 })
 
-export const db = getFirestore(app)
+// `initializeFirestore` (not `getFirestore`) so we can tune the transport and
+// cache for React Native:
+//
+//  - experimentalAutoDetectLongPolling: RN's default streaming transport
+//    (WebChannel/fetch) intermittently mishandles the Watch existence filter,
+//    surfacing recoverable-but-noisy "BloomFilterError" logs and forcing full
+//    re-queries whenever a *listened* collection churns — e.g. the conflicts
+//    collection having docs deleted and re-added on a session edit. Long
+//    polling avoids that path; auto-detect keeps normal streaming where it works.
+//
+//  - memoryLocalCache: no on-device persistence layer for the SDK to reconcile
+//    against the server's existence filter, removing the other BloomFilterError
+//    source. FORMA already treats Firestore as the live source of truth (every
+//    read is a snapshot listener), so we don't rely on an offline cache.
+export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+  localCache: memoryLocalCache(),
+})

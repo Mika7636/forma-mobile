@@ -33,6 +33,9 @@ export interface LiveResult {
   routeCoordinates: RoutePoint[]
   averagePace?: string
   averageSpeed?: number
+  /** Epoch ms of when tracking began, so the session is timestamped to its
+   *  real start rather than to whenever the summary was saved. */
+  startedAt?: number
 }
 
 interface LiveTrackerProps {
@@ -121,6 +124,9 @@ export default function LiveTracker({
   // banks the milliseconds from segments before each pause.
   const startedAtRef = useRef(0)
   const accumulatedMsRef = useRef(0)
+  // Wall-clock start of the whole session (unlike startedAtRef, this is not
+  // reset by pause/resume) so the saved session is timestamped to its real start.
+  const sessionStartAtRef = useRef(0)
 
   const isCycling = sport === 'cycling'
   const distanceKm = distanceM / 1000
@@ -284,6 +290,7 @@ export default function LiveTracker({
     lastPointRef.current = null
     lastMilestoneRef.current = 0
     startedAtRef.current = Date.now()
+    sessionStartAtRef.current = Date.now()
     accumulatedMsRef.current = 0
     setPaused(false)
     setPhase('tracking')
@@ -335,6 +342,7 @@ export default function LiveTracker({
       routeCoordinates: route,
       averagePace: isCycling ? undefined : formatPace(elapsedSec, distanceKm),
       averageSpeed: isCycling ? calculateSpeed(elapsedSec, distanceKm) : undefined,
+      startedAt: sessionStartAtRef.current || undefined,
     })
   }
 
