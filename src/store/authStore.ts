@@ -14,6 +14,7 @@ import {
 import { create } from 'zustand'
 import { auth } from '../config/firebase'
 import { createUserProfile, deleteUserProfile, getUserProfile } from '../services/userService'
+import { cancelAllNotifications } from '../services/notificationService'
 import { clearTrainingData } from '../services/sessionService'
 import { friendlyAuthError } from '../utils/authErrors'
 import type { User } from '../types/user'
@@ -117,6 +118,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    // Drop every scheduled notification first. They're scheduled on the device,
+    // not the account, so a signed-out phone would otherwise keep nagging with
+    // the previous user's reminders. They're rebuilt from the saved preferences
+    // by useNotificationSync on the next sign-in.
+    await cancelAllNotifications().catch(() => {})
     await firebaseSignOut(auth)
     set({ user: null, profile: null, error: null })
   },
@@ -129,6 +135,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Data first, then the account. If deleteUser needs a recent login it throws
     // here and the caller re-auths; the orphaned-data window is acceptable for a
     // user who is deliberately deleting everything.
+    await cancelAllNotifications().catch(() => {})
     await clearTrainingData(current.uid)
     await deleteUserProfile(current.uid)
     await deleteUser(current)

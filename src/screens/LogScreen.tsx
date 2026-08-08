@@ -37,9 +37,14 @@ import {
   logSession,
   type LogSessionInput,
 } from '../services/sessionService'
+import {
+  checkAndNotifyStreak,
+  sendConflictNotification,
+} from '../services/notificationService'
 import { useAuthStore } from '../store/authStore'
 import { useSessionHistory } from '../hooks/useSessionHistory'
 import { CALIBRATION_SESSION_TARGET } from '../utils/calibration'
+import { withPreferenceDefaults } from '../types/notifications'
 import type { Conflict } from '../types/conflict'
 import type { SportType } from '../types/session'
 import type { LogScreenProps } from '../navigation/types'
@@ -260,6 +265,26 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         calibrating: sessions.length < CALIBRATION_SESSION_TARGET,
       })
       setSaving(false)
+
+      // Local notifications for what just happened. Fire-and-forget so a
+      // notification failure can never block the save UI — the in-app modal and
+      // toast below are the primary feedback; these are the "you backgrounded
+      // the app" safety net.
+      //
+      // The store's snapshot hasn't landed yet, so prepend the new session to
+      // get an accurate streak. The repeating schedules (daily reminder copy,
+      // streak-at-risk) re-sync automatically once that snapshot arrives and
+      // changes the session count.
+      const prefs = withPreferenceDefaults(profile.notificationPreferences)
+      const withNew = [session, ...sessions]
+      if (detected.length > 0) {
+        // One notification, for the most serious conflict — a burst of them
+        // would be exactly the spam this feature is meant to avoid.
+        const worst =
+          detected.find((c) => c.severity === 'danger') ?? detected[0]
+        void sendConflictNotification(worst, prefs)
+      }
+      void checkAndNotifyStreak(withNew, prefs)
 
       if (detected.length > 0) {
         setSavedSessionId(session.id)

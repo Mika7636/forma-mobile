@@ -1,3 +1,4 @@
+import type { NotificationPreferences } from './notifications'
 import type { SportType } from './session'
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced'
@@ -35,6 +36,12 @@ export interface User {
   weightUnit?: WeightUnit
   /** Max heart rate (bpm). Defaults to 190 in estimates when unset. */
   maxHR?: number
+  /**
+   * Local-notification settings. `undefined` means we have never asked for
+   * permission — RootNavigator uses exactly that to decide whether to show the
+   * one-time permission screen, so don't default it at read time.
+   */
+  notificationPreferences?: NotificationPreferences
 }
 
 export type WeightUnit = 'kg' | 'lb'

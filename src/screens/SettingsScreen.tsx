@@ -20,6 +20,7 @@ import Slider from '@react-native-community/slider'
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
 import ConflictSensitivity from '../components/settings/ConflictSensitivity'
+import NotificationSettings from '../components/settings/NotificationSettings'
 import SportInteractionMatrix from '../components/settings/SportInteractionMatrix'
 import { COLORS } from '../constants/theme'
 import {
@@ -36,6 +37,10 @@ import { clearTrainingData } from '../services/sessionService'
 import { getUserProfile, updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
 import type { AppStackParamList } from '../navigation/types'
+import {
+  withPreferenceDefaults,
+  type NotificationPreferences,
+} from '../types/notifications'
 import type { SportType } from '../types/session'
 import type {
   ConflictSensitivity as SensitivityLevel,
@@ -79,6 +84,9 @@ export default function SettingsScreen() {
   )
   const [interactions, setInteractions] = useState<Record<string, number>>(
     profile?.sportInteractions ?? {},
+  )
+  const [notifications, setNotifications] = useState<NotificationPreferences>(() =>
+    withPreferenceDefaults(profile?.notificationPreferences),
   )
 
   const [matrixOpen, setMatrixOpen] = useState(false)
@@ -226,6 +234,14 @@ export default function SettingsScreen() {
     queueSave({ sportInteractions: next })
   }
 
+  // Persisting is all we do here: `useNotificationSync` (RootNavigator) watches
+  // the saved preferences and reconciles the OS schedule, so a toggle can't
+  // leave an orphaned notification behind. Haptics live in the child.
+  const onChangeNotifications = (next: NotificationPreferences) => {
+    setNotifications(next)
+    queueSave({ notificationPreferences: next })
+  }
+
   // Pull-to-refresh: re-read the profile from Firestore and reseed the form.
   const onRefresh = useCallback(async () => {
     const uid = user?.uid
@@ -244,6 +260,7 @@ export default function SettingsScreen() {
         setWeightInput(String(fresh.weightUnit === 'lb' ? Math.round(kg * LB_PER_KG) : kg))
         setSensitivity(fresh.conflictSensitivity ?? 'balanced')
         setInteractions(fresh.sportInteractions ?? {})
+        setNotifications(withPreferenceDefaults(fresh.notificationPreferences))
       }
     } finally {
       setRefreshing(false)
@@ -644,31 +661,13 @@ export default function SettingsScreen() {
             ) : null}
           </Card>
 
-          {/* Notifications (placeholder) */}
+          {/* Notifications */}
           <Card title="Notifications">
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Text style={{ fontSize: 14, color: COLORS.body }}>
-                Training reminders & weekly summaries
-              </Text>
-              <View
-                style={{
-                  backgroundColor: COLORS.fieldBg,
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.subtle }}>
-                  Coming soon
-                </Text>
-              </View>
-            </View>
+            <NotificationSettings
+              value={notifications}
+              onChange={onChangeNotifications}
+              onToast={showToast}
+            />
           </Card>
 
           {/* Data */}

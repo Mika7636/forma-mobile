@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 import FormaLogo from '../components/ui/FormaLogo'
 import { COLORS } from '../constants/theme'
+import { useNotificationSync } from '../hooks/useNotificationSync'
+import NotificationPermissionScreen from '../screens/NotificationPermissionScreen'
 import OnboardingScreen from '../screens/OnboardingScreen'
 import { useAuthStore } from '../store/authStore'
 import AppStack from './AppStack'
@@ -38,6 +40,11 @@ export default function RootNavigator() {
     return unsubscribe
   }, [initialize])
 
+  // Reconciles scheduled local notifications with saved preferences. Safe to
+  // call unconditionally — it no-ops until there's a signed-in user who has
+  // actually made a notification choice.
+  useNotificationSync()
+
   if (loading) return <SplashScreen />
 
   if (!user) return <AuthStack />
@@ -45,6 +52,13 @@ export default function RootNavigator() {
   // Logged in but hasn't finished onboarding (or the profile couldn't load) →
   // run the setup wizard before granting access to the app.
   if (!profile || !profile.onboardingCompleted) return <OnboardingScreen />
+
+  // Onboarded but never asked about notifications (a fresh account, or an
+  // existing one from before Week 9) → the one-time permission screen. Writing
+  // `notificationPreferences` — granted OR skipped — is what retires this gate.
+  if (profile.notificationPreferences === undefined) {
+    return <NotificationPermissionScreen />
+  }
 
   return <AppStack />
 }

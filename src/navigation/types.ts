@@ -1,4 +1,5 @@
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs'
+import type { NavigatorScreenParams } from '@react-navigation/native'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 
 // The auth flow is a native stack: Login ⇄ Register. Onboarding is gated by
@@ -34,7 +35,9 @@ export type PlannerScreenProps = BottomTabScreenProps<MainTabsParamList, 'Planne
 // The whole tab UI is wrapped in a native stack so full-screen detail pages
 // (currently Conflict History, reached from Settings) can push over the tabs.
 export type AppStackParamList = {
-  MainTabs: undefined
+  // Nested params so a tapped notification can jump straight to a tab, e.g.
+  // navigate('MainTabs', { screen: 'Progress' }) for the weekly summary.
+  MainTabs: NavigatorScreenParams<MainTabsParamList> | undefined
   ConflictHistory: undefined
 }
 
