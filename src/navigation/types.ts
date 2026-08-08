@@ -30,3 +30,15 @@ export type LogScreenProps = BottomTabScreenProps<MainTabsParamList, 'Log'>
 export type DashboardScreenProps = BottomTabScreenProps<MainTabsParamList, 'Dashboard'>
 export type ProgressScreenProps = BottomTabScreenProps<MainTabsParamList, 'Progress'>
 export type PlannerScreenProps = BottomTabScreenProps<MainTabsParamList, 'Planner'>
+
+// The whole tab UI is wrapped in a native stack so full-screen detail pages
+// (currently Conflict History, reached from Settings) can push over the tabs.
+export type AppStackParamList = {
+  MainTabs: undefined
+  ConflictHistory: undefined
+}
+
+export type ConflictHistoryScreenProps = NativeStackScreenProps<
+  AppStackParamList,
+  'ConflictHistory'
+>

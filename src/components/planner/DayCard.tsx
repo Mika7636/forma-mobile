@@ -7,6 +7,7 @@ import Animated, { FadeInRight } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
 import SessionChip from './SessionChip'
 import { COLORS } from '../../constants/theme'
+import { severityStyle, worstSeverity, type ConflictSeverity } from '../../constants/conflictColors'
 import type { PlannerDay } from '../../hooks/useWeeklyPlan'
 import type { Conflict } from '../../types/conflict'
 import type { Session } from '../../types/session'
@@ -30,15 +31,18 @@ export default function DayCard({
   const hasConflict = conflicts.length > 0
   const empty = sessions.length === 0
 
-  // Sessions any unresolved conflict points at, so the offending chip can be
-  // tinted rather than the whole day.
-  const conflictedIds = useMemo(() => {
-    const ids = new Set<string>()
+  // The day's overall severity drives the edge dot + ⚠️/🚨 icon; the per-session
+  // map lets the specific offending chip be tinted rather than the whole day.
+  const daySeverityStyle = severityStyle(worstSeverity(conflicts))
+  const severityBySession = useMemo(() => {
+    const map = new Map<string, ConflictSeverity>()
     for (const c of conflicts) {
-      ids.add(c.triggerSessionId)
-      if (c.conflictingSessionId) ids.add(c.conflictingSessionId)
+      for (const id of [c.triggerSessionId, c.conflictingSessionId]) {
+        if (!id) continue
+        if (c.severity === 'danger' || !map.has(id)) map.set(id, c.severity)
+      }
     }
-    return ids
+    return map
   }, [conflicts])
 
   const accent = isToday ? COLORS.teal : COLORS.ink
@@ -88,7 +92,7 @@ export default function DayCard({
             height: 8,
             borderTopLeftRadius: 4,
             borderBottomLeftRadius: 4,
-            backgroundColor: COLORS.danger,
+            backgroundColor: daySeverityStyle.solid,
           }}
         />
       ) : null}
@@ -154,7 +158,7 @@ export default function DayCard({
               } on this day`}
               style={{ marginLeft: 6, padding: 2 }}
             >
-              <Text style={{ fontSize: 15 }}>⚠️</Text>
+              <Text style={{ fontSize: 15 }}>{daySeverityStyle.icon}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -185,7 +189,7 @@ export default function DayCard({
           <Animated.View key={session.id} entering={FadeInRight.delay(i * 60).duration(240)}>
             <SessionChip
               session={session}
-              conflicted={conflictedIds.has(session.id)}
+              conflictSeverity={severityBySession.get(session.id)}
               showTime={sessions.length > 1}
               onPress={onSessionPress}
               onDelete={onSessionDelete}

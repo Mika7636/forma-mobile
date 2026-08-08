@@ -383,6 +383,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         <ConflictModal
           visible={conflicts != null}
           conflicts={conflicts ?? []}
+          sessions={sessions}
           undoing={undoing}
           onKeep={handleKeepSession}
           onUndo={handleUndoSession}
@@ -881,6 +882,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       <ConflictModal
         visible={conflicts != null}
         conflicts={conflicts ?? []}
+        sessions={sessions}
         undoing={undoing}
         onKeep={handleKeepSession}
         onUndo={handleUndoSession}

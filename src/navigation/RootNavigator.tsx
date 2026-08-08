@@ -4,8 +4,8 @@ import FormaLogo from '../components/ui/FormaLogo'
 import { COLORS } from '../constants/theme'
 import OnboardingScreen from '../screens/OnboardingScreen'
 import { useAuthStore } from '../store/authStore'
+import AppStack from './AppStack'
 import AuthStack from './AuthStack'
-import MainTabs from './MainTabs'
 
 /** Centered FORMA splash shown while the persisted session is restoring. */
 function SplashScreen() {
@@ -46,5 +46,5 @@ export default function RootNavigator() {
   // run the setup wizard before granting access to the app.
   if (!profile || !profile.onboardingCompleted) return <OnboardingScreen />
 
-  return <MainTabs />
+  return <AppStack />
 }

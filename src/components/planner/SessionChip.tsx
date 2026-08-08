@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
 import { COLORS } from '../../constants/theme'
+import { severityStyle, type ConflictSeverity } from '../../constants/conflictColors'
 import { SPORT_OPTIONS } from '../../constants/training'
 import { SPORT_META } from '../../utils/sportMeta'
 import type { Session } from '../../types/session'
@@ -27,8 +28,9 @@ const MAX_DRAG = 240
 
 interface SessionChipProps {
   session: Session
-  /** True when an unresolved conflict names this session — tints the chip red. */
-  conflicted?: boolean
+  /** Severity of the worst unresolved conflict naming this session, if any —
+   *  tints the chip border and shows a matching icon. Undefined = no conflict. */
+  conflictSeverity?: ConflictSeverity
   /** Prefix the meta line with the session's time — used when a day holds more
    *  than one session so their order/spacing is clear at a glance. */
   showTime?: boolean
@@ -70,12 +72,14 @@ function metaLine(session: Session, showTime: boolean): string {
 
 export default function SessionChip({
   session,
-  conflicted = false,
+  conflictSeverity,
   showTime = false,
   onPress,
   onDelete,
 }: SessionChipProps) {
   const { color, icon, label } = sportVisual(session)
+  const conflicted = conflictSeverity != null
+  const conflictStyle = conflicted ? severityStyle(conflictSeverity) : null
 
   const translateX = useSharedValue(0)
   // Drag bookkeeping, kept on the UI thread so the gesture never waits on React.
@@ -218,7 +222,7 @@ export default function SessionChip({
               paddingVertical: 10,
               paddingHorizontal: 12,
               borderWidth: 1,
-              borderColor: conflicted ? '#FCA5A5' : COLORS.border,
+              borderColor: conflictStyle ? conflictStyle.softBorder : COLORS.border,
               shadowColor: '#000',
               shadowOpacity: 0.06,
               shadowRadius: 6,
@@ -269,9 +273,9 @@ export default function SessionChip({
                   📍
                 </Text>
               ) : null}
-              {conflicted ? (
+              {conflictStyle ? (
                 <Text style={{ fontSize: 11, marginLeft: 5 }} accessibilityLabel="Has a conflict">
-                  ⚠️
+                  {conflictStyle.icon}
                 </Text>
               ) : null}
             </View>

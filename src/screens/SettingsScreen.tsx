@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -14,14 +14,17 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
+import { useNavigation } from '@react-navigation/native'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import Slider from '@react-native-community/slider'
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
+import ConflictSensitivity from '../components/settings/ConflictSensitivity'
+import SportInteractionMatrix from '../components/settings/SportInteractionMatrix'
 import { COLORS } from '../constants/theme'
 import {
   BUDGET_MAX,
   BUDGET_MIN,
-  CONFLICT_OPTIONS,
   DEFAULT_BUDGET_HOURS,
   EXPERIENCE_OPTIONS,
   SPORT_OPTIONS,
@@ -32,10 +35,10 @@ import {
 import { clearTrainingData } from '../services/sessionService'
 import { getUserProfile, updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
-import { SPORT_META } from '../utils/sportMeta'
+import type { AppStackParamList } from '../navigation/types'
 import type { SportType } from '../types/session'
 import type {
-  ConflictSensitivity,
+  ConflictSensitivity as SensitivityLevel,
   ExperienceLevel,
   User,
   WeightUnit,
@@ -44,20 +47,13 @@ import type {
 const LB_PER_KG = 2.20462
 const SAVE_DEBOUNCE_MS = 500
 
-// Sport-interaction levels, matching the 0–3 conflict matrix.
-const INTERACTION_LEVELS: { value: number; label: string; color: string }[] = [
-  { value: 0, label: 'None', color: '#9CA3AF' },
-  { value: 1, label: 'Low', color: '#22c55e' },
-  { value: 2, label: 'Med', color: '#f59e0b' },
-  { value: 3, label: 'High', color: '#ef4444' },
-]
-
 /** Canonical alphabetical pair key — matches conflictDetector's pairKey(). */
 function pairKey(a: string, b: string): string {
   return [a, b].sort().join('_')
 }
 
 export default function SettingsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
   const setProfile = useAuthStore((s) => s.setProfile)
@@ -78,7 +74,7 @@ export default function SettingsScreen() {
     const kg = profile?.weightKg ?? 70
     return String(profile?.weightUnit === 'lb' ? Math.round(kg * LB_PER_KG) : kg)
   })
-  const [sensitivity, setSensitivity] = useState<ConflictSensitivity>(
+  const [sensitivity, setSensitivity] = useState<SensitivityLevel>(
     profile?.conflictSensitivity ?? 'balanced',
   )
   const [interactions, setInteractions] = useState<Record<string, number>>(
@@ -217,14 +213,14 @@ export default function SettingsScreen() {
     setWeightUnit(unit)
   }
 
-  const onSelectSensitivity = (value: ConflictSensitivity) => {
-    Haptics.selectionAsync()
+  // Haptics for these two live in the child components (ConflictSensitivity /
+  // SportInteractionMatrix), so the handlers just persist.
+  const onSelectSensitivity = (value: SensitivityLevel) => {
     setSensitivity(value)
     queueSave({ conflictSensitivity: value })
   }
 
   const onSetInteraction = (a: SportType, b: SportType, level: number) => {
-    Haptics.selectionAsync()
     const next = { ...interactions, [pairKey(a, b)]: level }
     setInteractions(next)
     queueSave({ sportInteractions: next })
@@ -292,15 +288,6 @@ export default function SettingsScreen() {
 
   const budgetTier = getBudgetTier(budget)
   const initial = (displayName.trim().charAt(0) || '?').toUpperCase()
-
-  // Unordered pairs among the active sports for the interaction matrix.
-  const sportPairs = useMemo(() => {
-    const out: [SportType, SportType][] = []
-    for (let i = 0; i < sports.length; i++) {
-      for (let j = i + 1; j < sports.length; j++) out.push([sports[i], sports[j]])
-    }
-    return out
-  }, [sports])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.fieldBg }} edges={['top']}>
@@ -599,65 +586,32 @@ export default function SettingsScreen() {
           {/* Conflict detection */}
           <Card title="Conflict Detection">
             <FieldTitle>Conflict Sensitivity</FieldTitle>
-            {CONFLICT_OPTIONS.map((opt) => {
-              const active = sensitivity === opt.value
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => onSelectSensitivity(opt.value)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    borderRadius: 14,
-                    borderWidth: 2,
-                    borderColor: active ? COLORS.teal : COLORS.border,
-                    backgroundColor: active ? COLORS.tealSoft : COLORS.white,
-                    padding: 14,
-                    marginBottom: 10,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      borderWidth: 2,
-                      borderColor: active ? COLORS.teal : COLORS.border,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 12,
-                    }}
-                  >
-                    {active ? (
-                      <View
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 5,
-                          backgroundColor: COLORS.teal,
-                        }}
-                      />
-                    ) : null}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: '800',
-                        color: active ? COLORS.tealDark : COLORS.ink,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.4,
-                      }}
-                    >
-                      {opt.label}
-                    </Text>
-                    <Text style={{ fontSize: 12.5, color: COLORS.muted, marginTop: 1 }}>
-                      {opt.description}
-                    </Text>
-                  </View>
-                </Pressable>
-              )
-            })}
+            <ConflictSensitivity value={sensitivity} onChange={onSelectSensitivity} />
+
+            <View style={{ height: 1, backgroundColor: COLORS.border, marginTop: 4, marginBottom: 4 }} />
+
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                navigation.navigate('ConflictHistory')
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Open conflict history"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingVertical: 14,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, marginRight: 10 }}>🗂️</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.ink }}>
+                  Conflict History
+                </Text>
+              </View>
+              <Text style={{ fontSize: 22, color: COLORS.subtle }}>›</Text>
+            </Pressable>
           </Card>
 
           {/* Sport interaction matrix (collapsible) */}
@@ -681,71 +635,11 @@ export default function SettingsScreen() {
 
             {matrixOpen ? (
               <Animated.View entering={FadeInDown.duration(180)} style={{ marginTop: 12 }}>
-                <Text style={{ fontSize: 12.5, color: COLORS.muted, marginBottom: 12 }}>
-                  Set how strongly each pair of sports competes for recovery. Higher = they
-                  interfere more when trained close together.
-                </Text>
-                {sportPairs.length === 0 ? (
-                  <Text style={{ fontSize: 13, color: COLORS.subtle }}>
-                    Add at least two active sports to customise interactions.
-                  </Text>
-                ) : (
-                  sportPairs.map(([a, b]) => {
-                    const level = interactions[pairKey(a, b)] ?? 0
-                    const metaA = SPORT_META[a]
-                    const metaB = SPORT_META[b]
-                    return (
-                      <View
-                        key={pairKey(a, b)}
-                        style={{
-                          marginBottom: 14,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 13.5,
-                            fontWeight: '700',
-                            color: COLORS.body,
-                            marginBottom: 6,
-                          }}
-                        >
-                          {metaA?.icon} {metaA?.label ?? a} ↔ {metaB?.icon} {metaB?.label ?? b}
-                        </Text>
-                        <View style={{ flexDirection: 'row' }}>
-                          {INTERACTION_LEVELS.map((lvl) => {
-                            const on = level === lvl.value
-                            return (
-                              <Pressable
-                                key={lvl.value}
-                                onPress={() => onSetInteraction(a, b, lvl.value)}
-                                style={{
-                                  flex: 1,
-                                  marginRight: lvl.value < 3 ? 6 : 0,
-                                  borderRadius: 10,
-                                  borderWidth: 1.5,
-                                  borderColor: on ? lvl.color : COLORS.border,
-                                  backgroundColor: on ? lvl.color : COLORS.white,
-                                  paddingVertical: 8,
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <Text
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: '700',
-                                    color: on ? COLORS.white : COLORS.muted,
-                                  }}
-                                >
-                                  {lvl.label}
-                                </Text>
-                              </Pressable>
-                            )
-                          })}
-                        </View>
-                      </View>
-                    )
-                  })
-                )}
+                <SportInteractionMatrix
+                  sports={sports}
+                  interactions={interactions}
+                  onChange={onSetInteraction}
+                />
               </Animated.View>
             ) : null}
           </Card>

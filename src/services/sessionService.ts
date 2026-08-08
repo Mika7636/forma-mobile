@@ -403,6 +403,15 @@ export async function updateSession(
 }
 
 /**
+ * Mark a single conflict resolved (dismissed). Used by the planner day sheet and
+ * the conflict-history screen, which act on one specific document. The dashboard
+ * banner instead dismisses a whole dedupe group via `useConflicts`.
+ */
+export async function resolveConflict(userId: string, conflictId: string): Promise<void> {
+  await updateDoc(doc(db, 'users', userId, 'conflicts', conflictId), { resolved: true })
+}
+
+/**
  * Wipe every session and conflict for a user (Settings → "Clear All Training
  * Data"). Leaves the profile intact.
  */

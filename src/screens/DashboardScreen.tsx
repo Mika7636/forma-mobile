@@ -12,6 +12,7 @@ import Animated, { FadeIn } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
 import CalibratingFormCard from '../components/dashboard/CalibratingFormCard'
 import ConflictBanner from '../components/dashboard/ConflictBanner'
+import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton'
 import EmptyDashboardState from '../components/dashboard/EmptyDashboardState'
 import FormScoreCard from '../components/dashboard/FormScoreCard'
@@ -26,6 +27,7 @@ import { useMetrics } from '../hooks/useMetrics'
 import { useAuthStore } from '../store/authStore'
 import { useMetricsStore } from '../store/metricsStore'
 import type { DashboardScreenProps } from '../navigation/types'
+import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
 
 function getGreeting(hour: number): string {
@@ -64,6 +66,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
 
   const [refreshing, setRefreshing] = useState(false)
   const [showAllConflicts, setShowAllConflicts] = useState(false)
+  const [detailConflict, setDetailConflict] = useState<Conflict | null>(null)
   // See RecentActivity: NativeWind's JSX wrapper drops a function-form `style`,
   // so press feedback is tracked explicitly and the style stays an object.
   const [logPressed, setLogPressed] = useState(false)
@@ -220,6 +223,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                 extraCount={index === 0 && !showAllConflicts ? sortedConflicts.length - 1 : 0}
                 onDismiss={dismissConflict}
                 onShowMore={() => setShowAllConflicts(true)}
+                onPress={setDetailConflict}
               />
             ))}
           </View>
@@ -272,6 +276,16 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
         session={selectedSession}
         onClose={() => setSelectedSession(null)}
         onDeleted={() => showToast('Session deleted')}
+      />
+
+      <ConflictDetailSheet
+        conflicts={detailConflict ? [detailConflict] : null}
+        sessions={sessions}
+        onClose={() => setDetailConflict(null)}
+        onDismiss={(id) => {
+          void dismissConflict(id)
+          setDetailConflict(null)
+        }}
       />
 
       {toast ? (

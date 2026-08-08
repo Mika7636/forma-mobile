@@ -3,7 +3,6 @@
 // chip to delete, and tap any day's "+ Add Session" to log straight onto it.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,12 +21,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
+import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
 import DayCard from '../components/planner/DayCard'
 import SessionDetailModal from '../components/session/SessionDetailModal'
 import { COLORS } from '../constants/theme'
 import { DEFAULT_BUDGET_HOURS } from '../constants/training'
 import { useWeeklyPlan, type PlannerDay } from '../hooks/useWeeklyPlan'
-import { deleteSession } from '../services/sessionService'
+import { deleteSession, resolveConflict } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
 import { localISODate } from '../utils/dates'
 import type { Conflict } from '../types/conflict'
@@ -68,6 +68,10 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
 
   const plan = useWeeklyPlan(weekOffset)
   const { days, weekStart, weekEnd, totalHours, totalLoad, totalCalories, sessionCount } = plan
+
+  // Flattened week sessions, so the conflict detail sheet can resolve the two
+  // sessions each conflict involves.
+  const weekSessions = useMemo(() => days.flatMap((d) => d.sessions), [days])
 
   const scrollRef = useRef<ScrollView>(null)
   const dayOffsets = useRef<Record<string, number>>({})
@@ -386,7 +390,15 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         onDeleted={() => setSelected(null)}
       />
 
-      <ConflictSheet conflicts={conflictSheet} onClose={() => setConflictSheet(null)} />
+      <ConflictDetailSheet
+        conflicts={conflictSheet}
+        sessions={weekSessions}
+        onClose={() => setConflictSheet(null)}
+        onDismiss={(id) => {
+          if (uid) void resolveConflict(uid, id)
+          setConflictSheet(null)
+        }}
+      />
     </SafeAreaView>
   )
 }
@@ -488,81 +500,3 @@ function EmptyWeek({ isPastWeek, onPlan }: { isPastWeek: boolean; onPlan: () => 
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Conflict explanation sheet                                          */
-/* ------------------------------------------------------------------ */
-function ConflictSheet({
-  conflicts,
-  onClose,
-}: {
-  conflicts: Conflict[] | null
-  onClose: () => void
-}) {
-  return (
-    <Modal
-      visible={conflicts != null}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(17,24,39,0.5)' }} />
-      <View
-        style={{
-          backgroundColor: COLORS.white,
-          borderTopLeftRadius: 22,
-          borderTopRightRadius: 22,
-          paddingHorizontal: 20,
-          paddingTop: 14,
-          paddingBottom: 34,
-        }}
-      >
-        <View
-          style={{
-            alignSelf: 'center',
-            width: 44,
-            height: 5,
-            borderRadius: 999,
-            backgroundColor: COLORS.border,
-            marginBottom: 14,
-          }}
-        />
-        <Text style={{ fontSize: 19, fontWeight: '800', color: COLORS.ink }}>
-          Training conflict{(conflicts?.length ?? 0) === 1 ? '' : 's'}
-        </Text>
-        {(conflicts ?? []).map((c) => (
-          <View
-            key={c.conflictId}
-            style={{
-              marginTop: 12,
-              backgroundColor: c.severity === 'danger' ? '#FEF2F2' : '#FFFBEB',
-              borderRadius: 14,
-              borderLeftWidth: 4,
-              borderLeftColor: c.severity === 'danger' ? COLORS.danger : '#F59E0B',
-              padding: 14,
-            }}
-          >
-            <Text style={{ fontSize: 15, color: COLORS.body, lineHeight: 21 }}>{c.message}</Text>
-            <Text style={{ marginTop: 6, fontSize: 11.5, color: COLORS.subtle }}>
-              {c.sports.join(' + ')} · level {c.conflictLevel}
-            </Text>
-          </View>
-        ))}
-        <Pressable
-          onPress={onClose}
-          style={{
-            marginTop: 20,
-            height: 48,
-            borderRadius: 12,
-            backgroundColor: COLORS.fieldBg,
-            borderWidth: 1,
-            borderColor: COLORS.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.body }}>Got it</Text>
-        </Pressable>
-      </View>
-    </Modal>
-  )
-}
