@@ -94,7 +94,7 @@ function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
       {/* Selected-day detail (fixed height so tapping doesn't reflow the page) */}
       <View style={{ minHeight: 20, marginTop: 12, justifyContent: 'center' }}>
         {selected ? (
-          <Text style={{ fontSize: 12.5, color: COLORS.body }}>
+          <Text style={{ fontSize: 13, color: COLORS.body }}>
             <Text style={{ fontWeight: '800', color: COLORS.ink }}>{selected.fullDate}</Text>
             {selected.load > 0 ? (
               <>
@@ -118,11 +118,11 @@ function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
 function Scale() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-      <Text style={{ fontSize: 10.5, color: COLORS.subtle, marginRight: 2 }}>Less</Text>
+      <Text style={{ fontSize: 11, color: COLORS.subtle, marginRight: 2 }}>Less</Text>
       {HEAT.map((c) => (
         <View key={c} style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: c }} />
       ))}
-      <Text style={{ fontSize: 10.5, color: COLORS.subtle, marginLeft: 2 }}>More</Text>
+      <Text style={{ fontSize: 11, color: COLORS.subtle, marginLeft: 2 }}>More</Text>
     </View>
   )
 }

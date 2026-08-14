@@ -1,50 +1,6 @@
-import { useEffect } from 'react'
-import { View, type DimensionValue } from 'react-native'
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated'
-import { COLORS } from '../../constants/theme'
-
-/**
- * A pulsing grey block. All blocks share one clock via their own shared value,
- * driven on the UI thread so the pulse stays smooth while Firestore's first
- * snapshot is still in flight.
- */
-function Block({
-  width,
-  height,
-  radius = 8,
-  style,
-}: {
-  width: DimensionValue
-  height: number
-  radius?: number
-  style?: object
-}) {
-  const opacity = useSharedValue(0.5)
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    )
-  }, [opacity])
-  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }))
-
-  return (
-    <Animated.View
-      style={[
-        { width, height, borderRadius: radius, backgroundColor: '#E5E7EB' },
-        animStyle,
-        style,
-      ]}
-    />
-  )
-}
+import { View } from 'react-native'
+import { Skeleton, SkeletonCard } from '../ui/Skeleton'
+import { RADIUS, SPACING } from '../../constants/theme'
 
 /**
  * First-load placeholder. Mirrors the real dashboard's layout — hero, 2×3 grid,
@@ -52,69 +8,39 @@ function Block({
  */
 export default function DashboardSkeleton() {
   return (
-    <View style={{ gap: 20 }}>
+    <View style={{ gap: SPACING.lg }}>
       {/* Form score hero */}
-      <Block width="100%" height={200} radius={24} />
+      <Skeleton height={200} radius={RADIUS.xl} />
 
       {/* Metric grid */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md }}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <View
-            key={i}
-            style={{
-              flexBasis: '47%',
-              flexGrow: 1,
-              backgroundColor: COLORS.white,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              padding: 16,
-            }}
-          >
-            <Block width="60%" height={24} />
-            <Block width="85%" height={10} style={{ marginTop: 8 }} />
-          </View>
+          <SkeletonCard key={i} style={{ flexBasis: '47%', flexGrow: 1 }}>
+            <Skeleton width="60%" height={24} />
+            <Skeleton width="85%" height={10} style={{ marginTop: SPACING.sm }} />
+          </SkeletonCard>
         ))}
       </View>
 
       {/* Zone chart */}
-      <View
-        style={{
-          backgroundColor: COLORS.white,
-          borderRadius: 16,
-          borderWidth: 1,
-          borderColor: COLORS.border,
-          padding: 16,
-        }}
-      >
-        <Block width="55%" height={16} />
-        <Block width="100%" height={20} radius={999} style={{ marginTop: 16 }} />
-        <Block width="70%" height={10} style={{ marginTop: 14 }} />
-      </View>
+      <SkeletonCard>
+        <Skeleton width="55%" height={16} />
+        <Skeleton height={20} radius={RADIUS.pill} style={{ marginTop: SPACING.base }} />
+        <Skeleton width="70%" height={10} style={{ marginTop: 14 }} />
+      </SkeletonCard>
 
       {/* Activity rows */}
-      <View style={{ gap: 8 }}>
-        <Block width="40%" height={16} style={{ marginBottom: 2 }} />
+      <View style={{ gap: SPACING.sm }}>
+        <Skeleton width="40%" height={16} style={{ marginBottom: 2 }} />
         {Array.from({ length: 4 }).map((_, i) => (
-          <View
-            key={i}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: COLORS.white,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              padding: 12,
-            }}
-          >
-            <Block width={42} height={42} radius={21} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Block width="45%" height={13} />
-              <Block width="70%" height={10} style={{ marginTop: 6 }} />
+          <SkeletonCard key={i} style={{ flexDirection: 'row', alignItems: 'center', padding: SPACING.md }}>
+            <Skeleton width={42} height={42} radius={RADIUS.pill} />
+            <View style={{ flex: 1, marginLeft: SPACING.md }}>
+              <Skeleton width="45%" height={13} />
+              <Skeleton width="70%" height={10} style={{ marginTop: 6 }} />
             </View>
-            <Block width={54} height={28} />
-          </View>
+            <Skeleton width={54} height={28} />
+          </SkeletonCard>
         ))}
       </View>
     </View>

@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native'
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps'
-import { COLORS } from '../../constants/theme'
+import Animated, { FadeOut } from 'react-native-reanimated'
+import { Skeleton } from '../ui/Skeleton'
+import { COLORS, RADIUS, TYPE } from '../../constants/theme'
 import type { RoutePoint } from '../../types/session'
 
 interface RouteMapProps {
@@ -64,6 +66,9 @@ export default function RouteMap({
   const activeRegion = region ?? fittedRegion
   const first = coordinates[0]
   const last = coordinates[coordinates.length - 1]
+  // MapView paints a flat grey rectangle for a beat before its tiles arrive,
+  // which looks like a failed image. Cover that with the app's shimmer instead.
+  const [mapReady, setMapReady] = useState(false)
 
   if (coordinates.length === 0) {
     return (
@@ -71,7 +76,7 @@ export default function RouteMap({
         style={[
           {
             height,
-            borderRadius: 16,
+            borderRadius: RADIUS.card,
             backgroundColor: COLORS.fieldBg,
             borderWidth: 1,
             borderColor: COLORS.border,
@@ -82,7 +87,7 @@ export default function RouteMap({
         ]}
       >
         <Text style={{ fontSize: 22, marginBottom: 4 }}>🛰️</Text>
-        <Text style={{ fontSize: 13, color: COLORS.subtle }}>Searching for GPS…</Text>
+        <Text style={{ fontSize: TYPE.small, color: COLORS.subtle }}>Searching for GPS…</Text>
       </View>
     )
   }
@@ -90,12 +95,19 @@ export default function RouteMap({
   return (
     <View
       style={[
-        { height, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+        {
+          height,
+          borderRadius: RADIUS.card,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: COLORS.border,
+        },
         style,
       ]}
     >
       <MapView
         style={{ flex: 1 }}
+        onMapReady={() => setMapReady(true)}
         region={activeRegion}
         scrollEnabled={interactive}
         zoomEnabled={interactive}
@@ -117,6 +129,16 @@ export default function RouteMap({
           <Marker coordinate={last} title="Finish" pinColor="#ef4444" />
         ) : null}
       </MapView>
+
+      {mapReady ? null : (
+        <Animated.View
+          exiting={FadeOut.duration(220)}
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          <Skeleton height={height} radius={0} />
+        </Animated.View>
+      )}
     </View>
   )
 }

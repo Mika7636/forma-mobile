@@ -3,7 +3,7 @@
 // Shared by the dashboard banner tap, the planner day ⚠️, and the history list,
 // so "what does this warning mean?" always looks and reads the same.
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 import { severityStyle } from '../../constants/conflictColors'
 import { conflictSportsLabel, detectedAtDate, involvedSessions } from '../../utils/conflictInfo'
@@ -165,7 +165,7 @@ function ConflictCard({
       {showDismiss ? (
         <Pressable
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            haptics.light()
             onDismiss?.(conflict.conflictId)
           }}
           style={{
@@ -178,7 +178,7 @@ function ConflictCard({
             paddingVertical: 7,
           }}
         >
-          <Text style={{ fontSize: 12.5, fontWeight: '800', color: style.deep }}>Dismiss</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: style.deep }}>Dismiss</Text>
         </Pressable>
       ) : null}
     </View>

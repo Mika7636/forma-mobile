@@ -10,7 +10,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 import { severityStyle, type ConflictSeverity } from '../../constants/conflictColors'
 import { SPORT_OPTIONS } from '../../constants/training'
@@ -86,7 +86,7 @@ export default function SessionChip({
   const startX = useSharedValue(0)
   const buzzed = useSharedValue(false)
 
-  const revealHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+  const revealHaptic = () => haptics.medium()
 
   const close = () => {
     translateX.value = withSpring(0, { damping: 18, stiffness: 220 })
@@ -106,14 +106,14 @@ export default function SessionChip({
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+            haptics.warning()
             try {
               await onDelete(session)
               // The Firestore listener removes the chip; slide it out so the
               // gap doesn't just pop.
               translateX.value = withTiming(-MAX_DRAG, { duration: 160 })
             } catch {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+              haptics.error()
               close()
             }
           },
@@ -129,7 +129,7 @@ export default function SessionChip({
       close()
       return
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     onPress(session)
   }
 

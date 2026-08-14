@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { severityStyle } from '../../constants/conflictColors'
 import { detectedAtDate } from '../../utils/conflictInfo'
 import { formatTimeAgo } from '../../utils/formatting'
@@ -33,7 +33,7 @@ export default function ConflictBanner({
   const style = severityStyle(conflict.severity)
 
   const handleDismiss = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     onDismiss(conflict.conflictId)
   }
 
@@ -82,7 +82,7 @@ export default function ConflictBanner({
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>{style.title}</Text>
             <Text
-              style={{ marginTop: 2, fontSize: 12.5, lineHeight: 17, color: 'rgba(255,255,255,0.92)' }}
+              style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: 'rgba(255,255,255,0.92)' }}
               numberOfLines={3}
             >
               {conflict.message}
@@ -127,7 +127,7 @@ export default function ConflictBanner({
             paddingVertical: 8,
           }}
         >
-          <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#FFFFFF' }}>Dismiss</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>Dismiss</Text>
         </Pressable>
       </LinearGradient>
     </Animated.View>

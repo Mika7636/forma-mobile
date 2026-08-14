@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 import { severityStyle, worstSeverity } from '../../constants/conflictColors'
 import { involvedSessions } from '../../utils/conflictInfo'
@@ -40,7 +40,7 @@ export default function ConflictModal({
   // Warn the athlete physically the moment the sheet appears.
   useEffect(() => {
     if (visible) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      haptics.warning()
     }
   }, [visible])
 
@@ -105,7 +105,7 @@ export default function ConflictModal({
           <View style={{ marginTop: 8 }}>
             <Pressable
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+                haptics.medium()
                 onKeep()
               }}
               disabled={undoing}
@@ -124,7 +124,7 @@ export default function ConflictModal({
 
             <Pressable
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+                haptics.medium()
                 onUndo()
               }}
               disabled={undoing}
@@ -178,7 +178,7 @@ function ConflictRow({ conflict, sessions }: { conflict: Conflict; sessions: Ses
       </View>
 
       {pair.from && pair.to ? (
-        <Text style={{ marginTop: 10, marginLeft: 28, fontSize: 12.5, color: COLORS.muted }}>
+        <Text style={{ marginTop: 10, marginLeft: 28, fontSize: 13, color: COLORS.muted }}>
           <Text style={{ fontWeight: '700', color: COLORS.body }}>
             {pair.from.icon} {pair.from.sportLabel}
           </Text>{' '}

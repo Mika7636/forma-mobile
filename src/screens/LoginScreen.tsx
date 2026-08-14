@@ -9,7 +9,8 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import * as Haptics from 'expo-haptics'
+import { StatusBar } from 'expo-status-bar'
+import { haptics } from '../utils/haptics'
 import FormInput from '../components/ui/FormInput'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
@@ -43,7 +44,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     if (!email.trim() || !password) {
       useAuthStore.setState({ error: 'Please enter your email and password.' })
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      haptics.error()
       return
     }
 
@@ -53,7 +54,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       // On success RootNavigator swaps to the app; nothing more to do here.
     } catch {
       // Error message is already in the store; buzz to signal failure.
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      haptics.error()
     } finally {
       setSubmitting(false)
     }
@@ -61,6 +62,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
+      {/* White page — dark status-bar content is what stays legible. */}
+      <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}

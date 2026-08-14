@@ -17,9 +17,11 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker'
 import Slider from '@react-native-community/slider'
 import Reanimated, { FadeIn } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import RouteMap from './RouteMap'
 import PrimaryButton from '../ui/PrimaryButton'
+import ToastContainer from '../ui/ToastContainer'
+import { toast } from '../../store/toastStore'
 import { COLORS } from '../../constants/theme'
 import { SPORT_OPTIONS } from '../../constants/training'
 import { hrZoneColor } from '../../algorithms/heartRate'
@@ -75,7 +77,6 @@ export default function SessionDetailModal({
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
 
   // Edit-form state.
   const [sport, setSport] = useState<SportType>('running')
@@ -89,7 +90,6 @@ export default function SessionDetailModal({
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const translateY = useRef(new Animated.Value(0)).current
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Seed everything from the tapped session whenever it (re)opens.
   useEffect(() => {
@@ -101,10 +101,6 @@ export default function SessionDetailModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, session?.id])
 
-  useEffect(() => () => {
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-  }, [])
-
   function seedForm(s: Session) {
     setSport(s.sport)
     setDate(new Date(s.date))
@@ -114,12 +110,6 @@ export default function SessionDetailModal({
     setNotes(s.notes ?? '')
     setAvgBpm(s.avgBpm != null ? String(s.avgBpm) : '')
     setAdvancedOpen(s.avgBpm != null)
-  }
-
-  const showToast = (message: string) => {
-    setToast(message)
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 2200)
   }
 
   // Drag-to-dismiss, wired only to the grab handle so the ScrollView keeps its
@@ -174,19 +164,19 @@ export default function SessionDetailModal({
 
   const handleEdit = () => {
     if (!current) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     seedForm(current)
     setMode('edit')
   }
 
   const handleCancel = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     setMode('view')
   }
 
   const handleSave = async () => {
     if (!user || !profile || !current || !canSave || saving) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    haptics.medium()
     setSaving(true)
     try {
       const { session: updated } = await updateSession(
@@ -206,12 +196,13 @@ export default function SessionDetailModal({
       )
       setCurrent(updated)
       setMode('view')
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      showToast('Session updated')
+      // Toasts fire their own haptic — see toastStore.
+      toast.success('Session updated')
       onUpdated?.(updated)
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-      showToast('Could not save changes')
+      toast.error('Could not save changes', {
+        description: 'Your edits are still here. Check your connection.',
+      })
     } finally {
       setSaving(false)
     }
@@ -236,12 +227,11 @@ export default function SessionDetailModal({
             setDeleting(true)
             try {
               await deleteSession(user.uid, current.id)
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+              haptics.warning()
               onDeleted?.()
               onClose()
             } catch {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-              showToast('Could not delete session')
+              toast.error('Could not delete session')
             } finally {
               setDeleting(false)
             }
@@ -342,7 +332,7 @@ export default function SessionDetailModal({
                   {meta.label}
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                  <Text style={{ fontSize: 13.5, color: COLORS.muted }}>{dateLine}</Text>
+                  <Text style={{ fontSize: 14, color: COLORS.muted }}>{dateLine}</Text>
                   {data.trackingMode === 'live' ? (
                     <Text style={{ fontSize: 12, marginLeft: 6 }} accessibilityLabel="GPS tracked">
                       📍
@@ -410,27 +400,10 @@ export default function SessionDetailModal({
           />
         ) : null}
 
-        {toast ? (
-          <Reanimated.View
-            entering={FadeIn.duration(180)}
-            style={{
-              position: 'absolute',
-              left: 16,
-              right: 16,
-              bottom: 24,
-              backgroundColor: COLORS.ink,
-              borderRadius: 14,
-              paddingVertical: 13,
-              paddingHorizontal: 18,
-            }}
-          >
-            <Text
-              style={{ color: COLORS.white, fontSize: 14, fontWeight: '700', textAlign: 'center' }}
-            >
-              {toast}
-            </Text>
-          </Reanimated.View>
-        ) : null}
+        {/* RN's <Modal> is its own native window, so the app-root container is
+            drawn *behind* this and would be invisible. Same store, so nothing
+            is duplicated — only one of the two is ever on screen. */}
+        <ToastContainer insideModal />
       </Animated.View>
     </Modal>
   )
@@ -513,7 +486,7 @@ function ViewMode({
           style={{
             marginTop: 16,
             backgroundColor: COLORS.fieldBg,
-            borderRadius: 14,
+            borderRadius: 16,
             borderWidth: 1,
             borderColor: COLORS.border,
             padding: 14,
@@ -578,7 +551,7 @@ function StatTile({
       style={{
         width: '48%',
         backgroundColor: COLORS.white,
-        borderRadius: 14,
+        borderRadius: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
         borderLeftWidth: badgeBar ? 4 : 1,
@@ -617,7 +590,7 @@ function StatTile({
         ) : null}
       </View>
       {sub ? (
-        <Text style={{ marginTop: 2, fontSize: 11.5, color: COLORS.subtle }}>{sub}</Text>
+        <Text style={{ marginTop: 2, fontSize: 12, color: COLORS.subtle }}>{sub}</Text>
       ) : null}
     </View>
   )
@@ -692,7 +665,7 @@ function EditMode({
             <Pressable
               key={value}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                haptics.light()
                 setSport(value)
               }}
               style={{
@@ -711,7 +684,7 @@ function EditMode({
               <Text
                 style={{
                   marginTop: 6,
-                  fontSize: 11.5,
+                  fontSize: 12,
                   fontWeight: '700',
                   textAlign: 'center',
                   color: selected ? COLORS.white : COLORS.ink,
@@ -729,7 +702,7 @@ function EditMode({
       <FieldLabel style={{ marginTop: 18 }}>Date</FieldLabel>
       <Pressable
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+          haptics.light()
           onOpenDatePicker()
         }}
         style={{
@@ -826,7 +799,7 @@ function EditMode({
           onValueChange={(v) => {
             const next = Math.round(v)
             if (next !== rpe) {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+              haptics.light()
               setRpe(next)
             }
           }}
@@ -845,7 +818,7 @@ function EditMode({
             flexWrap: 'wrap',
             justifyContent: 'space-between',
             backgroundColor: COLORS.fieldBg,
-            borderRadius: 14,
+            borderRadius: 16,
             borderWidth: 1,
             borderColor: COLORS.border,
             padding: 12,
@@ -892,7 +865,7 @@ function EditMode({
       {/* Advanced (avg BPM) */}
       <Pressable
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+          haptics.light()
           setAdvancedOpen(!advancedOpen)
         }}
         style={{

@@ -1,93 +1,40 @@
-import { useEffect } from 'react'
-import { View, type DimensionValue } from 'react-native'
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated'
-import { COLORS } from '../../constants/theme'
+import { View } from 'react-native'
+import { Skeleton, SkeletonCard } from '../ui/Skeleton'
+import { RADIUS, SPACING } from '../../constants/theme'
 
-/** A pulsing grey block, matching the dashboard skeleton's look. */
-function Block({
-  width,
-  height,
-  radius = 8,
-  style,
-}: {
-  width: DimensionValue
-  height: number
-  radius?: number
-  style?: object
-}) {
-  const opacity = useSharedValue(0.5)
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    )
-  }, [opacity])
-  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }))
+/** A chart card: title, subtitle, then the plot area at its real height. */
+function ChartSkeleton({ height }: { height: number }) {
   return (
-    <Animated.View
-      style={[{ width, height, borderRadius: radius, backgroundColor: '#E5E7EB' }, animStyle, style]}
-    />
-  )
-}
-
-function CardBlock({ height }: { height: number }) {
-  return (
-    <View
-      style={{
-        backgroundColor: COLORS.white,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        padding: 16,
-      }}
-    >
-      <Block width="55%" height={16} />
-      <Block width="75%" height={10} style={{ marginTop: 8 }} />
-      <Block width="100%" height={height} radius={12} style={{ marginTop: 16 }} />
-    </View>
+    <SkeletonCard>
+      <Skeleton width="55%" height={16} />
+      <Skeleton width="75%" height={10} style={{ marginTop: SPACING.sm }} />
+      <Skeleton height={height} radius={RADIUS.md} style={{ marginTop: SPACING.base }} />
+    </SkeletonCard>
   )
 }
 
 /**
  * First-load placeholder while `computeProgress` and the first Firestore snapshot
- * settle. Mirrors the real screen's stack — stats row, hero chart, then shorter
+ * settle. Mirrors the real screen's stack — stats grid, hero chart, then shorter
  * charts — so unlocking to live data doesn't reflow the page.
  */
 export default function ProgressSkeleton() {
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ gap: SPACING.base }}>
       {/* Stats grid */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md }}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <View
-            key={i}
-            style={{
-              flexBasis: '47%',
-              flexGrow: 1,
-              backgroundColor: COLORS.white,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              padding: 16,
-            }}
-          >
-            <Block width={26} height={26} radius={8} />
-            <Block width="70%" height={22} style={{ marginTop: 10 }} />
-            <Block width="50%" height={10} style={{ marginTop: 8 }} />
-          </View>
+          <SkeletonCard key={i} style={{ flexBasis: '47%', flexGrow: 1 }}>
+            <Skeleton width={26} height={26} />
+            <Skeleton width="70%" height={22} style={{ marginTop: 10 }} />
+            <Skeleton width="50%" height={10} style={{ marginTop: SPACING.sm }} />
+          </SkeletonCard>
         ))}
       </View>
 
-      <CardBlock height={230} />
-      <CardBlock height={150} />
-      <CardBlock height={150} />
+      <ChartSkeleton height={230} />
+      <ChartSkeleton height={150} />
+      <ChartSkeleton height={150} />
     </View>
   )
 }

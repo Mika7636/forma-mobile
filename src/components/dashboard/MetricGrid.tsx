@@ -178,7 +178,7 @@ function MetricCard({
       }}
     >
       {children}
-      <Text style={{ marginTop: 3, fontSize: 11.5, color: COLORS.subtle }} numberOfLines={1}>
+      <Text style={{ marginTop: 3, fontSize: 12, color: COLORS.subtle }} numberOfLines={1}>
         {label}
       </Text>
     </Animated.View>

@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import RouteThumbnail from './RouteThumbnail'
+import PressableScale from '../ui/PressableScale'
 import { hrZoneColor } from '../../algorithms/heartRate'
 import { COLORS } from '../../constants/theme'
 import { formatTimeAgo } from '../../utils/formatting'
@@ -79,25 +79,21 @@ function SessionRow({
     formatTimeAgo(session.date),
   ].join(' · ')
 
-  // Press feedback via state rather than Pressable's `style={({pressed}) => …}`
-  // callback: this project sets jsxImportSource: 'nativewind', and NativeWind's
-  // wrapper only understands an object/array style — handed a function it drops
-  // the styles entirely, which silently collapses the row's layout.
-  const [pressed, setPressed] = useState(false)
-
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
-      <Pressable
+      {/* `card` rather than `button`: a full-width row shrinking by 3% looks
+          like a glitch, so it gets the subtler press. */}
+      <PressableScale
         onPress={onPress}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
+        variant="card"
+        haptic="light"
         accessibilityRole="button"
         accessibilityLabel={`${meta.label}, ${metaLine}`}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: pressed ? COLORS.fieldBg : COLORS.white,
-          borderRadius: 14,
+          backgroundColor: COLORS.white,
+          borderRadius: 16,
           borderWidth: 1,
           borderColor: COLORS.border,
           padding: 12,
@@ -122,7 +118,7 @@ function SessionRow({
         {/* Sport + meta line. */}
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ fontSize: 14.5, fontWeight: '700', color: COLORS.ink }} numberOfLines={1}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.ink }} numberOfLines={1}>
               {meta.label}
             </Text>
             {isLive ? (
@@ -145,11 +141,11 @@ function SessionRow({
 
         {/* Load / calories / zone. */}
         <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
-          <Text style={{ fontSize: 13.5, fontWeight: '800', color: COLORS.ink }}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.ink }}>
             {session.loadScore} AU
           </Text>
           {session.estimatedCalories != null ? (
-            <Text style={{ fontSize: 11.5, color: COLORS.muted, marginTop: 1 }}>
+            <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 1 }}>
               {session.estimatedCalories} kcal
             </Text>
           ) : null}
@@ -174,7 +170,7 @@ function SessionRow({
         <Text style={{ fontSize: 22, color: COLORS.subtle, marginLeft: 8, marginTop: -2 }}>
           ›
         </Text>
-      </Pressable>
+      </PressableScale>
     </Animated.View>
   )
 }

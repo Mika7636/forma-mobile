@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { StatusBar } from 'expo-status-bar'
 import Animated, {
   FadeIn,
   SlideInLeft,
@@ -17,7 +18,7 @@ import Animated, {
   SlideOutRight,
 } from 'react-native-reanimated'
 import Slider from '@react-native-community/slider'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../utils/haptics'
 import ProgressBar from '../components/onboarding/ProgressBar'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
@@ -72,19 +73,19 @@ export default function OnboardingScreen() {
   const [error, setError] = useState<string | null>(null)
 
   const goNext = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     setForward(true)
     setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1))
   }
 
   const goBack = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     setForward(false)
     setStep((s) => Math.max(s - 1, 0))
   }
 
   const toggleSport = (value: SportType) => {
-    Haptics.selectionAsync()
+    haptics.selection()
     setSports((prev) =>
       prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value],
     )
@@ -92,7 +93,7 @@ export default function OnboardingScreen() {
 
   const toggleUnit = (next: 'kg' | 'lb') => {
     if (next === weightUnit) return
-    Haptics.selectionAsync()
+    haptics.selection()
     const num = parseFloat(weightInput)
     if (!Number.isNaN(num)) {
       const converted = next === 'lb' ? num * LB_PER_KG : num / LB_PER_KG
@@ -155,7 +156,7 @@ export default function OnboardingScreen() {
       })
       await updateUserProfile(user.uid, nextProfile)
       console.log('[Onboarding] Firestore write succeeded')
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      haptics.success()
       setDone(true)
       // Show the "You're all set!" beat, then commit the profile —
       // RootNavigator flips to MainTabs once onboardingCompleted is true.
@@ -165,7 +166,7 @@ export default function OnboardingScreen() {
       }, 2600)
     } catch (err) {
       console.warn('[Onboarding] Finish failed', err)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      haptics.error()
       setError("Couldn't save your profile. Check your connection and try again.")
       setSaving(false)
     }
@@ -214,7 +215,7 @@ export default function OnboardingScreen() {
           >
             <Text
               style={{
-                fontSize: 13.5,
+                fontSize: 14,
                 color: COLORS.tealDark,
                 fontWeight: '600',
                 lineHeight: 20,
@@ -232,6 +233,8 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
+      {/* White page — dark status-bar content is what stays legible. */}
+      <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -291,7 +294,7 @@ export default function OnboardingScreen() {
                 <ExperienceStep
                   selected={experience}
                   onSelect={(e) => {
-                    Haptics.selectionAsync()
+                    haptics.selection()
                     setError(null)
                     setExperience(e)
                   }}

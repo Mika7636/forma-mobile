@@ -1,13 +1,6 @@
-import { useState } from 'react'
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native'
-import * as Haptics from 'expo-haptics'
-import { COLORS } from '../../constants/theme'
+import { ActivityIndicator, Text, type StyleProp, type ViewStyle } from 'react-native'
+import { COLORS, MIN_TOUCH, RADIUS } from '../../constants/theme'
+import PressableScale from './PressableScale'
 
 interface PrimaryButtonProps {
   label: string
@@ -18,9 +11,13 @@ interface PrimaryButtonProps {
 }
 
 /**
- * Full-width teal CTA. Rounded 12px, white bold label, light haptic on press,
- * and a spinner (replacing the label) while `loading`. Meets the 44px minimum
- * touch target.
+ * The app's full-width teal CTA. Springs down to 0.97 while held, medium haptic
+ * on press, and a spinner (replacing the label) while `loading`.
+ *
+ * Press feedback lives in PressableScale rather than here — partly to keep this
+ * to one job, and partly because that's where the "never pass a function to
+ * `style`" rule is enforced. NativeWind's interop silently drops the function
+ * form, which renders the button with no styling at all and no error anywhere.
  */
 export default function PrimaryButton({
   label,
@@ -30,31 +27,26 @@ export default function PrimaryButton({
   style,
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading
-  const [pressed, setPressed] = useState(false)
-
-  const handlePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    onPress()
-  }
 
   return (
-    <Pressable
-      onPress={handlePress}
+    <PressableScale
+      onPress={onPress}
       disabled={isDisabled}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      // NOTE: `style` must not be a function here. NativeWind's style interop
-      // never invokes the function form, so the button renders completely
-      // unstyled. Plain objects/arrays are applied correctly, so press feedback
-      // is tracked via onPressIn/onPressOut state instead.
+      // A disabled button that still springs would imply something happened.
+      variant={isDisabled ? 'none' : 'button'}
+      haptic={isDisabled ? null : 'medium'}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={[
         {
           height: 54,
-          borderRadius: 12,
+          minHeight: MIN_TOUCH,
+          borderRadius: RADIUS.md,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: isDisabled ? COLORS.tealDark : COLORS.teal,
-          opacity: isDisabled ? 0.7 : pressed ? 0.9 : 1,
+          opacity: isDisabled ? 0.7 : 1,
         },
         style,
       ]}
@@ -62,10 +54,8 @@ export default function PrimaryButton({
       {loading ? (
         <ActivityIndicator color={COLORS.white} />
       ) : (
-        <Text style={{ color: COLORS.white, fontSize: 17, fontWeight: '700' }}>
-          {label}
-        </Text>
+        <Text style={{ color: COLORS.white, fontSize: 17, fontWeight: '700' }}>{label}</Text>
       )}
-    </Pressable>
+    </PressableScale>
   )
 }

@@ -24,10 +24,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import Slider from '@react-native-community/slider'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../utils/haptics'
 import ConflictModal from '../components/log/ConflictModal'
 import LiveTracker, { type LiveResult } from '../components/log/LiveTracker'
 import PrimaryButton from '../components/ui/PrimaryButton'
+import { isOffline } from '../store/networkStore'
+import { toast } from '../store/toastStore'
+import { worstSeverity } from '../constants/conflictColors'
 import { COLORS } from '../constants/theme'
 import { SPORT_OPTIONS, type SportOption } from '../constants/training'
 import {
@@ -150,19 +153,11 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const [avgBpm, setAvgBpm] = useState('')
 
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<Conflict[] | null>(null)
   const [savedSessionId, setSavedSessionId] = useState<string | null>(null)
   const [undoing, setUndoing] = useState(false)
 
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastRpe = useRef(rpe)
-
-  useEffect(() => {
-    return () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current)
-    }
-  }, [])
 
   // A tab's params outlive the visit that set them, so a date handed over by the
   // Planner would still be pinned here days later — the user would tap the Log
@@ -206,12 +201,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     transform: [{ scale: loadScale.value }],
   }))
 
-  const showToast = (message: string) => {
-    setToast(message)
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 2600)
-  }
-
   const resetForm = () => {
     setSport(null)
     setMode('quick')
@@ -224,7 +213,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   }
 
   const handleSelectSport = (value: SportType) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     setSport(value)
     // Live tracking only makes sense for distance sports; reset the mode when a
     // non-distance sport (combat, football, gym…) is picked.
@@ -243,7 +232,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     const next = Math.round(raw)
     if (next !== lastRpe.current) {
       lastRpe.current = next
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      haptics.light()
       setRpe(next)
     }
   }
@@ -292,16 +281,19 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         return
       }
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      showToast(
-        `Session saved! ${session.loadScore} AU · ${session.estimatedCalories} kcal`,
-      )
+      // The toast fires the success haptic itself — see toastStore.
+      toast.success('Session saved', {
+        description: `${session.loadScore} AU · ${session.estimatedCalories} kcal`,
+      })
       setMode('quick')
       setTimeout(goBackToPlannerOrReset, 1000)
     } catch {
       setSaving(false)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-      showToast('Could not save session. Please try again.')
+      toast.error('Could not save session', {
+        description: isOffline()
+          ? "You're offline — reconnect and try again."
+          : 'Something went wrong. Please try again.',
+      })
     }
   }
 
@@ -341,9 +333,23 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   }
 
   const handleKeepSession = () => {
+    const kept = conflicts ?? []
     setConflicts(null)
     setSavedSessionId(null)
-    showToast('Session saved.')
+    // Keeping a flagged session is a decision, not a plain save — the toast says
+    // so, and stays amber, so the warning doesn't vanish with the modal. The
+    // modal itself carries the detail; this is the receipt.
+    if (kept.length > 0) {
+      const worst = worstSeverity(kept)
+      toast.warning('Saved with a conflict', {
+        description:
+          worst === 'danger'
+            ? 'High injury risk — take it easy on your next session.'
+            : 'Watch your recovery over the next couple of days.',
+      })
+    } else {
+      toast.success('Session saved')
+    }
     setTimeout(goBackToPlannerOrReset, 700)
   }
 
@@ -358,14 +364,14 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       setUndoing(false)
       setConflicts(null)
       setSavedSessionId(null)
-      showToast('Session undone.')
+      toast.info('Session undone')
       setTimeout(goBackToPlannerOrReset, 700)
     }
   }
 
   // Full-screen live tracker. Rendered instead of the log form while the user is
-  // in Live mode; the conflict modal + toast ride along so save feedback still
-  // shows over it.
+  // in Live mode; the conflict modal rides along so save feedback still shows
+  // over it. Toasts come from the app-root container, which is already above this.
   if (mode === 'live' && sport) {
     return (
       <>
@@ -377,34 +383,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
           onExit={() => setMode('quick')}
           onComplete={handleSaveLive}
         />
-        {toast ? (
-          <Animated.View
-            entering={FadeInDown.duration(220)}
-            exiting={FadeOut.duration(200)}
-            style={{
-              position: 'absolute',
-              left: 16,
-              right: 16,
-              bottom: 40,
-              backgroundColor: COLORS.teal,
-              borderRadius: 14,
-              paddingVertical: 14,
-              paddingHorizontal: 18,
-              elevation: 8,
-            }}
-          >
-            <Text
-              style={{
-                color: COLORS.white,
-                fontSize: 14,
-                fontWeight: '700',
-                textAlign: 'center',
-              }}
-            >
-              {toast}
-            </Text>
-          </Animated.View>
-        ) : null}
         <ConflictModal
           visible={conflicts != null}
           conflicts={conflicts ?? []}
@@ -503,7 +481,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 <ModeToggle
                   mode={mode}
                   onSelect={(next) => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    haptics.light()
                     setMode(next)
                   }}
                 />
@@ -806,7 +784,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
             <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
               <Pressable
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  haptics.light()
                   setAdvancedOpen((v) => !v)
                 }}
                 style={{
@@ -870,40 +848,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
 
-      {/* Success / error toast */}
-      {toast ? (
-        <Animated.View
-          entering={FadeInDown.duration(220)}
-          exiting={FadeOut.duration(200)}
-          style={{
-            position: 'absolute',
-            left: 16,
-            right: 16,
-            bottom: 24,
-            backgroundColor: COLORS.ink,
-            borderRadius: 14,
-            paddingVertical: 14,
-            paddingHorizontal: 18,
-            shadowColor: '#000',
-            shadowOpacity: 0.2,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
-          }}
-        >
-          <Text
-            style={{
-              color: COLORS.white,
-              fontSize: 14,
-              fontWeight: '700',
-              textAlign: 'center',
-            }}
-          >
-            {toast}
-          </Text>
-        </Animated.View>
-      ) : null}
-
+      
       <ConflictModal
         visible={conflicts != null}
         conflicts={conflicts ?? []}
@@ -1036,7 +981,7 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
         flex: 1,
         marginHorizontal: 4,
         backgroundColor: COLORS.white,
-        borderRadius: 14,
+        borderRadius: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
         paddingVertical: 12,

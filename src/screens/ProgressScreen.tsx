@@ -6,8 +6,6 @@ import { useCallback, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
-import Animated, { FadeIn } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
 import CalorieChart from '../components/progress/CalorieChart'
 import ConsistencyHeatmap from '../components/progress/ConsistencyHeatmap'
 import DateRangeSelector, { type RangeWeeks } from '../components/progress/DateRangeSelector'
@@ -16,14 +14,12 @@ import ProgressSkeleton from '../components/progress/ProgressSkeleton'
 import ProgressStats from '../components/progress/ProgressStats'
 import SportChart from '../components/progress/SportChart'
 import WeeklyLoadChart from '../components/progress/WeeklyLoadChart'
-import PrimaryButton from '../components/ui/PrimaryButton'
-import { COLORS } from '../constants/theme'
+import EmptyState from '../components/ui/EmptyState'
+import { COLORS, SPACING, TYPE } from '../constants/theme'
 import { useProgressData } from '../hooks/useProgressData'
 import { PROGRESS_UNLOCK_SESSIONS } from '../utils/calibration'
+import { haptics } from '../utils/haptics'
 import type { ProgressScreenProps } from '../navigation/types'
-
-/** Warm off-white page background — a touch softer than the field grey. */
-const PAGE_BG = '#FAFAF8'
 
 /** "Jun 2 – Aug 8" for the header subtitle. */
 function formatRange(start: Date, end: Date): string {
@@ -40,13 +36,13 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   const [refreshing, setRefreshing] = useState(false)
 
   const onRefresh = useCallback(async () => {
+    haptics.medium()
     setRefreshing(true)
     await refresh()
     setRefreshing(false)
   }, [refresh])
 
   const goToLog = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     navigation.navigate('Log')
   }, [navigation])
 
@@ -58,10 +54,10 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: PAGE_BG }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
       <StatusBar style="dark" />
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
+        contentContainerStyle={{ padding: SPACING.base, paddingBottom: 40, gap: SPACING.base }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.teal} colors={[COLORS.teal]} />
@@ -69,8 +65,10 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
       >
         {/* Header */}
         <View>
-          <Text style={{ fontSize: 30, fontWeight: '800', color: COLORS.ink }}>Progress</Text>
-          <Text style={{ marginTop: 2, fontSize: 14, color: COLORS.muted }}>
+          <Text style={{ fontSize: TYPE.display, fontWeight: '800', color: COLORS.ink }}>
+            Progress
+          </Text>
+          <Text style={{ marginTop: 2, fontSize: TYPE.body, color: COLORS.muted }}>
             {formatRange(data.rangeStart, data.rangeEnd)} · last {weeks} weeks
           </Text>
         </View>
@@ -107,82 +105,23 @@ function ProgressLockedGuard({
   onLogSession: () => void
 }) {
   const target = PROGRESS_UNLOCK_SESSIONS
-  const fraction = Math.max(0, Math.min(logged / target, 1))
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: PAGE_BG }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
       <StatusBar style="dark" />
-      <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
-        <Animated.View
-          entering={FadeIn.duration(300)}
-          style={{
-            alignItems: 'center',
-            backgroundColor: COLORS.white,
-            borderRadius: 24,
-            borderWidth: 1,
-            borderColor: COLORS.border,
-            paddingVertical: 40,
-            paddingHorizontal: 24,
+      <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
+        <EmptyState
+          emoji="📈"
+          title="Keep logging!"
+          message={`Progress charts unlock after ${target} sessions, once there's enough history to show a meaningful trend.`}
+          progress={{
+            current: logged,
+            target,
+            label: `${logged} of ${target} sessions`,
           }}
-        >
-          <View
-            style={{
-              width: 84,
-              height: 84,
-              borderRadius: 42,
-              backgroundColor: COLORS.tealSoft,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 40 }}>📈</Text>
-          </View>
-
-          <Text style={{ marginTop: 18, fontSize: 22, fontWeight: '800', color: COLORS.ink }}>
-            Keep logging!
-          </Text>
-          <Text
-            style={{
-              marginTop: 8,
-              fontSize: 14,
-              lineHeight: 20,
-              color: COLORS.muted,
-              textAlign: 'center',
-              maxWidth: 280,
-            }}
-          >
-            Progress charts unlock after {target} sessions, once there&apos;s enough history to
-            show a meaningful trend.
-          </Text>
-
-          <View style={{ marginTop: 22, alignSelf: 'stretch' }}>
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: '700',
-                color: COLORS.body,
-                textAlign: 'center',
-                marginBottom: 8,
-              }}
-            >
-              {logged} of {target} sessions
-            </Text>
-            <View style={{ height: 8, borderRadius: 999, backgroundColor: COLORS.border, overflow: 'hidden' }}>
-              <View
-                style={{
-                  width: `${fraction * 100}%`,
-                  height: '100%',
-                  borderRadius: 999,
-                  backgroundColor: COLORS.teal,
-                }}
-              />
-            </View>
-          </View>
-
-          <View style={{ marginTop: 22, alignSelf: 'stretch' }}>
-            <PrimaryButton label="Log a Session" onPress={onLogSession} />
-          </View>
-        </Animated.View>
+          actionLabel="Log a Session"
+          onAction={onLogSession}
+        />
       </View>
     </SafeAreaView>
   )

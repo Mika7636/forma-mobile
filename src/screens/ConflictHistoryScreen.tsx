@@ -2,13 +2,15 @@
 // dismissed — reachable from Settings. Filterable, tap a card for the full
 // explanation and the sessions involved, dismiss the ones still active.
 import { useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeInDown } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../utils/haptics'
 import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
-import { COLORS } from '../constants/theme'
+import EmptyState from '../components/ui/EmptyState'
+import { Skeleton, SkeletonCard } from '../components/ui/Skeleton'
+import { COLORS, RADIUS, SPACING, TYPE } from '../constants/theme'
 import { severityStyle } from '../constants/conflictColors'
 import { useConflictHistory } from '../hooks/useConflictHistory'
 import { useSessionHistory } from '../hooks/useSessionHistory'
@@ -50,7 +52,7 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
   }, [conflicts, filter])
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.fieldBg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
       <StatusBar style="dark" />
 
       {/* Header */}
@@ -84,7 +86,7 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
             <Pressable
               key={f.value}
               onPress={() => {
-                Haptics.selectionAsync()
+                haptics.selection()
                 setFilter(f.value)
               }}
               style={{
@@ -112,11 +114,24 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={COLORS.teal} />
+        <View style={{ padding: SPACING.base, paddingTop: SPACING.sm, gap: SPACING.md }}>
+          {[0, 1, 2].map((i) => (
+            <SkeletonCard key={i}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+                <Skeleton width={34} height={34} radius={RADIUS.pill} />
+                <View style={{ flex: 1, gap: 6 }}>
+                  <Skeleton width="55%" height={14} />
+                  <Skeleton width="80%" height={10} />
+                </View>
+              </View>
+              <View style={{ marginTop: SPACING.md }}>
+                <Skeleton height={12} width="90%" />
+              </View>
+            </SkeletonCard>
+          ))}
         </View>
       ) : visible.length === 0 ? (
-        <EmptyState filter={filter} />
+        <HistoryEmptyState filter={filter} />
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 40, gap: 12 }}
@@ -128,7 +143,7 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
                 conflict={conflict}
                 onPress={() => setDetail(conflict)}
                 onDismiss={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  haptics.light()
                   void dismiss(conflict.conflictId)
                 }}
               />
@@ -187,12 +202,12 @@ function HistoryCard({
           <StatusBadge active={active} />
         </View>
 
-        <Text style={{ fontSize: 13.5, color: COLORS.body, lineHeight: 19 }} numberOfLines={3}>
+        <Text style={{ fontSize: 14, color: COLORS.body, lineHeight: 19 }} numberOfLines={3}>
           {conflict.message}
         </Text>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-          <Text style={{ fontSize: 11.5, color: COLORS.subtle }}>
+          <Text style={{ fontSize: 12, color: COLORS.subtle }}>
             {formatDate(detectedAtDate(conflict))} · {conflictSportsLabel(conflict)}
           </Text>
         </View>
@@ -210,7 +225,7 @@ function HistoryCard({
               paddingVertical: 7,
             }}
           >
-            <Text style={{ fontSize: 12.5, fontWeight: '800', color: style.deep }}>Dismiss</Text>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: style.deep }}>Dismiss</Text>
           </Pressable>
         ) : null}
       </View>
@@ -230,7 +245,7 @@ function StatusBadge({ active }: { active: boolean }) {
     >
       <Text
         style={{
-          fontSize: 10.5,
+          fontSize: 11,
           fontWeight: '800',
           letterSpacing: 0.4,
           color: active ? COLORS.tealDark : COLORS.subtle,
@@ -242,29 +257,32 @@ function StatusBadge({ active }: { active: boolean }) {
   )
 }
 
-function EmptyState({ filter }: { filter: Filter }) {
+function HistoryEmptyState({ filter }: { filter: Filter }) {
+  // No conflicts is the *good* outcome here, so all three read as reassurance
+  // rather than as an error — and none of them offers a CTA, because there's
+  // genuinely nothing the user should go and do about it.
   const copy =
     filter === 'active'
-      ? { emoji: '✅', text: 'No active conflicts. Nice balance right now.' }
+      ? {
+          emoji: '✅',
+          title: 'All clear',
+          message: 'No active conflicts. Your balance looks good right now.',
+        }
       : filter === 'dismissed'
-        ? { emoji: '🗂️', text: "Nothing dismissed yet." }
-        : { emoji: '💪', text: 'No conflicts yet — your training balance looks good!' }
+        ? {
+            emoji: '🗂️',
+            title: 'Nothing dismissed',
+            message: "Conflicts you dismiss will be kept here so you can look back at them.",
+          }
+        : {
+            emoji: '💪',
+            title: 'No conflicts yet',
+            message: 'Your training balance looks good! FORMA will flag it here if that changes.',
+          }
 
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-      <Text style={{ fontSize: 44 }}>{copy.emoji}</Text>
-      <Text
-        style={{
-          marginTop: 12,
-          fontSize: 15,
-          fontWeight: '600',
-          color: COLORS.muted,
-          textAlign: 'center',
-          lineHeight: 21,
-        }}
-      >
-        {copy.text}
-      </Text>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg }}>
+      <EmptyState emoji={copy.emoji} title={copy.title} message={copy.message} />
     </View>
   )
 }

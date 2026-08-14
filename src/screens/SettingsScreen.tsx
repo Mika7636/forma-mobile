@@ -18,11 +18,11 @@ import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import Slider from '@react-native-community/slider'
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
 import ConflictSensitivity from '../components/settings/ConflictSensitivity'
 import NotificationSettings from '../components/settings/NotificationSettings'
 import SportInteractionMatrix from '../components/settings/SportInteractionMatrix'
-import { COLORS } from '../constants/theme'
+import SettingsSkeleton from '../components/settings/SettingsSkeleton'
+import { CARD, COLORS, SPACING, TYPE } from '../constants/theme'
 import {
   BUDGET_MAX,
   BUDGET_MIN,
@@ -36,6 +36,8 @@ import {
 import { clearTrainingData } from '../services/sessionService'
 import { getUserProfile, updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
+import { toast } from '../store/toastStore'
+import { haptics } from '../utils/haptics'
 import type { AppStackParamList } from '../navigation/types'
 import {
   withPreferenceDefaults,
@@ -91,20 +93,12 @@ export default function SettingsScreen() {
 
   const [matrixOpen, setMatrixOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const pendingRef = useRef<Partial<User>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const showToast = useCallback((message: string) => {
-    setToast(message)
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 2200)
-  }, [])
 
   // Debounced Firestore write. Accumulates partial updates, flushes after a
   // quiet period, and mirrors the result into the store so every other screen
@@ -121,14 +115,16 @@ export default function SettingsScreen() {
     try {
       await updateUserProfile(uid, updates)
       setProfile({ ...base, ...updates })
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      showToast('Settings saved')
+      // The toast fires the success haptic itself — see toastStore.
+      toast.success('Settings saved')
     } catch {
-      showToast('Could not save settings')
+      toast.error('Could not save settings', {
+        description: 'Your changes are still here. Check your connection.',
+      })
     } finally {
       setSaving(false)
     }
-  }, [user?.uid, setProfile, showToast])
+  }, [user?.uid, setProfile])
 
   const queueSave = useCallback(
     (updates: Partial<User>) => {
@@ -147,7 +143,6 @@ export default function SettingsScreen() {
   flushRef.current = flush
   useEffect(
     () => () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current)
       if (saveTimer.current) {
         clearTimeout(saveTimer.current)
         void flushRef.current()
@@ -168,10 +163,12 @@ export default function SettingsScreen() {
       : [...sports, value]
     if (next.length === 0) {
       // Must keep at least one active sport.
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      toast.warning('Keep at least one sport', {
+        description: 'FORMA needs a sport to plan and score your training.',
+      })
       return
     }
-    Haptics.selectionAsync()
+    haptics.selection()
     setSports(next)
     queueSave({ sports: next })
   }
@@ -188,7 +185,7 @@ export default function SettingsScreen() {
   }
 
   const onSelectExperience = (value: ExperienceLevel) => {
-    Haptics.selectionAsync()
+    haptics.selection()
     setExperience(value)
     queueSave({
       experienceLevel: value,
@@ -209,7 +206,7 @@ export default function SettingsScreen() {
 
   const onToggleUnit = (unit: WeightUnit) => {
     if (unit === weightUnit) return
-    Haptics.selectionAsync()
+    haptics.selection()
     const num = parseFloat(weightInput)
     if (!Number.isNaN(num)) {
       const converted = unit === 'lb' ? num * LB_PER_KG : num / LB_PER_KG
@@ -269,7 +266,7 @@ export default function SettingsScreen() {
 
   // --- Destructive actions ---
   const handleLogout = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    haptics.warning()
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log Out', style: 'destructive', onPress: () => void signOut() },
@@ -280,9 +277,8 @@ export default function SettingsScreen() {
     const uid = user?.uid
     if (!uid) return
     await clearTrainingData(uid)
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
     setClearOpen(false)
-    showToast('All training data cleared')
+    toast.warning('All training data cleared')
   }
 
   const handleDeleteAccount = async () => {
@@ -307,14 +303,14 @@ export default function SettingsScreen() {
   const initial = (displayName.trim().charAt(0) || '?').toUpperCase()
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.fieldBg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          contentContainerStyle={{ padding: SPACING.base, paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -329,8 +325,10 @@ export default function SettingsScreen() {
           {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 30, fontWeight: '800', color: COLORS.ink }}>Settings</Text>
-              <Text style={{ marginTop: 4, fontSize: 14, color: COLORS.muted }}>
+              <Text style={{ fontSize: TYPE.display, fontWeight: '800', color: COLORS.ink }}>
+                Settings
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: TYPE.body, color: COLORS.muted }}>
                 Manage your profile and training preferences
               </Text>
             </View>
@@ -358,372 +356,382 @@ export default function SettingsScreen() {
             ) : null}
           </View>
 
-          {/* Profile */}
-          <Card title="Profile">
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-              <View
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 28,
-                  backgroundColor: COLORS.teal,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 14,
-                }}
-              >
-                <Text style={{ color: COLORS.white, fontSize: 24, fontWeight: '800' }}>
-                  {initial}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted }}>
-                  DISPLAY NAME
-                </Text>
-                <TextInput
-                  value={displayName}
-                  onChangeText={onChangeName}
-                  placeholder="Your name"
-                  placeholderTextColor={COLORS.subtle}
+          {/* Until the profile resolves, show its shape rather than a screen
+              full of `?? default` values that look exactly like real settings. */}
+          {!profile ? (
+            <View style={{ marginTop: SPACING.lg }}>
+              <SettingsSkeleton />
+            </View>
+          ) : (
+            <>
+            {/* Profile */}
+            <Card title="Profile">
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <View
                   style={{
-                    marginTop: 2,
-                    fontSize: 18,
-                    fontWeight: '700',
-                    color: COLORS.ink,
-                    paddingVertical: 2,
-                  }}
-                />
-              </View>
-            </View>
-
-            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted }}>EMAIL</Text>
-            <View
-              style={{
-                marginTop: 4,
-                backgroundColor: COLORS.fieldBg,
-                borderRadius: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-              }}
-            >
-              <Text style={{ fontSize: 15, color: COLORS.subtle }}>{email || '—'}</Text>
-            </View>
-            <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.subtle }}>
-              Contact support to change your email.
-            </Text>
-          </Card>
-
-          {/* Training */}
-          <Card title="Training">
-            <FieldTitle>Active Sports</FieldTitle>
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                justifyContent: 'space-between',
-              }}
-            >
-              {SPORT_OPTIONS.map((opt) => {
-                const selected = sports.includes(opt.value)
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => toggleSport(opt.value)}
-                    style={{
-                      width: '48%',
-                      marginBottom: 12,
-                      borderRadius: 14,
-                      borderWidth: 2,
-                      borderColor: selected ? opt.accent : COLORS.border,
-                      backgroundColor: selected ? opt.accent : COLORS.white,
-                      paddingVertical: 16,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Text style={{ fontSize: 26 }}>{opt.icon}</Text>
-                    <Text
-                      style={{
-                        marginTop: 6,
-                        fontSize: 13,
-                        fontWeight: '700',
-                        color: selected ? COLORS.white : COLORS.ink,
-                      }}
-                    >
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                )
-              })}
-            </View>
-
-            <FieldTitle style={{ marginTop: 10 }}>Weekly Budget</FieldTitle>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ fontSize: 44, fontWeight: '800', color: COLORS.teal }}>{budget}</Text>
-              <Text style={{ fontSize: 13, color: COLORS.muted, marginTop: -4 }}>hours / week</Text>
-              <View
-                style={{
-                  marginTop: 8,
-                  backgroundColor: COLORS.tealSoft,
-                  borderRadius: 999,
-                  paddingHorizontal: 12,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text style={{ color: COLORS.tealDark, fontWeight: '700', fontSize: 13 }}>
-                  {budgetTier.label}
-                </Text>
-              </View>
-            </View>
-            <Slider
-              style={{ width: '100%', height: 40, marginTop: 12 }}
-              minimumValue={BUDGET_MIN}
-              maximumValue={BUDGET_MAX}
-              step={1}
-              value={budget}
-              onValueChange={onBudgetChange}
-              minimumTrackTintColor={COLORS.teal}
-              maximumTrackTintColor={COLORS.border}
-              thumbTintColor={COLORS.teal}
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {['Casual', 'Active', 'Serious', 'Elite'].map((label) => (
-                <Text key={label} style={{ fontSize: 11, color: COLORS.subtle }}>
-                  {label}
-                </Text>
-              ))}
-            </View>
-
-            <FieldTitle style={{ marginTop: 20 }}>Experience Level</FieldTitle>
-            {EXPERIENCE_OPTIONS.map((opt) => {
-              const active = experience === opt.value
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => onSelectExperience(opt.value)}
-                  style={{
-                    flexDirection: 'row',
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
+                    backgroundColor: COLORS.teal,
                     alignItems: 'center',
-                    borderRadius: 14,
-                    borderWidth: 2,
-                    borderColor: active ? COLORS.teal : COLORS.border,
-                    backgroundColor: active ? COLORS.tealSoft : COLORS.white,
-                    padding: 14,
-                    marginBottom: 10,
+                    justifyContent: 'center',
+                    marginRight: 14,
                   }}
                 >
-                  <Text style={{ fontSize: 26, marginRight: 12 }}>{opt.icon}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: 15,
-                        fontWeight: '800',
-                        color: active ? COLORS.tealDark : COLORS.ink,
-                      }}
-                    >
-                      {opt.label}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 1 }}>
-                      {opt.description}
-                    </Text>
-                  </View>
-                  {active ? (
-                    <Text style={{ fontSize: 18, color: COLORS.teal, marginLeft: 6 }}>✓</Text>
-                  ) : null}
-                </Pressable>
-              )
-            })}
-          </Card>
+                  <Text style={{ color: COLORS.white, fontSize: 24, fontWeight: '800' }}>
+                    {initial}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted }}>
+                    DISPLAY NAME
+                  </Text>
+                  <TextInput
+                    value={displayName}
+                    onChangeText={onChangeName}
+                    placeholder="Your name"
+                    placeholderTextColor={COLORS.subtle}
+                    style={{
+                      marginTop: 2,
+                      fontSize: 18,
+                      fontWeight: '700',
+                      color: COLORS.ink,
+                      paddingVertical: 2,
+                    }}
+                  />
+                </View>
+              </View>
 
-          {/* Body metrics */}
-          <Card title="Body Metrics">
-            <FieldTitle>Weight</FieldTitle>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted }}>EMAIL</Text>
               <View
                 style={{
-                  flex: 1,
+                  marginTop: 4,
                   backgroundColor: COLORS.fieldBg,
-                  borderRadius: 12,
-                  borderWidth: 1.5,
-                  borderColor: COLORS.border,
-                  paddingHorizontal: 14,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
                 }}
               >
-                <TextInput
-                  value={weightInput}
-                  onChangeText={onChangeWeight}
-                  keyboardType="number-pad"
-                  placeholder="70"
-                  placeholderTextColor={COLORS.subtle}
-                  style={{ height: 50, fontSize: 18, color: COLORS.ink }}
-                />
+                <Text style={{ fontSize: 15, color: COLORS.subtle }}>{email || '—'}</Text>
               </View>
+              <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.subtle }}>
+                Contact support to change your email.
+              </Text>
+            </Card>
+
+            {/* Training */}
+            <Card title="Training">
+              <FieldTitle>Active Sports</FieldTitle>
               <View
                 style={{
                   flexDirection: 'row',
-                  marginLeft: 12,
-                  backgroundColor: COLORS.fieldBg,
-                  borderRadius: 12,
-                  borderWidth: 1.5,
-                  borderColor: COLORS.border,
-                  padding: 3,
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
                 }}
               >
-                {(['kg', 'lb'] as const).map((u) => {
-                  const active = weightUnit === u
+                {SPORT_OPTIONS.map((opt) => {
+                  const selected = sports.includes(opt.value)
                   return (
                     <Pressable
-                      key={u}
-                      onPress={() => onToggleUnit(u)}
+                      key={opt.value}
+                      onPress={() => toggleSport(opt.value)}
                       style={{
-                        paddingHorizontal: 16,
-                        paddingVertical: 10,
-                        borderRadius: 9,
-                        backgroundColor: active ? COLORS.teal : 'transparent',
+                        width: '48%',
+                        marginBottom: 12,
+                        borderRadius: 14,
+                        borderWidth: 2,
+                        borderColor: selected ? opt.accent : COLORS.border,
+                        backgroundColor: selected ? opt.accent : COLORS.white,
+                        paddingVertical: 16,
+                        alignItems: 'center',
                       }}
                     >
+                      <Text style={{ fontSize: 26 }}>{opt.icon}</Text>
                       <Text
                         style={{
-                          fontSize: 14,
+                          marginTop: 6,
+                          fontSize: 13,
                           fontWeight: '700',
-                          color: active ? COLORS.white : COLORS.muted,
+                          color: selected ? COLORS.white : COLORS.ink,
                         }}
                       >
-                        {u}
+                        {opt.label}
                       </Text>
                     </Pressable>
                   )
                 })}
               </View>
-            </View>
-            <Text style={{ marginTop: 8, fontSize: 12, color: COLORS.subtle }}>
-              Used to estimate calories for future sessions.
-            </Text>
-          </Card>
 
-          {/* Conflict detection */}
-          <Card title="Conflict Detection">
-            <FieldTitle>Conflict Sensitivity</FieldTitle>
-            <ConflictSensitivity value={sensitivity} onChange={onSelectSensitivity} />
-
-            <View style={{ height: 1, backgroundColor: COLORS.border, marginTop: 4, marginBottom: 4 }} />
-
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                navigation.navigate('ConflictHistory')
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Open conflict history"
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingVertical: 14,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, marginRight: 10 }}>🗂️</Text>
-                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.ink }}>
-                  Conflict History
-                </Text>
+              <FieldTitle style={{ marginTop: 10 }}>Weekly Budget</FieldTitle>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 44, fontWeight: '800', color: COLORS.teal }}>{budget}</Text>
+                <Text style={{ fontSize: 13, color: COLORS.muted, marginTop: -4 }}>hours / week</Text>
+                <View
+                  style={{
+                    marginTop: 8,
+                    backgroundColor: COLORS.tealSoft,
+                    borderRadius: 999,
+                    paddingHorizontal: 12,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: COLORS.tealDark, fontWeight: '700', fontSize: 13 }}>
+                    {budgetTier.label}
+                  </Text>
+                </View>
               </View>
-              <Text style={{ fontSize: 22, color: COLORS.subtle }}>›</Text>
-            </Pressable>
-          </Card>
+              <Slider
+                style={{ width: '100%', height: 40, marginTop: 12 }}
+                minimumValue={BUDGET_MIN}
+                maximumValue={BUDGET_MAX}
+                step={1}
+                value={budget}
+                onValueChange={onBudgetChange}
+                minimumTrackTintColor={COLORS.teal}
+                maximumTrackTintColor={COLORS.border}
+                thumbTintColor={COLORS.teal}
+              />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                {['Casual', 'Active', 'Serious', 'Elite'].map((label) => (
+                  <Text key={label} style={{ fontSize: 11, color: COLORS.subtle }}>
+                    {label}
+                  </Text>
+                ))}
+              </View>
 
-          {/* Sport interaction matrix (collapsible) */}
-          <Card>
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                setMatrixOpen((v) => !v)
-              }}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.ink }}>
-                Sport Interactions
-              </Text>
-              <Text style={{ fontSize: 15, color: COLORS.subtle }}>{matrixOpen ? '▲' : '▼'}</Text>
-            </Pressable>
+              <FieldTitle style={{ marginTop: 20 }}>Experience Level</FieldTitle>
+              {EXPERIENCE_OPTIONS.map((opt) => {
+                const active = experience === opt.value
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => onSelectExperience(opt.value)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      borderRadius: 14,
+                      borderWidth: 2,
+                      borderColor: active ? COLORS.teal : COLORS.border,
+                      backgroundColor: active ? COLORS.tealSoft : COLORS.white,
+                      padding: 14,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ fontSize: 26, marginRight: 12 }}>{opt.icon}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: '800',
+                          color: active ? COLORS.tealDark : COLORS.ink,
+                        }}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 1 }}>
+                        {opt.description}
+                      </Text>
+                    </View>
+                    {active ? (
+                      <Text style={{ fontSize: 18, color: COLORS.teal, marginLeft: 6 }}>✓</Text>
+                    ) : null}
+                  </Pressable>
+                )
+              })}
+            </Card>
 
-            {matrixOpen ? (
-              <Animated.View entering={FadeInDown.duration(180)} style={{ marginTop: 12 }}>
-                <SportInteractionMatrix
-                  sports={sports}
-                  interactions={interactions}
-                  onChange={onSetInteraction}
-                />
-              </Animated.View>
-            ) : null}
-          </Card>
+            {/* Body metrics */}
+            <Card title="Body Metrics">
+              <FieldTitle>Weight</FieldTitle>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: COLORS.fieldBg,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: COLORS.border,
+                    paddingHorizontal: 14,
+                  }}
+                >
+                  <TextInput
+                    value={weightInput}
+                    onChangeText={onChangeWeight}
+                    keyboardType="number-pad"
+                    placeholder="70"
+                    placeholderTextColor={COLORS.subtle}
+                    style={{ height: 50, fontSize: 18, color: COLORS.ink }}
+                  />
+                </View>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    marginLeft: 12,
+                    backgroundColor: COLORS.fieldBg,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: COLORS.border,
+                    padding: 3,
+                  }}
+                >
+                  {(['kg', 'lb'] as const).map((u) => {
+                    const active = weightUnit === u
+                    return (
+                      <Pressable
+                        key={u}
+                        onPress={() => onToggleUnit(u)}
+                        style={{
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          borderRadius: 9,
+                          backgroundColor: active ? COLORS.teal : 'transparent',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 14,
+                            fontWeight: '700',
+                            color: active ? COLORS.white : COLORS.muted,
+                          }}
+                        >
+                          {u}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </View>
+              <Text style={{ marginTop: 8, fontSize: 12, color: COLORS.subtle }}>
+                Used to estimate calories for future sessions.
+              </Text>
+            </Card>
 
-          {/* Notifications */}
-          <Card title="Notifications">
-            <NotificationSettings
-              value={notifications}
-              onChange={onChangeNotifications}
-              onToast={showToast}
-            />
-          </Card>
+            {/* Conflict detection */}
+            <Card title="Conflict Detection">
+              <FieldTitle>Conflict Sensitivity</FieldTitle>
+              <ConflictSensitivity value={sensitivity} onChange={onSelectSensitivity} />
 
-          {/* Data */}
-          <Card title="Data">
-            <Pressable
-              onPress={() => Alert.alert('Export Data', 'Data export is coming soon.')}
-              style={{ paddingVertical: 12 }}
-            >
-              <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.teal }}>
-                Export Data
-              </Text>
-            </Pressable>
-            <View style={{ height: 1, backgroundColor: COLORS.border }} />
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-                setClearOpen(true)
-              }}
-              style={{ paddingVertical: 12 }}
-            >
-              <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.danger }}>
-                Clear All Training Data
-              </Text>
-            </Pressable>
-          </Card>
+              <View style={{ height: 1, backgroundColor: COLORS.border, marginTop: 4, marginBottom: 4 }} />
 
-          {/* Account */}
-          <Card title="Account">
-            <Pressable
-              onPress={handleLogout}
-              style={{
-                height: 50,
-                borderRadius: 12,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 1.5,
-                borderColor: COLORS.danger,
-                backgroundColor: COLORS.white,
-              }}
-            >
-              <Text style={{ color: COLORS.danger, fontSize: 16, fontWeight: '700' }}>
-                Log Out
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-                setDeleteOpen(true)
-              }}
-              style={{ alignSelf: 'center', marginTop: 14, padding: 6 }}
-            >
-              <Text style={{ fontSize: 13.5, fontWeight: '700', color: COLORS.danger }}>
-                Delete Account
-              </Text>
-            </Pressable>
-          </Card>
+              <Pressable
+                onPress={() => {
+                  haptics.light()
+                  navigation.navigate('ConflictHistory')
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Open conflict history"
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingVertical: 14,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 16, marginRight: 10 }}>🗂️</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.ink }}>
+                    Conflict History
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 22, color: COLORS.subtle }}>›</Text>
+              </Pressable>
+            </Card>
+
+            {/* Sport interaction matrix (collapsible) */}
+            <Card>
+              <Pressable
+                onPress={() => {
+                  haptics.light()
+                  setMatrixOpen((v) => !v)
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.ink }}>
+                  Sport Interactions
+                </Text>
+                <Text style={{ fontSize: 15, color: COLORS.subtle }}>{matrixOpen ? '▲' : '▼'}</Text>
+              </Pressable>
+
+              {matrixOpen ? (
+                <Animated.View entering={FadeInDown.duration(180)} style={{ marginTop: 12 }}>
+                  <SportInteractionMatrix
+                    sports={sports}
+                    interactions={interactions}
+                    onChange={onSetInteraction}
+                  />
+                </Animated.View>
+              ) : null}
+            </Card>
+
+            {/* Notifications */}
+            <Card title="Notifications">
+              <NotificationSettings
+                value={notifications}
+                onChange={onChangeNotifications}
+                onToast={toast.info}
+              />
+            </Card>
+
+            {/* Data */}
+            <Card title="Data">
+              <Pressable
+                onPress={() => Alert.alert('Export Data', 'Data export is coming soon.')}
+                style={{ paddingVertical: 12 }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.teal }}>
+                  Export Data
+                </Text>
+              </Pressable>
+              <View style={{ height: 1, backgroundColor: COLORS.border }} />
+              <Pressable
+                onPress={() => {
+                  haptics.medium()
+                  setClearOpen(true)
+                }}
+                style={{ paddingVertical: 12 }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.danger }}>
+                  Clear All Training Data
+                </Text>
+              </Pressable>
+            </Card>
+
+            {/* Account */}
+            <Card title="Account">
+              <Pressable
+                onPress={handleLogout}
+                style={{
+                  height: 50,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1.5,
+                  borderColor: COLORS.danger,
+                  backgroundColor: COLORS.white,
+                }}
+              >
+                <Text style={{ color: COLORS.danger, fontSize: 16, fontWeight: '700' }}>
+                  Log Out
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  haptics.medium()
+                  setDeleteOpen(true)
+                }}
+                style={{ alignSelf: 'center', marginTop: 14, padding: 6 }}
+              >
+                <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: COLORS.danger }}>
+                  Delete Account
+                </Text>
+              </Pressable>
+            </Card>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -749,29 +757,6 @@ export default function SettingsScreen() {
         onClose={() => setDeleteOpen(false)}
       />
 
-      {toast ? (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          exiting={FadeOut.duration(180)}
-          style={{
-            position: 'absolute',
-            left: 16,
-            right: 16,
-            bottom: 24,
-            backgroundColor: COLORS.ink,
-            borderRadius: 14,
-            paddingVertical: 14,
-            paddingHorizontal: 18,
-            elevation: 8,
-          }}
-        >
-          <Text
-            style={{ color: COLORS.white, fontSize: 14, fontWeight: '700', textAlign: 'center' }}
-          >
-            {toast}
-          </Text>
-        </Animated.View>
-      ) : null}
     </SafeAreaView>
   )
 }
@@ -781,25 +766,11 @@ export default function SettingsScreen() {
 /* ------------------------------------------------------------------ */
 function Card({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <View
-      style={{
-        backgroundColor: COLORS.white,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        padding: 16,
-        marginTop: 16,
-        shadowColor: '#000',
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 1,
-      }}
-    >
+    <View style={[CARD, { marginTop: SPACING.base }]}>
       {title ? (
         <Text
           style={{
-            fontSize: 12,
+            fontSize: TYPE.micro,
             fontWeight: '800',
             letterSpacing: 1,
             color: COLORS.muted,

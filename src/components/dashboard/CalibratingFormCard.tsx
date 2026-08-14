@@ -171,7 +171,7 @@ export default function CalibratingFormCard({
               marginBottom: 6,
             }}
           >
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#FFFFFF' }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
               {logged} of {target} sessions logged
             </Text>
           </View>

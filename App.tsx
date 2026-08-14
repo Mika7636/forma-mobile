@@ -1,9 +1,13 @@
 import './global.css'
 
 import { NavigationContainer } from '@react-navigation/native'
+import Constants, { ExecutionEnvironment } from 'expo-constants'
 import { StatusBar } from 'expo-status-bar'
+import * as SplashScreen from 'expo-splash-screen'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import OfflineBanner from './src/components/ui/OfflineBanner'
+import ToastContainer from './src/components/ui/ToastContainer'
 import { db } from './src/config/firebase'
 import { useNotificationObserver } from './src/hooks/useNotificationObserver'
 import { navigationRef } from './src/navigation/navigationRef'
@@ -19,6 +23,24 @@ console.log('[FORMA] Firebase initialized — Firestore project:', db.app.option
 // in the foreground instead of being swallowed silently.
 configureNotificationHandler()
 
+// Module scope, per the expo-splash-screen docs — by the time a component's
+// effect runs, the splash has already auto-hidden and the flash has happened.
+// RootNavigator is what eventually hides it, once auth has actually resolved.
+// The rejection is swallowed: on a fast reload the splash can already be gone,
+// which is harmless.
+SplashScreen.preventAutoHideAsync().catch(() => {})
+
+// Belt-and-braces for the native side. The JS BrandSplash overlay does the fade
+// the user actually sees; this stops the native layer cutting out underneath it
+// in a dev/production build.
+//
+// Expo Go can't customise its splash at all and warns on every launch if you
+// try, so skip it there — the warning is pure noise during a demo, and there's
+// nothing to configure anyway.
+if (Constants.executionEnvironment !== ExecutionEnvironment.StoreClient) {
+  SplashScreen.setOptions({ duration: 300, fade: true })
+}
+
 export default function App() {
   // Routes notification taps. Lives here (above the navigator) because it needs
   // to catch a cold start where the app was launched by the notification.
@@ -30,6 +52,16 @@ export default function App() {
         <NavigationContainer ref={navigationRef}>
           <RootNavigator />
         </NavigationContainer>
+
+        {/* Both of these are app-global on purpose. Mounted here — outside the
+            navigator — they survive every screen change, so a toast fired just
+            before a navigation still lands, and the offline strip doesn't have
+            to be re-implemented on each screen. */}
+        <OfflineBanner />
+        <ToastContainer />
+
+        {/* Per-screen <StatusBar> components override this; it's the default for
+            anything that doesn't declare one. */}
         <StatusBar style="dark" />
       </SafeAreaProvider>
     </GestureHandlerRootView>

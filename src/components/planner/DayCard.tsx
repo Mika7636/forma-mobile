@@ -4,7 +4,7 @@
 import { useMemo } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import Animated, { FadeInRight } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import SessionChip from './SessionChip'
 import { COLORS } from '../../constants/theme'
 import { severityStyle, worstSeverity, type ConflictSeverity } from '../../constants/conflictColors'
@@ -135,7 +135,7 @@ export default function DayCard({
             >
               <Text
                 style={{
-                  fontSize: 9.5,
+                  fontSize: 10,
                   fontWeight: '800',
                   letterSpacing: 0.8,
                   color: COLORS.tealDark,
@@ -149,7 +149,7 @@ export default function DayCard({
           {hasConflict ? (
             <Pressable
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                haptics.light()
                 onConflictPress(conflicts)
               }}
               hitSlop={10}
@@ -202,7 +202,7 @@ export default function DayCard({
           on a day that already has training on it. */}
       <Pressable
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+          haptics.light()
           onAddSession(day)
         }}
         accessibilityLabel={`Add a session on ${day.dayName} ${day.dayNumber}`}

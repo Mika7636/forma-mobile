@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { LayoutChangeEvent, Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
-import { COLORS } from '../../constants/theme'
+import { CARD, COLORS } from '../../constants/theme'
 
 interface ChartCardProps {
   title: string
@@ -48,7 +48,7 @@ export default function ChartCard({
         <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.ink }}>{title}</Text>
       </View>
       {subtitle ? (
-        <Text style={{ marginTop: 2, fontSize: 12.5, color: COLORS.muted }}>{subtitle}</Text>
+        <Text style={{ marginTop: 2, fontSize: 13, color: COLORS.muted }}>{subtitle}</Text>
       ) : null}
 
       {legend ? <View style={{ marginTop: 12 }}>{legend}</View> : null}
@@ -60,15 +60,5 @@ export default function ChartCard({
   )
 }
 
-const card = {
-  backgroundColor: COLORS.white,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  padding: 16,
-  shadowColor: '#000',
-  shadowOpacity: 0.05,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 3 },
-  elevation: 2,
-} as const
+/** The app's standard card — radius, padding, border and shadow all shared. */
+const card = CARD

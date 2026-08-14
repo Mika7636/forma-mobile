@@ -4,12 +4,11 @@
 // Everything here is live. The sessions store holds a Firestore snapshot
 // listener, which feeds the metrics store, so a session logged on the Log tab
 // (or on the web app, or another device) lands here with no refresh.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
+import { useCallback, useMemo, useState } from 'react'
+import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeIn } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
 import CalibratingFormCard from '../components/dashboard/CalibratingFormCard'
 import ConflictBanner from '../components/dashboard/ConflictBanner'
 import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
@@ -20,12 +19,15 @@ import MetricGrid from '../components/dashboard/MetricGrid'
 import RecentActivity from '../components/dashboard/RecentActivity'
 import ZoneDistributionChart from '../components/dashboard/ZoneDistributionChart'
 import SessionDetailModal from '../components/session/SessionDetailModal'
-import { COLORS } from '../constants/theme'
+import PressableScale from '../components/ui/PressableScale'
+import { COLORS, RADIUS, SPACING, TYPE } from '../constants/theme'
 import { getCalibrationState } from '../utils/calibration'
+import { haptics } from '../utils/haptics'
 import { useConflicts } from '../hooks/useConflicts'
 import { useMetrics } from '../hooks/useMetrics'
 import { useAuthStore } from '../store/authStore'
 import { useMetricsStore } from '../store/metricsStore'
+import { toast } from '../store/toastStore'
 import type { DashboardScreenProps } from '../navigation/types'
 import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
@@ -67,25 +69,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const [refreshing, setRefreshing] = useState(false)
   const [showAllConflicts, setShowAllConflicts] = useState(false)
   const [detailConflict, setDetailConflict] = useState<Conflict | null>(null)
-  // See RecentActivity: NativeWind's JSX wrapper drops a function-form `style`,
-  // so press feedback is tracked explicitly and the style stays an object.
-  const [logPressed, setLogPressed] = useState(false)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current)
-    },
-    [],
-  )
-
-  const showToast = useCallback((message: string) => {
-    setToast(message)
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 2200)
-  }, [])
 
   const firstName = displayName?.split(' ')[0] ?? 'Athlete'
   // Recomputed per render rather than memoised on mount: the screen re-renders
@@ -112,7 +96,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const visibleConflicts = showAllConflicts ? sortedConflicts : sortedConflicts.slice(0, 1)
 
   const goToLog = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     navigation.navigate('Log')
   }, [navigation])
 
@@ -121,7 +104,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   }, [])
 
   const handleRefresh = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    haptics.medium()
     setRefreshing(true)
     // The snapshot listener means the session data is already current, so this
     // is a safety net rather than a fetch. What it does do genuinely: recompute
@@ -157,28 +140,27 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.ink }}>
+            <Text style={{ fontSize: TYPE.heading, fontWeight: '800', color: COLORS.ink }}>
               {greeting}, {firstName}
             </Text>
-            <Text style={{ marginTop: 3, fontSize: 13.5, color: COLORS.muted }}>
+            <Text style={{ marginTop: 3, fontSize: TYPE.body, color: COLORS.muted }}>
               {todayLabel}
             </Text>
-            <Text style={{ marginTop: 1, fontSize: 13, fontWeight: '600', color: COLORS.teal }}>
+            <Text style={{ marginTop: 2, fontSize: TYPE.small, fontWeight: '600', color: COLORS.teal }}>
               {sessionsLabel}
             </Text>
           </View>
 
-          <Pressable
+          <PressableScale
             onPress={goToLog}
-            onPressIn={() => setLogPressed(true)}
-            onPressOut={() => setLogPressed(false)}
+            haptic="medium"
             accessibilityRole="button"
             accessibilityLabel="Log a session"
             style={{
               width: 46,
               height: 46,
-              borderRadius: 23,
-              backgroundColor: logPressed ? COLORS.tealDark : COLORS.teal,
+              borderRadius: RADIUS.pill,
+              backgroundColor: COLORS.teal,
               alignItems: 'center',
               justifyContent: 'center',
               shadowColor: COLORS.teal,
@@ -191,22 +173,22 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             <Text style={{ fontSize: 26, fontWeight: '700', color: COLORS.white, marginTop: -3 }}>
               +
             </Text>
-          </Pressable>
+          </PressableScale>
         </View>
 
         {/* Couldn't reach Firestore — say so rather than implying zero training. */}
         {error ? (
           <View
             style={{
-              marginTop: 16,
-              backgroundColor: '#FEF2F2',
+              marginTop: SPACING.base,
+              backgroundColor: COLORS.dangerSoft,
               borderWidth: 1,
-              borderColor: '#FECACA',
-              borderRadius: 12,
-              padding: 12,
+              borderColor: COLORS.dangerBorder,
+              borderRadius: RADIUS.md,
+              padding: SPACING.md,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#B91C1C' }}>
+            <Text style={{ fontSize: TYPE.small, fontWeight: '600', color: COLORS.dangerDeep }}>
               Couldn&apos;t load your latest sessions. Pull down to retry.
             </Text>
           </View>
@@ -275,7 +257,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
         visible={selectedSession != null}
         session={selectedSession}
         onClose={() => setSelectedSession(null)}
-        onDeleted={() => showToast('Session deleted')}
+        onDeleted={() => toast.success('Session deleted')}
       />
 
       <ConflictDetailSheet
@@ -287,33 +269,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           setDetailConflict(null)
         }}
       />
-
-      {toast ? (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          style={{
-            position: 'absolute',
-            left: 16,
-            right: 16,
-            bottom: 24,
-            backgroundColor: COLORS.ink,
-            borderRadius: 14,
-            paddingVertical: 14,
-            paddingHorizontal: 18,
-            shadowColor: '#000',
-            shadowOpacity: 0.2,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
-          }}
-        >
-          <Text
-            style={{ color: COLORS.white, fontSize: 14, fontWeight: '700', textAlign: 'center' }}
-          >
-            {toast}
-          </Text>
-        </Animated.View>
-      ) : null}
     </SafeAreaView>
   )
 }

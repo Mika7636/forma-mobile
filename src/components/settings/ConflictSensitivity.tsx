@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 import type { ConflictSensitivity as Sensitivity } from '../../types/user'
 
@@ -44,7 +44,7 @@ export default function ConflictSensitivity({ value, onChange }: ConflictSensiti
             key={card.value}
             onPress={() => {
               if (active) return
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+              haptics.light()
               onChange(card.value)
             }}
             accessibilityRole="radio"
@@ -73,7 +73,7 @@ export default function ConflictSensitivity({ value, onChange }: ConflictSensiti
               >
                 {card.label}
               </Text>
-              <Text style={{ fontSize: 12.5, color: COLORS.muted, marginTop: 2, lineHeight: 17 }}>
+              <Text style={{ fontSize: 13, color: COLORS.muted, marginTop: 2, lineHeight: 17 }}>
                 {card.description}
               </Text>
             </View>

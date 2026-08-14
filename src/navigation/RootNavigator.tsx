@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
-import { ActivityIndicator, View } from 'react-native'
-import FormaLogo from '../components/ui/FormaLogo'
+import { useCallback, useEffect, useState } from 'react'
+import { View } from 'react-native'
+import * as SplashScreen from 'expo-splash-screen'
+import BrandSplash from '../components/ui/BrandSplash'
 import { COLORS } from '../constants/theme'
 import { useNotificationSync } from '../hooks/useNotificationSync'
 import NotificationPermissionScreen from '../screens/NotificationPermissionScreen'
@@ -9,28 +10,15 @@ import { useAuthStore } from '../store/authStore'
 import AppStack from './AppStack'
 import AuthStack from './AuthStack'
 
-/** Centered FORMA splash shown while the persisted session is restoring. */
-function SplashScreen() {
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: COLORS.white,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <FormaLogo />
-      <ActivityIndicator color={COLORS.teal} style={{ marginTop: 24 }} />
-    </View>
-  )
-}
-
 export default function RootNavigator() {
   const initialize = useAuthStore((s) => s.initialize)
   const loading = useAuthStore((s) => s.loading)
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
+
+  // Once the branded overlay has finished fading we stop rendering it entirely,
+  // rather than leaving a transparent full-screen view over the app.
+  const [splashFinished, setSplashFinished] = useState(false)
 
   // Attach the Firebase auth-state listener once. It restores a persisted
   // session (AsyncStorage) and loads the Firestore profile before flipping
@@ -45,8 +33,43 @@ export default function RootNavigator() {
   // actually made a notification choice.
   useNotificationSync()
 
-  if (loading) return <SplashScreen />
+  // Hand off from the native splash to <BrandSplash> the moment we've laid out
+  // a frame containing it. Both draw the same mark on the same white at the same
+  // size, so there's nothing to see at the seam — and because the JS overlay is
+  // already on screen, hiding the native one can't expose a blank frame.
+  const handleLayout = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => {})
+  }, [])
 
+  return (
+    <View style={{ flex: 1, backgroundColor: COLORS.white }} onLayout={handleLayout}>
+      {loading ? (
+        // Nothing is decided yet — deliberately render no navigator at all
+        // rather than mounting AuthStack and swapping it out a frame later.
+        <View style={{ flex: 1, backgroundColor: COLORS.white }} />
+      ) : (
+        <RootContent user={user} profile={profile} />
+      )}
+
+      {splashFinished ? null : (
+        // `ready` is auth having resolved — the one thing that would otherwise
+        // cause a visible flash (Login appearing, then vanishing as the stored
+        // session restores). Screen-level data arrives behind skeletons, which
+        // is a designed state rather than an empty one, so it isn't gated here.
+        <BrandSplash ready={!loading} onFinished={() => setSplashFinished(true)} />
+      )}
+    </View>
+  )
+}
+
+/** The auth/onboarding/app gate, split out so the splash overlay above stays readable. */
+function RootContent({
+  user,
+  profile,
+}: {
+  user: ReturnType<typeof useAuthStore.getState>['user']
+  profile: ReturnType<typeof useAuthStore.getState>['profile']
+}) {
   if (!user) return <AuthStack />
 
   // Logged in but hasn't finished onboarding (or the profile couldn't load) →

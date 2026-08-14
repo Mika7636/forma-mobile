@@ -11,7 +11,7 @@ import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import * as Device from 'expo-device'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../utils/haptics'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import PrimaryButton from '../components/ui/PrimaryButton'
 import { COLORS } from '../constants/theme'
@@ -79,14 +79,14 @@ export default function NotificationPermissionScreen() {
     try {
       const granted = await requestPermissions()
       if (granted) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        haptics.success()
         setDenied(false)
         commit(true)
         return
       }
       // Denied at the OS level — keep prefs off and offer the settings escape
       // hatch. The user can still skip; Settings can enable it later.
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      haptics.warning()
       setDenied(true)
     } catch {
       setDenied(true)
@@ -100,7 +100,7 @@ export default function NotificationPermissionScreen() {
 
   const handleSkip = () => {
     if (busy) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     commit(false)
   }
 
@@ -140,7 +140,7 @@ export default function NotificationPermissionScreen() {
           <Text
             style={{
               marginTop: 10,
-              fontSize: 15.5,
+              fontSize: 16,
               lineHeight: 22,
               color: COLORS.muted,
               textAlign: 'center',
@@ -176,7 +176,7 @@ export default function NotificationPermissionScreen() {
                     {perk.title}
                   </Text>
                   <Text
-                    style={{ marginTop: 2, fontSize: 13.5, lineHeight: 19, color: COLORS.muted }}
+                    style={{ marginTop: 2, fontSize: 14, lineHeight: 19, color: COLORS.muted }}
                   >
                     {perk.body}
                   </Text>
@@ -219,7 +219,7 @@ export default function NotificationPermissionScreen() {
                   borderColor: '#FCD34D',
                 }}
               >
-                <Text style={{ fontSize: 14.5, fontWeight: '700', color: '#B45309' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#B45309' }}>
                   Open System Settings
                 </Text>
               </Pressable>
@@ -250,7 +250,7 @@ export default function NotificationPermissionScreen() {
             <Text
               style={{
                 marginTop: 14,
-                fontSize: 11.5,
+                fontSize: 12,
                 color: COLORS.subtle,
                 textAlign: 'center',
               }}

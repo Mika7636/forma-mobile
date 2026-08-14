@@ -9,7 +9,8 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import * as Haptics from 'expo-haptics'
+import { StatusBar } from 'expo-status-bar'
+import { haptics } from '../utils/haptics'
 import FormInput from '../components/ui/FormInput'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
@@ -52,18 +53,18 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     const validationError = validate()
     if (validationError) {
       useAuthStore.setState({ error: validationError })
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      haptics.error()
       return
     }
 
     setSubmitting(true)
     try {
       await signUp(email, password, name)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      haptics.success()
       // Spec: do NOT auto-login. Send the user to Login with a success banner.
       navigation.navigate('Login', { registered: true })
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      haptics.error()
     } finally {
       setSubmitting(false)
     }
@@ -71,6 +72,8 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
+      {/* White page — dark status-bar content is what stays legible. */}
+      <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}

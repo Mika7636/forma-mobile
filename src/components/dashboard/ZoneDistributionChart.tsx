@@ -83,7 +83,7 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
           <Text
             style={{
               marginTop: 2,
-              fontSize: 11.5,
+              fontSize: 12,
               color: COLORS.subtle,
               textAlign: 'center',
               paddingHorizontal: 24,

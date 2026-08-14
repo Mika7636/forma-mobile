@@ -1,6 +1,6 @@
 import { Modal, Pressable, Text, View } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 
 interface FormInfoModalProps {
@@ -69,7 +69,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
 
           <Text
             style={{
-              fontSize: 14.5,
+              fontSize: 15,
               lineHeight: 22,
               color: COLORS.body,
               textAlign: 'center',
@@ -82,7 +82,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
 
           <Pressable
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+              haptics.light()
               onClose()
             }}
             // Plain object, not a function: NativeWind's interop never invokes

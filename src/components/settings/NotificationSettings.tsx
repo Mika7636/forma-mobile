@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import { Alert, Linking, Pressable, Switch, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import { COLORS } from '../../constants/theme'
 import {
@@ -48,7 +48,7 @@ export default function NotificationSettings({
 
   /** Master switch. Turning it on may need the OS permission first. */
   const handleMaster = async (next: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     if (!next) {
       onChange({ ...value, enabled: false })
       onToast('Notifications turned off')
@@ -74,14 +74,14 @@ export default function NotificationSettings({
   }
 
   const toggle = (patch: Partial<NotificationPreferences>) => {
-    Haptics.selectionAsync()
+    haptics.selection()
     onChange({ ...value, ...patch })
   }
 
   const handleTest = async () => {
     if (testing) return
     setTesting(true)
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    haptics.medium()
     try {
       const permission = await getPermissionState()
       if (permission !== 'granted') {
@@ -99,10 +99,10 @@ export default function NotificationSettings({
         }
       }
       await sendTestNotification()
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      haptics.success()
       onToast('Test sent — pull down the notification shade')
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      haptics.error()
       onToast('Could not send the test notification')
     } finally {
       setTesting(false)
@@ -113,7 +113,7 @@ export default function NotificationSettings({
     const which = picker
     setPicker(null)
     if (event.type === 'dismissed' || !date || !which) return
-    Haptics.selectionAsync()
+    haptics.selection()
     if (which === 'daily') {
       onChange({
         ...value,
@@ -156,7 +156,7 @@ export default function NotificationSettings({
               label="Remind me at"
               time={formatTime(value.dailyReminder.hour, value.dailyReminder.minute)}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                haptics.light()
                 setPicker('daily')
               }}
             />
@@ -186,7 +186,7 @@ export default function NotificationSettings({
               label="Sundays at"
               time={formatTime(value.weeklySummary.hour, 0)}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                haptics.light()
                 setPicker('weekly')
               }}
             />
@@ -230,7 +230,7 @@ export default function NotificationSettings({
           opacity: testing ? 0.6 : 1,
         }}
       >
-        <Text style={{ fontSize: 15.5, fontWeight: '700', color: COLORS.tealDark }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.tealDark }}>
           🔔 Send Test Notification
         </Text>
       </Pressable>
@@ -294,7 +294,7 @@ function Row({
         >
           {title}
         </Text>
-        <Text style={{ marginTop: 2, fontSize: 12.5, lineHeight: 17, color: COLORS.muted }}>
+        <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: COLORS.muted }}>
           {subtitle}
         </Text>
       </View>
@@ -337,7 +337,7 @@ function TimeRow({
       }}
     >
       <Text style={{ fontSize: 14, color: COLORS.body }}>{label}</Text>
-      <Text style={{ fontSize: 15.5, fontWeight: '800', color: COLORS.teal }}>{time}</Text>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.teal }}>{time}</Text>
     </Pressable>
   )
 }

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 import { INTERACTION_LEVELS } from '../../constants/conflictColors'
 import { SPORT_META } from '../../utils/sportMeta'
@@ -41,7 +41,7 @@ export default function SportInteractionMatrix({
 
   return (
     <View>
-      <Text style={{ fontSize: 12.5, color: COLORS.muted, marginBottom: 14, lineHeight: 18 }}>
+      <Text style={{ fontSize: 13, color: COLORS.muted, marginBottom: 14, lineHeight: 18 }}>
         Tell FORMA which of your sports stress the same muscles or nervous system. Higher settings
         mean more warnings.
       </Text>
@@ -59,7 +59,7 @@ export default function SportInteractionMatrix({
           return (
             <View key={pairKey(a, b)} style={{ marginBottom: 16 }}>
               <Text
-                style={{ fontSize: 13.5, fontWeight: '700', color: COLORS.body, marginBottom: 7 }}
+                style={{ fontSize: 14, fontWeight: '700', color: COLORS.body, marginBottom: 7 }}
               >
                 {metaA?.icon} {metaA?.label ?? a}{'  ↔  '}{metaB?.icon} {metaB?.label ?? b}
               </Text>
@@ -72,7 +72,7 @@ export default function SportInteractionMatrix({
                       key={lvl.value}
                       onPress={() => {
                         if (on) return
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                        haptics.light()
                         onChange(a, b, lvl.value)
                       }}
                       accessibilityRole="button"
@@ -104,7 +104,7 @@ export default function SportInteractionMatrix({
               </View>
 
               {activeLevel ? (
-                <Text style={{ marginTop: 6, fontSize: 11.5, color: COLORS.subtle }}>
+                <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.subtle }}>
                   {activeLevel.hint}
                 </Text>
               ) : null}

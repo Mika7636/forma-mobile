@@ -108,7 +108,7 @@ function SportPlot({ sports, width }: { sports: SportPoint[]; width: number }) {
             <Text style={{ fontSize: 15 }}>{s.icon}</Text>
             <Text
               numberOfLines={1}
-              style={{ fontSize: 9.5, color: COLORS.muted, marginTop: 1, maxWidth: '96%' }}
+              style={{ fontSize: 10, color: COLORS.muted, marginTop: 1, maxWidth: '96%' }}
             >
               {s.label.split(' ')[0]}
             </Text>

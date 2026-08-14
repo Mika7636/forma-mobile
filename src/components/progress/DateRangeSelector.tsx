@@ -6,7 +6,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 
 /** The three selectable windows, in weeks. Default is 8. */
@@ -48,7 +48,7 @@ export default function DateRangeSelector({ value, onChange }: DateRangeSelector
 
   const select = (index: number) => {
     if (index === selectedIndex) return
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    haptics.light()
     highlightX.value = withTiming(PAD + index * segWidth, {
       duration: 240,
       easing: Easing.out(Easing.cubic),
@@ -97,7 +97,7 @@ export default function DateRangeSelector({ value, onChange }: DateRangeSelector
           >
             <Text
               style={{
-                fontSize: 13.5,
+                fontSize: 14,
                 fontWeight: '700',
                 color: active ? COLORS.white : COLORS.body,
               }}

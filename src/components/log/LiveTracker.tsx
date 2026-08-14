@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import Slider from '@react-native-community/slider'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../../utils/haptics'
 import * as Location from 'expo-location'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
 import PrimaryButton from '../ui/PrimaryButton'
@@ -230,23 +230,23 @@ export default function LiveTracker({
     if (phase !== 'countdown') return
     const timers: ReturnType<typeof setTimeout>[] = []
     setCount(3)
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    haptics.medium()
     timers.push(
       setTimeout(() => {
         setCount(2)
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+        haptics.medium()
       }, 1000),
     )
     timers.push(
       setTimeout(() => {
         setCount(1)
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+        haptics.medium()
       }, 2000),
     )
     timers.push(
       setTimeout(() => {
         setCount(0) // renders "Go!"
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        haptics.success()
       }, 3000),
     )
     timers.push(setTimeout(beginTracking, 3600))
@@ -260,7 +260,7 @@ export default function LiveTracker({
     if (milestone > lastMilestoneRef.current) {
       lastMilestoneRef.current = milestone
       if (milestone > 0) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        haptics.success()
       }
     }
   }, [distanceKm])
@@ -275,7 +275,7 @@ export default function LiveTracker({
     }
     if (!granted) {
       setPermissionDenied(true)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      haptics.warning()
       return
     }
     setPhase('countdown')
@@ -303,13 +303,13 @@ export default function LiveTracker({
     stopWatch()
     // Break the trail so resuming doesn't draw / count a straight line across the gap.
     lastPointRef.current = null
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    haptics.medium()
   }
 
   async function handleResume() {
     startedAtRef.current = Date.now()
     setPaused(false)
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    haptics.medium()
     await startWatch()
   }
 
@@ -321,14 +321,14 @@ export default function LiveTracker({
     setElapsedSec(Math.floor(accumulatedMsRef.current / 1000))
     setPaused(false)
     setPhase('summary')
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    haptics.success()
   }
 
   function handleRpeChange(raw: number) {
     const next = Math.round(raw)
     if (next !== lastRpeRef.current) {
       lastRpeRef.current = next
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      haptics.light()
       setRpe(next)
     }
   }
@@ -512,7 +512,7 @@ function StartButton({ onPress, label }: { onPress: () => void; label: string })
   return (
     <Pressable
       onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+        haptics.medium()
         onPress()
       }}
       onPressIn={() => setPressed(true)}
@@ -695,7 +695,7 @@ function ControlButton({
   return (
     <Pressable
       onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+        haptics.medium()
         onPress()
       }}
       onPressIn={() => setPressed(true)}

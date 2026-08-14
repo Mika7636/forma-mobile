@@ -20,11 +20,14 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
-import * as Haptics from 'expo-haptics'
+import { haptics } from '../utils/haptics'
 import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
 import DayCard from '../components/planner/DayCard'
+import PlannerSkeleton from '../components/planner/PlannerSkeleton'
 import SessionDetailModal from '../components/session/SessionDetailModal'
-import { COLORS } from '../constants/theme'
+import EmptyState from '../components/ui/EmptyState'
+import PressableScale from '../components/ui/PressableScale'
+import { COLORS, RADIUS, SPACING, TYPE } from '../constants/theme'
 import { DEFAULT_BUDGET_HOURS } from '../constants/training'
 import { useWeeklyPlan, type PlannerDay } from '../hooks/useWeeklyPlan'
 import { deleteSession, resolveConflict } from '../services/sessionService'
@@ -88,7 +91,7 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   const goToWeek = useCallback(
     (next: number) => {
       if (next === weekOffset) return
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      haptics.light()
       const forward = next > weekOffset
       const exitTo = forward ? -SLIDE_DISTANCE : SLIDE_DISTANCE
 
@@ -205,7 +208,7 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   }, [weekIsEmpty])
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.fieldBg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
       <StatusBar style="dark" />
 
       <GestureDetector gesture={weekSwipe}>
@@ -326,28 +329,37 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
                 />
               }
             >
-              {weekIsEmpty ? (
-                <EmptyWeek
-                  isPastWeek={isPastWeek}
-                  onPlan={() => openLogFor(localISODate(new Date()))}
-                />
-              ) : null}
+              {/* First load of a week: show the week's shape rather than seven
+                  empty day cards, which would read as "you trained nothing"
+                  right before the real data replaces it. */}
+              {plan.loading ? (
+                <PlannerSkeleton />
+              ) : (
+                <>
+                  {weekIsEmpty ? (
+                    <EmptyWeek
+                      isPastWeek={isPastWeek}
+                      onPlan={() => openLogFor(localISODate(new Date()))}
+                    />
+                  ) : null}
 
-              {days.map((day, i) => (
-                <Animated.View
-                  key={day.isoDate}
-                  entering={FadeInDown.delay(i * 50).duration(280)}
-                  onLayout={(e) => handleDayLayout(day.isoDate, e.nativeEvent.layout.y)}
-                >
-                  <DayCard
-                    day={day}
-                    onSessionPress={setSelected}
-                    onSessionDelete={handleDelete}
-                    onAddSession={handleAddSession}
-                    onConflictPress={setConflictSheet}
-                  />
-                </Animated.View>
-              ))}
+                  {days.map((day, i) => (
+                    <Animated.View
+                      key={day.isoDate}
+                      entering={FadeInDown.delay(i * 50).duration(280)}
+                      onLayout={(e) => handleDayLayout(day.isoDate, e.nativeEvent.layout.y)}
+                    >
+                      <DayCard
+                        day={day}
+                        onSessionPress={setSelected}
+                        onSessionDelete={handleDelete}
+                        onAddSession={handleAddSession}
+                        onConflictPress={setConflictSheet}
+                      />
+                    </Animated.View>
+                  ))}
+                </>
+              )}
             </ScrollView>
           </Animated.View>
         </View>
@@ -355,11 +367,10 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
 
       {/* Floating "log something right now" button — always today's date, in
           contrast to a day card's date-specific "+ Add Session". */}
-      <Pressable
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-          openLogFor(localISODate(new Date()))
-        }}
+      <PressableScale
+        onPress={() => openLogFor(localISODate(new Date()))}
+        haptic="medium"
+        accessibilityRole="button"
         accessibilityLabel="Log a session today"
         style={{
           position: 'absolute',
@@ -367,7 +378,7 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
           bottom: 24,
           width: 58,
           height: 58,
-          borderRadius: 29,
+          borderRadius: RADIUS.pill,
           backgroundColor: COLORS.teal,
           alignItems: 'center',
           justifyContent: 'center',
@@ -381,7 +392,7 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         <Text style={{ fontSize: 30, fontWeight: '300', color: COLORS.white, marginTop: -3 }}>
           +
         </Text>
-      </Pressable>
+      </PressableScale>
 
       <SessionDetailModal
         visible={selected != null}
@@ -434,69 +445,26 @@ function ArrowButton({ label, onPress }: { label: string; onPress: () => void })
 /* Empty week                                                          */
 /* ------------------------------------------------------------------ */
 function EmptyWeek({ isPastWeek, onPlan }: { isPastWeek: boolean; onPlan: () => void }) {
-  // A past week with nothing in it is just history — state it quietly. An
-  // upcoming or current one is an invitation.
-  if (isPastWeek) {
-    return (
-      <View
-        style={{
-          alignItems: 'center',
-          paddingVertical: 18,
-          marginBottom: 8,
-        }}
-      >
-        <Text style={{ fontSize: 14, color: COLORS.subtle }}>
-          Rest week — no sessions logged
-        </Text>
-      </View>
-    )
-  }
-
-  return (
-    <Animated.View
-      entering={FadeIn.duration(260)}
-      style={{
-        backgroundColor: COLORS.white,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        paddingVertical: 26,
-        paddingHorizontal: 20,
-        alignItems: 'center',
-        marginBottom: 14,
-      }}
-    >
-      <Text style={{ fontSize: 34 }}>🗓️</Text>
-      <Text style={{ marginTop: 10, fontSize: 19, fontWeight: '800', color: COLORS.ink }}>
-        Your week is wide open
-      </Text>
-      <Text
-        style={{
-          marginTop: 6,
-          fontSize: 14,
-          color: COLORS.muted,
-          textAlign: 'center',
-        }}
-      >
-        Tap any day to plan your first session
-      </Text>
-      <Pressable
-        onPress={onPlan}
-        style={{
-          marginTop: 18,
-          height: 48,
-          paddingHorizontal: 28,
-          borderRadius: 12,
-          backgroundColor: COLORS.teal,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.white }}>
-          Plan a Session
-        </Text>
-      </Pressable>
-    </Animated.View>
+  // A past week with nothing in it is just history, so it gets the quiet tone
+  // and no CTA — there's nothing useful to do about last month. A current or
+  // upcoming one is an invitation, so it gets the full card.
+  return isPastWeek ? (
+    <EmptyState
+      tone="quiet"
+      emoji="😌"
+      title="Rest week"
+      message="No sessions logged. Recovery counts too."
+      style={{ marginBottom: SPACING.sm }}
+    />
+  ) : (
+    <EmptyState
+      emoji="🗓️"
+      title="Your week is wide open"
+      message="Tap any day to plan a session, or start one right now."
+      actionLabel="Plan a Session"
+      onAction={onPlan}
+      style={{ marginBottom: SPACING.md }}
+    />
   )
 }
 
