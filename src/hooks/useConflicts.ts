@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { useAuthStore } from '../store/authStore'
+import { isOffline } from '../store/networkStore'
+import { toast } from '../store/toastStore'
 import { conflictDedupeKey, type Conflict } from '../types/conflict'
 
 function detectedAtMillis(conflict: Conflict): number {
@@ -80,11 +82,22 @@ export function useConflicts(): UseConflicts {
     const targets = target
       ? raw.filter((c) => conflictDedupeKey(c) === conflictDedupeKey(target))
       : raw.filter((c) => c.conflictId === id)
-    await Promise.all(
-      targets.map((c) =>
-        updateDoc(doc(db, 'users', uid, 'conflicts', c.conflictId), { resolved: true }),
-      ),
-    )
+    try {
+      await Promise.all(
+        targets.map((c) =>
+          updateDoc(doc(db, 'users', uid, 'conflicts', c.conflictId), { resolved: true }),
+        ),
+      )
+    } catch {
+      // Called as `void dismissConflict(id)` from the dashboard banner, so an
+      // escaping rejection would be unhandled. Tell the user instead: the
+      // banner staying put is otherwise indistinguishable from a dead button.
+      toast.error('Could not dismiss', {
+        description: isOffline()
+          ? "You're offline — reconnect and try again."
+          : 'Something went wrong. Please try again.',
+      })
+    }
   }
 
   if (!uid) return { conflicts: [], loading: false, dismissConflict }

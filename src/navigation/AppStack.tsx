@@ -3,11 +3,14 @@
 // Settings) push on top with a native slide + back gesture.
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { COLORS } from '../constants/theme'
+import { withScreenBoundary } from '../components/ui/withScreenBoundary'
 import ConflictHistoryScreen from '../screens/ConflictHistoryScreen'
 import MainTabs from './MainTabs'
 import type { AppStackParamList } from './types'
 
 const Stack = createNativeStackNavigator<AppStackParamList>()
+
+const ConflictHistoryTab = withScreenBoundary(ConflictHistoryScreen, 'Conflict History')
 
 export default function AppStack() {
   return (
@@ -25,7 +28,7 @@ export default function AppStack() {
       }}
     >
       <Stack.Screen name="MainTabs" component={MainTabs} />
-      <Stack.Screen name="ConflictHistory" component={ConflictHistoryScreen} />
+      <Stack.Screen name="ConflictHistory" component={ConflictHistoryTab} />
     </Stack.Navigator>
   )
 }

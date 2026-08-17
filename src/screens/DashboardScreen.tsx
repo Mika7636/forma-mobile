@@ -24,6 +24,7 @@ import { COLORS, RADIUS, SPACING, TYPE } from '../constants/theme'
 import { getCalibrationState } from '../utils/calibration'
 import { haptics } from '../utils/haptics'
 import { useConflicts } from '../hooks/useConflicts'
+import { useIsMounted } from '../hooks/useSafeTimeout'
 import { useMetrics } from '../hooks/useMetrics'
 import { useAuthStore } from '../store/authStore'
 import { useMetricsStore } from '../store/metricsStore'
@@ -67,6 +68,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const calibration = getCalibrationState(totalSessionCount, createdAt)
 
   const [refreshing, setRefreshing] = useState(false)
+  const isMounted = useIsMounted()
   const [showAllConflicts, setShowAllConflicts] = useState(false)
   const [detailConflict, setDetailConflict] = useState<Conflict | null>(null)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
@@ -114,8 +116,10 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     // Hold the spinner briefly so the gesture reads as acknowledged instead of
     // snapping back instantly.
     await new Promise((resolve) => setTimeout(resolve, 400))
+    // Switching tabs mid-pull unmounts this before the delay is up.
+    if (!isMounted.current) return
     setRefreshing(false)
-  }, [sessions])
+  }, [sessions, isMounted])
 
   const sessionsLabel = `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} this week`
 

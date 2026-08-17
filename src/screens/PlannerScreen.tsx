@@ -32,6 +32,8 @@ import { DEFAULT_BUDGET_HOURS } from '../constants/training'
 import { useWeeklyPlan, type PlannerDay } from '../hooks/useWeeklyPlan'
 import { deleteSession, resolveConflict } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
+import { isOffline } from '../store/networkStore'
+import { toast } from '../store/toastStore'
 import { localISODate } from '../utils/dates'
 import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
@@ -136,7 +138,18 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   const handleDelete = useCallback(
     async (session: Session) => {
       if (!uid) return
-      await deleteSession(uid, session.id)
+      try {
+        await deleteSession(uid, session.id)
+      } catch {
+        // Swipe-to-delete fires this without awaiting, so a failed write would
+        // otherwise be an unhandled rejection — and the chip would spring back
+        // with no explanation.
+        toast.error('Could not delete session', {
+          description: isOffline()
+            ? "You're offline — reconnect and try again."
+            : 'Something went wrong. Please try again.',
+        })
+      }
     },
     [uid],
   )
@@ -406,7 +419,18 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         sessions={weekSessions}
         onClose={() => setConflictSheet(null)}
         onDismiss={(id) => {
-          if (uid) void resolveConflict(uid, id)
+          // Catch attached at the call site: a bare `void promise` whose write
+          // fails is an unhandled rejection, which a release build treats as
+          // fatal.
+          if (uid) {
+            resolveConflict(uid, id).catch(() => {
+              toast.error('Could not dismiss', {
+                description: isOffline()
+                  ? "You're offline — reconnect and try again."
+                  : 'Something went wrong. Please try again.',
+              })
+            })
+          }
           setConflictSheet(null)
         }}
       />

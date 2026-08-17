@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import ErrorBoundary from './src/components/ui/ErrorBoundary'
 import OfflineBanner from './src/components/ui/OfflineBanner'
 import ToastContainer from './src/components/ui/ToastContainer'
 import { db } from './src/config/firebase'
@@ -49,9 +50,21 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <NavigationContainer ref={navigationRef}>
-          <RootNavigator />
-        </NavigationContainer>
+        {/* Last line of defence, below the per-screen boundaries in MainTabs /
+            AppStack. It only catches what those can't: a failure in the
+            navigator itself, or in the auth/onboarding screens that sit outside
+            the tab navigator. In a release build there is no redbox, so without
+            this an error here would blank the app entirely. */}
+        <ErrorBoundary
+          name="Root"
+          title="FORMA hit a problem"
+          message="The app ran into an unexpected error. Your training data is saved — restarting the screen usually clears it."
+          retryLabel="Reload FORMA"
+        >
+          <NavigationContainer ref={navigationRef}>
+            <RootNavigator />
+          </NavigationContainer>
+        </ErrorBoundary>
 
         {/* Both of these are app-global on purpose. Mounted here — outside the
             navigator — they survive every screen change, so a toast fired just

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
   KeyboardAvoidingView,
   Linking,
@@ -20,7 +20,12 @@ import PrimaryButton from '../ui/PrimaryButton'
 import RouteMap from '../session/RouteMap'
 import { COLORS } from '../../constants/theme'
 import { estimateCalories } from '../../algorithms/calories'
-import { calculateSpeed, formatPace, haversineDistance } from '../../utils/geo'
+import {
+  calculateSpeed,
+  formatPace,
+  haversineDistance,
+  isValidCoordinate,
+} from '../../utils/geo'
 import type { RoutePoint, SportType } from '../../types/session'
 import type { Region } from 'react-native-maps'
 
@@ -38,12 +43,31 @@ export interface LiveResult {
   startedAt?: number
 }
 
+/**
+ * A crash-recoverable snapshot of an in-progress workout.
+ *
+ * Kept in a ref owned by LogScreen (writing a ref never re-renders), so if the
+ * tracker's error boundary trips mid-run the collected distance and time
+ * survive the remount and the athlete can still rate and save the session
+ * instead of losing it.
+ */
+export interface LiveSnapshot {
+  elapsedSec: number
+  distanceM: number
+  route: RoutePoint[]
+  startedAt: number
+}
+
 interface LiveTrackerProps {
   sport: SportType
   sportLabel: string
   weightKg?: number
   /** True while LogScreen is persisting the session — drives the Save spinner. */
   saving: boolean
+  /** When set, mount straight into the summary with this recovered workout. */
+  resumeFrom?: LiveSnapshot | null
+  /** Written to on every tick/fix so a crash can be recovered from. */
+  snapshotRef?: MutableRefObject<LiveSnapshot | null>
   onExit: () => void
   onComplete: (result: LiveResult) => void
 }
@@ -59,7 +83,30 @@ const MAX_ACCURACY_M = 50
 /** Below this segment length (m) we treat movement as GPS wander / standing still. */
 const MIN_SEGMENT_M = 2
 
+/**
+ * Reject any segment implying a speed above this (m/s ≈ 108 km/h). The fused
+ * provider routinely jumps hundreds of metres when it switches between a
+ * cell/wifi estimate and a satellite fix; without this, one jump silently adds
+ * a kilometre or more to the run.
+ */
+const MAX_PLAUSIBLE_SPEED_MS = 30
+
+/**
+ * Hard cap on stored route points. Reached after roughly 5 km at the 5 m
+ * sampling interval, so most runs never hit it; past that the route is halved in
+ * resolution (see `appendPoint`) so memory, render cost and the size of the
+ * saved Firestore document all stay bounded no matter how long the session runs.
+ * Firestore's hard limit is 1 MiB per document — 1000 points is roughly 60 KB.
+ */
+const MAX_ROUTE_POINTS = 1000
+
+/** No usable fix for this long → tell the user we've lost signal. */
+const GPS_STALE_MS = 15_000
+
 const KEEP_AWAKE_TAG = 'forma-live-tracker'
+
+/** Stable style identity — a fresh object literal here would defeat RouteMap's memo. */
+const MAP_FILL_STYLE = { flex: 1 } as const
 
 const TIMER_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' })
 
@@ -71,6 +118,26 @@ function rpeColor(rpe: number): string {
   if (rpe <= 3) return ZONE_GREEN
   if (rpe <= 7) return ZONE_AMBER
   return ZONE_RED
+}
+
+/**
+ * Turn whatever expo-location rejected with into something an athlete mid-run
+ * can act on. The raw messages ("Call to function 'ExpoLocation.watchPosition'
+ * has been rejected") are useless on a lock screen.
+ */
+function gpsErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? '')
+  const lower = raw.toLowerCase()
+  if (lower.includes('location services are disabled') || lower.includes('services are not enabled')) {
+    return 'Location services are turned off. Switch GPS on to keep tracking.'
+  }
+  if (lower.includes('permission') || lower.includes('denied')) {
+    return 'Location access was revoked. Re-enable it to keep tracking.'
+  }
+  if (lower.includes('unavailable') || lower.includes('provider')) {
+    return 'GPS is unavailable right now. Your time is still being recorded.'
+  }
+  return 'GPS signal lost. Your time is still being recorded.'
 }
 
 /** Seconds → "HH:MM:SS". */
@@ -87,22 +154,29 @@ export default function LiveTracker({
   sportLabel,
   weightKg,
   saving,
+  resumeFrom,
+  snapshotRef,
   onExit,
   onComplete,
 }: LiveTrackerProps) {
   const [permission, requestPermission] = Location.useForegroundPermissions()
 
-  const [phase, setPhase] = useState<Phase>('ready')
+  // A recovered workout skips straight to the summary: the GPS watcher is gone,
+  // but the distance and time it collected are intact and still worth saving.
+  const [phase, setPhase] = useState<Phase>(resumeFrom ? 'summary' : 'ready')
   const [count, setCount] = useState(3)
   const [permissionDenied, setPermissionDenied] = useState(false)
 
-  const [elapsedSec, setElapsedSec] = useState(0)
-  const [distanceM, setDistanceM] = useState(0)
-  const [route, setRoute] = useState<RoutePoint[]>([])
+  const [elapsedSec, setElapsedSec] = useState(resumeFrom?.elapsedSec ?? 0)
+  const [distanceM, setDistanceM] = useState(resumeFrom?.distanceM ?? 0)
+  const [route, setRoute] = useState<RoutePoint[]>(resumeFrom?.route ?? [])
   const [paused, setPaused] = useState(false)
   const [hasFix, setHasFix] = useState(false)
-  const [lastFixAt, setLastFixAt] = useState(0)
-  const [now, setNow] = useState(Date.now())
+  // Derived on the timer tick rather than from a re-rendered `now` timestamp —
+  // see the timer effect for why that distinction matters here.
+  const [gpsStale, setGpsStale] = useState(false)
+  /** Non-null when GPS has failed outright: shown as a banner, tracking pauses. */
+  const [gpsError, setGpsError] = useState<string | null>(null)
 
   // Summary inputs
   const [rpe, setRpe] = useState(6)
@@ -116,6 +190,14 @@ export default function LiveTracker({
   const lastPointRef = useRef<RoutePoint | null>(null)
   const lastMilestoneRef = useRef(0)
   const lastRpeRef = useRef(rpe)
+  const lastFixAtRef = useRef(0)
+  /**
+   * False from the moment React tears this component down. The GPS callback runs
+   * outside React's lifecycle — it is invoked by the native location module, not
+   * by a render — so it can fire once more after unmount even though the
+   * subscription has been removed. Every setState below is gated on this.
+   */
+  const mountedRef = useRef(true)
 
   // Elapsed time is derived from the wall clock, not from counting interval
   // ticks: JS timers drift and are throttled while the app is backgrounded (a
@@ -126,7 +208,7 @@ export default function LiveTracker({
   const accumulatedMsRef = useRef(0)
   // Wall-clock start of the whole session (unlike startedAtRef, this is not
   // reset by pause/resume) so the saved session is timestamped to its real start.
-  const sessionStartAtRef = useRef(0)
+  const sessionStartAtRef = useRef(resumeFrom?.startedAt ?? 0)
 
   const isCycling = sport === 'cycling'
   const distanceKm = distanceM / 1000
@@ -154,11 +236,22 @@ export default function LiveTracker({
       )
       // Stopped, paused or unmounted while we were awaiting: this subscription
       // is already obsolete, and nothing else holds a reference to remove it.
-      if (gen !== watchGenRef.current) {
+      if (gen !== watchGenRef.current || !mountedRef.current) {
         sub.remove()
         return
       }
       watchRef.current = sub
+      if (mountedRef.current) setGpsError(null)
+    } catch (err) {
+      // watchPositionAsync rejects when location services are switched off
+      // mid-run, when the provider is unavailable, or when the OS revokes the
+      // permission while the app is backgrounded. Previously this rejection was
+      // unhandled: in a release build an unhandled rejection surfaces as a
+      // fatal error rather than a redbox, and the user lost the whole workout.
+      if (mountedRef.current) {
+        setGpsError(gpsErrorMessage(err))
+        haptics.warning()
+      }
     } finally {
       watchStartingRef.current = false
     }
@@ -166,47 +259,110 @@ export default function LiveTracker({
 
   function stopWatch() {
     watchGenRef.current += 1
-    watchRef.current?.remove()
+    try {
+      watchRef.current?.remove()
+    } catch {
+      // remove() can throw if the native subscription is already gone (e.g. the
+      // OS tore it down when location services were disabled). Nothing to do —
+      // we're dropping the reference either way.
+    }
     watchRef.current = null
   }
 
+  /**
+   * Append a point, keeping the stored route bounded.
+   *
+   * Once the cap is hit the route is halved — every other point is dropped and
+   * the newest is always kept — so a 3-hour run costs the same memory as a
+   * 30-minute one, at gently decreasing resolution. Distance is *not* derived
+   * from this array (it accumulates separately, fix by fix), so thinning it
+   * loses no accuracy in the recorded total.
+   */
+  function appendPoint(r: RoutePoint[], point: RoutePoint): RoutePoint[] {
+    if (r.length + 1 <= MAX_ROUTE_POINTS) return [...r, point]
+    const halved = r.filter((_, i) => i % 2 === 0)
+    halved.push(point)
+    return halved
+  }
+
   function handleLocation(loc: Location.LocationObject) {
-    const { latitude, longitude, accuracy } = loc.coords
-    // Too imprecise to trust — don't corrupt distance, and don't count this as a
-    // fix either, so the "Searching for GPS…" hint stays up while every reading
-    // is being rejected rather than silently freezing the distance.
-    if (accuracy != null && accuracy > MAX_ACCURACY_M) return
+    // The whole body is defensive: this runs on a native callback, outside
+    // React's render cycle, so an exception here is *not* catchable by an error
+    // boundary and would reach the global handler — fatal in a release build.
+    try {
+      if (!mountedRef.current) return
+      const coords = loc?.coords
+      if (!coords) return
+      const { latitude, longitude, accuracy } = coords
 
-    setLastFixAt(Date.now())
-    setHasFix(true)
+      // A non-finite or out-of-range coordinate must never reach state. It would
+      // poison distance/pace/calories with NaN, and passing it to the map's
+      // Polyline throws inside the Google Maps SDK — a native crash no JS
+      // try/catch or error boundary can contain.
+      if (!isValidCoordinate(latitude, longitude)) return
 
-    const point: RoutePoint = { latitude, longitude, timestamp: loc.timestamp }
-    const prev = lastPointRef.current
-    if (prev) {
-      const seg = haversineDistance(prev.latitude, prev.longitude, latitude, longitude)
-      // Ignore tiny wander so an indoor / stationary athlete doesn't accrue metres.
-      if (seg < MIN_SEGMENT_M) return
-      setDistanceM((d) => d + seg)
+      // Too imprecise to trust — don't corrupt distance, and don't count this as
+      // a fix either, so the "Searching for GPS…" hint stays up while every
+      // reading is being rejected rather than silently freezing the distance.
+      if (accuracy != null && Number.isFinite(accuracy) && accuracy > MAX_ACCURACY_M) return
+
+      const stamp = Number.isFinite(loc.timestamp) ? loc.timestamp : Date.now()
+      lastFixAtRef.current = Date.now()
+      setHasFix(true)
+      setGpsStale(false)
+      setGpsError(null)
+
+      const point: RoutePoint = { latitude, longitude, timestamp: stamp }
+      const prev = lastPointRef.current
+      if (prev) {
+        const seg = haversineDistance(prev.latitude, prev.longitude, latitude, longitude)
+        // Ignore tiny wander so an indoor / stationary athlete doesn't accrue metres.
+        if (seg < MIN_SEGMENT_M) return
+        // Discard provider jumps (cell/wifi estimate → satellite fix), which
+        // otherwise add hundreds of phantom metres in a single tick. The point
+        // is still adopted as the new anchor so the trail resumes from reality.
+        const dtSec = Math.max((stamp - prev.timestamp) / 1000, 1)
+        if (seg / dtSec > MAX_PLAUSIBLE_SPEED_MS) {
+          lastPointRef.current = point
+          return
+        }
+        setDistanceM((d) => {
+          const next = d + seg
+          return Number.isFinite(next) ? next : d
+        })
+      }
+      lastPointRef.current = point
+      setRoute((r) => appendPoint(r, point))
+    } catch (err) {
+      console.warn('[LiveTracker] location update failed', err)
     }
-    lastPointRef.current = point
-    setRoute((r) => [...r, point])
   }
 
   // Tear down GPS + keep-awake if the component unmounts mid-session.
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       stopWatch()
       deactivateKeepAwake(KEEP_AWAKE_TAG)
     }
   }, [])
 
-  /* ---- Timer + "now" ticker ---------------------------------------- */
+  /* ---- Timer + GPS-staleness ticker -------------------------------- */
   useEffect(() => {
     if (phase !== 'tracking' || paused) return
     const tick = () => {
+      if (!mountedRef.current) return
       const ms = accumulatedMsRef.current + (Date.now() - startedAtRef.current)
-      setElapsedSec(Math.floor(ms / 1000))
-      setNow(Date.now())
+      const secs = Math.floor(ms / 1000)
+      // Both setters are passed values that are usually *unchanged*, so React
+      // bails out of the re-render. That is the point: this interval fires 4×
+      // per second, and the previous version stored a fresh `Date.now()` in
+      // state on every tick, so the entire tracker — map included — re-rendered
+      // 4× a second for the whole workout. Now it re-renders once per second at
+      // most, and only the clock text actually changes.
+      setElapsedSec((prev) => (prev === secs ? prev : secs))
+      setGpsStale(Date.now() - lastFixAtRef.current > GPS_STALE_MS)
     }
     tick()
     // Sub-second polling so the displayed second flips close to its real
@@ -249,10 +405,36 @@ export default function LiveTracker({
         haptics.success()
       }, 3000),
     )
-    timers.push(setTimeout(beginTracking, 3600))
+    timers.push(
+      setTimeout(() => {
+        // `void` is deliberate: beginTracking is async, and an un-awaited
+        // rejection from a bare `setTimeout(beginTracking)` is an unhandled
+        // promise rejection — fatal in a release build. startWatch swallows its
+        // own errors, so this is now belt and braces.
+        void beginTracking()
+      }, 3600),
+    )
     return () => timers.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase])
+
+  /* ---- Crash-recovery snapshot ------------------------------------- */
+  // Mirrors the workout into a ref the parent owns, so an error boundary trip
+  // (or any remount) doesn't take the collected data with it. A ref write is
+  // not a state update, so this costs nothing per render.
+  useEffect(() => {
+    if (!snapshotRef) return
+    if (phase !== 'tracking' && phase !== 'summary') {
+      snapshotRef.current = null
+      return
+    }
+    snapshotRef.current = {
+      elapsedSec,
+      distanceM,
+      route,
+      startedAt: sessionStartAtRef.current,
+    }
+  }, [snapshotRef, phase, elapsedSec, distanceM, route])
 
   /* ---- Kilometre-milestone haptics --------------------------------- */
   useEffect(() => {
@@ -268,13 +450,31 @@ export default function LiveTracker({
   /* ---- Actions ----------------------------------------------------- */
   async function handleStart() {
     setPermissionDenied(false)
-    let granted = permission?.granted ?? false
-    if (!granted) {
-      const res = await requestPermission()
-      granted = res.granted
-    }
-    if (!granted) {
-      setPermissionDenied(true)
+    setGpsError(null)
+    try {
+      let granted = permission?.granted ?? false
+      if (!granted) {
+        const res = await requestPermission()
+        granted = res?.granted ?? false
+      }
+      if (!granted) {
+        setPermissionDenied(true)
+        haptics.warning()
+        return
+      }
+
+      // Permission granted is *not* the same as GPS being usable: the user can
+      // hold the permission while the device's location toggle is off, in which
+      // case watchPositionAsync rejects a few seconds later — mid-countdown,
+      // where the failure is much harder to explain. Check up front instead.
+      const servicesOn = await Location.hasServicesEnabledAsync()
+      if (!servicesOn) {
+        setGpsError('Location services are turned off. Switch GPS on to start tracking.')
+        haptics.warning()
+        return
+      }
+    } catch (err) {
+      setGpsError(gpsErrorMessage(err))
       haptics.warning()
       return
     }
@@ -282,11 +482,14 @@ export default function LiveTracker({
   }
 
   async function beginTracking() {
+    if (!mountedRef.current) return
     setElapsedSec(0)
     setDistanceM(0)
     setRoute([])
     setHasFix(false)
-    setLastFixAt(Date.now())
+    setGpsStale(false)
+    setGpsError(null)
+    lastFixAtRef.current = Date.now()
     lastPointRef.current = null
     lastMilestoneRef.current = 0
     startedAtRef.current = Date.now()
@@ -308,8 +511,18 @@ export default function LiveTracker({
 
   async function handleResume() {
     startedAtRef.current = Date.now()
+    lastFixAtRef.current = Date.now()
     setPaused(false)
+    setGpsError(null)
     haptics.medium()
+    await startWatch()
+  }
+
+  /** Retry GPS after a signal loss without ending the workout. */
+  async function handleRetryGps() {
+    setGpsError(null)
+    lastFixAtRef.current = Date.now()
+    stopWatch()
     await startWatch()
   }
 
@@ -334,14 +547,20 @@ export default function LiveTracker({
   }
 
   function handleSave() {
+    // Last line of defence before anything is persisted: a NaN or out-of-range
+    // value written to Firestore would corrupt every downstream metric (load,
+    // CTL/ATL, charts) and crash the session-detail map on the way back in.
+    const safeDuration = Number.isFinite(elapsedSec) ? Math.max(1, Math.round(elapsedSec / 60)) : 1
+    const safeDistance = Number.isFinite(distanceKm) && distanceKm > 0 ? distanceKm : 0
+    const safeRoute = route.filter((p) => isValidCoordinate(p.latitude, p.longitude))
     onComplete({
-      durationMinutes: Math.max(1, Math.round(elapsedSec / 60)),
+      durationMinutes: safeDuration,
       rpe,
-      distanceKm,
+      distanceKm: safeDistance,
       notes: notes.trim() || undefined,
-      routeCoordinates: route,
-      averagePace: isCycling ? undefined : formatPace(elapsedSec, distanceKm),
-      averageSpeed: isCycling ? calculateSpeed(elapsedSec, distanceKm) : undefined,
+      routeCoordinates: safeRoute,
+      averagePace: isCycling ? undefined : formatPace(elapsedSec, safeDistance),
+      averageSpeed: isCycling ? calculateSpeed(elapsedSec, safeDistance) : undefined,
       startedAt: sessionStartAtRef.current || undefined,
     })
   }
@@ -349,7 +568,7 @@ export default function LiveTracker({
   // Live follow-cam region: keep the latest fix centred with a tight zoom.
   const liveRegion = useMemo<Region | undefined>(() => {
     const last = route[route.length - 1]
-    if (!last) return undefined
+    if (!last || !isValidCoordinate(last.latitude, last.longitude)) return undefined
     return {
       latitude: last.latitude,
       longitude: last.longitude,
@@ -358,7 +577,7 @@ export default function LiveTracker({
     }
   }, [route])
 
-  const searching = phase === 'tracking' && !paused && (!hasFix || now - lastFixAt > 6000)
+  const searching = phase === 'tracking' && !paused && !gpsError && (!hasFix || gpsStale)
 
   /* ================================================================= */
   /* Render                                                             */
@@ -371,6 +590,7 @@ export default function LiveTracker({
         <ReadyView
           sportLabel={sportLabel}
           permissionDenied={permissionDenied}
+          gpsError={gpsError}
           onStart={handleStart}
           onExit={onExit}
         />
@@ -390,6 +610,8 @@ export default function LiveTracker({
           liveRegion={liveRegion}
           paused={paused}
           searching={searching}
+          gpsError={gpsError}
+          onRetryGps={handleRetryGps}
           onPause={handlePause}
           onResume={handleResume}
           onStop={handleStop}
@@ -426,11 +648,13 @@ export default function LiveTracker({
 function ReadyView({
   sportLabel,
   permissionDenied,
+  gpsError,
   onStart,
   onExit,
 }: {
   sportLabel: string
   permissionDenied: boolean
+  gpsError: string | null
   onStart: () => void
   onExit: () => void
 }) {
@@ -484,6 +708,25 @@ function ReadyView({
               </Text>
             </Pressable>
           </Animated.View>
+        ) : gpsError ? (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={{
+              marginTop: 28,
+              backgroundColor: '#1f2937',
+              borderRadius: 16,
+              padding: 18,
+              borderWidth: 1,
+              borderColor: '#374151',
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>
+              🛰️ GPS unavailable
+            </Text>
+            <Text style={{ marginTop: 8, fontSize: 14, color: COLORS.subtle, textAlign: 'center', lineHeight: 20 }}>
+              {gpsError}
+            </Text>
+          </Animated.View>
         ) : (
           <Text
             style={{
@@ -501,7 +744,7 @@ function ReadyView({
       </View>
 
       <View style={{ paddingBottom: 24 }}>
-        <StartButton onPress={onStart} label={permissionDenied ? 'Try Again' : 'Start'} />
+        <StartButton onPress={onStart} label={permissionDenied || gpsError ? 'Try Again' : 'Start'} />
       </View>
     </View>
   )
@@ -569,6 +812,8 @@ function TrackingView({
   liveRegion,
   paused,
   searching,
+  gpsError,
+  onRetryGps,
   onPause,
   onResume,
   onStop,
@@ -583,6 +828,8 @@ function TrackingView({
   liveRegion: Region | undefined
   paused: boolean
   searching: boolean
+  gpsError: string | null
+  onRetryGps: () => void
   onPause: () => void
   onResume: () => void
   onStop: () => void
@@ -617,7 +864,38 @@ function TrackingView({
         </Text>
       </View>
 
-      {searching ? (
+      {/* GPS failed outright: say so, keep the timer running, and make it clear
+          the workout is still saveable. Losing signal must never cost a run. */}
+      {gpsError ? (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={{
+            marginTop: 8,
+            backgroundColor: '#3f2d16',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: ZONE_AMBER,
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+          }}
+        >
+          <Text style={{ color: ZONE_AMBER, fontSize: 13, fontWeight: '800', textAlign: 'center' }}>
+            🛰️ {gpsError}
+          </Text>
+          <Pressable onPress={onRetryGps} hitSlop={8} style={{ marginTop: 6, alignSelf: 'center' }}>
+            <Text
+              style={{
+                color: COLORS.white,
+                fontSize: 13,
+                fontWeight: '700',
+                textDecorationLine: 'underline',
+              }}
+            >
+              Retry GPS
+            </Text>
+          </Pressable>
+        </Animated.View>
+      ) : searching ? (
         <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', marginTop: 6 }}>
           <Text style={{ color: ZONE_AMBER, fontSize: 13, fontWeight: '700' }}>
             🛰️ Searching for GPS…
@@ -638,7 +916,7 @@ function TrackingView({
       {/* Live route map */}
       <View style={{ flex: 1, marginTop: 18, marginBottom: 14 }}>
         {/* `style` flex overrides RouteMap's default fixed height on the main axis. */}
-        <RouteMap coordinates={route} region={liveRegion} showMarkers={false} style={{ flex: 1 }} />
+        <RouteMap coordinates={route} region={liveRegion} showMarkers={false} style={MAP_FILL_STYLE} />
       </View>
 
       {/* Controls */}

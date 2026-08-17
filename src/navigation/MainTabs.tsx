@@ -8,11 +8,21 @@ import LogScreen from '../screens/LogScreen'
 import PlannerScreen from '../screens/PlannerScreen'
 import ProgressScreen from '../screens/ProgressScreen'
 import SettingsScreen from '../screens/SettingsScreen'
+import { withScreenBoundary } from '../components/ui/withScreenBoundary'
 import { useToastStore } from '../store/toastStore'
 import { haptics } from '../utils/haptics'
 import type { MainTabsParamList } from './types'
 
 const Tab = createBottomTabNavigator<MainTabsParamList>()
+
+// Each tab gets its own error boundary, built once at module scope so the
+// screens aren't remounted on every render of the navigator. A crash in one tab
+// now shows a retry card in that tab instead of taking the app down with it.
+const DashboardTab = withScreenBoundary(DashboardScreen, 'Dashboard')
+const LogTab = withScreenBoundary(LogScreen, 'Log Session')
+const PlannerTab = withScreenBoundary(PlannerScreen, 'Planner')
+const ProgressTab = withScreenBoundary(ProgressScreen, 'Progress')
+const SettingsTab = withScreenBoundary(SettingsScreen, 'Settings')
 
 const TAB_ICON: Record<string, string> = {
   Dashboard: '📊',
@@ -75,11 +85,11 @@ export default function MainTabs() {
         tabPress: () => haptics.light(),
       }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Log" component={LogScreen} />
-      <Tab.Screen name="Planner" component={PlannerScreen} />
-      <Tab.Screen name="Progress" component={ProgressScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Dashboard" component={DashboardTab} />
+      <Tab.Screen name="Log" component={LogTab} />
+      <Tab.Screen name="Planner" component={PlannerTab} />
+      <Tab.Screen name="Progress" component={ProgressTab} />
+      <Tab.Screen name="Settings" component={SettingsTab} />
     </Tab.Navigator>
   )
 }

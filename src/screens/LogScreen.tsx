@@ -26,7 +26,11 @@ import Animated, {
 import Slider from '@react-native-community/slider'
 import { haptics } from '../utils/haptics'
 import ConflictModal from '../components/log/ConflictModal'
-import LiveTracker, { type LiveResult } from '../components/log/LiveTracker'
+import LiveTracker, {
+  type LiveResult,
+  type LiveSnapshot,
+} from '../components/log/LiveTracker'
+import ErrorBoundary from '../components/ui/ErrorBoundary'
 import PrimaryButton from '../components/ui/PrimaryButton'
 import { isOffline } from '../store/networkStore'
 import { toast } from '../store/toastStore'
@@ -46,6 +50,7 @@ import {
 } from '../services/notificationService'
 import { useAuthStore } from '../store/authStore'
 import { useSessionHistory } from '../hooks/useSessionHistory'
+import { useIsMounted, useSafeTimeout } from '../hooks/useSafeTimeout'
 import { CALIBRATION_SESSION_TARGET } from '../utils/calibration'
 import { withPreferenceDefaults } from '../types/notifications'
 import type { Conflict } from '../types/conflict'
@@ -158,6 +163,19 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const [undoing, setUndoing] = useState(false)
 
   const lastRpe = useRef(rpe)
+  // Deferred "go back after the toast lands" navigation must not outlive the
+  // screen — switching tabs inside that window used to navigate and setState on
+  // a torn-down component.
+  const schedule = useSafeTimeout()
+  const isMounted = useIsMounted()
+
+  // Live-tracking crash recovery. `liveSnapshot` is written by LiveTracker on
+  // every tick; if its error boundary trips we remount the tracker seeded with
+  // that snapshot (bumping `liveBoundaryKey` clears the boundary's error state)
+  // so the athlete lands on the summary and can still save the run.
+  const liveSnapshot = useRef<LiveSnapshot | null>(null)
+  const [recoveredLive, setRecoveredLive] = useState<LiveSnapshot | null>(null)
+  const [liveBoundaryKey, setLiveBoundaryKey] = useState(0)
 
   // A tab's params outlive the visit that set them, so a date handed over by the
   // Planner would still be pinned here days later — the user would tap the Log
@@ -253,6 +271,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       const { session, conflicts: detected } = await logSession(user.uid, input, profile, {
         calibrating: sessions.length < CALIBRATION_SESSION_TARGET,
       })
+      // The write can outlive the screen (tab switch or logout mid-save). The
+      // session is safely persisted either way; there's just no UI left to
+      // update, and the conflict modal below would be mounted into nothing.
+      if (!isMounted.current) return
       setSaving(false)
 
       // Local notifications for what just happened. Fire-and-forget so a
@@ -286,8 +308,9 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         description: `${session.loadScore} AU · ${session.estimatedCalories} kcal`,
       })
       setMode('quick')
-      setTimeout(goBackToPlannerOrReset, 1000)
+      schedule(goBackToPlannerOrReset, 1000)
     } catch {
+      if (!isMounted.current) return
       setSaving(false)
       toast.error('Could not save session', {
         description: isOffline()
@@ -332,6 +355,29 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     })
   }
 
+  /**
+   * Recover from a live-tracking crash: remount the tracker on the summary
+   * screen with whatever was collected. Falls back to the quick log when there
+   * was nothing meaningful recorded (crashed before tracking started).
+   */
+  const handleRecoverLive = () => {
+    const snap = liveSnapshot.current
+    if (!snap || snap.elapsedSec < 1) {
+      liveSnapshot.current = null
+      setRecoveredLive(null)
+      setMode('quick')
+      toast.info('Nothing to recover', {
+        description: 'The workout had not started yet.',
+      })
+      return
+    }
+    setRecoveredLive(snap)
+    setLiveBoundaryKey((k) => k + 1)
+    toast.success('Workout recovered', {
+      description: 'Rate your effort and save it below.',
+    })
+  }
+
   const handleKeepSession = () => {
     const kept = conflicts ?? []
     setConflicts(null)
@@ -350,7 +396,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     } else {
       toast.success('Session saved')
     }
-    setTimeout(goBackToPlannerOrReset, 700)
+    schedule(goBackToPlannerOrReset, 700)
   }
 
   const handleUndoSession = async () => {
@@ -361,11 +407,12 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     } catch {
       // Best-effort: still close the modal so the user isn't stuck.
     } finally {
+      if (!isMounted.current) return
       setUndoing(false)
       setConflicts(null)
       setSavedSessionId(null)
       toast.info('Session undone')
-      setTimeout(goBackToPlannerOrReset, 700)
+      schedule(goBackToPlannerOrReset, 700)
     }
   }
 
@@ -375,14 +422,31 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   if (mode === 'live' && sport) {
     return (
       <>
-        <LiveTracker
-          sport={sport}
-          sportLabel={sportLabel}
-          weightKg={profile?.weightKg}
-          saving={saving}
-          onExit={() => setMode('quick')}
-          onComplete={handleSaveLive}
-        />
+        <ErrorBoundary
+          key={liveBoundaryKey}
+          name="LiveTracker"
+          theme="dark"
+          title="Live tracking hit a problem"
+          message="Something went wrong on the tracking screen. If you were mid-workout, you can recover what was recorded and save it."
+          retryLabel="Start over"
+          onReset={() => {
+            liveSnapshot.current = null
+            setRecoveredLive(null)
+          }}
+          secondaryLabel="Recover this workout"
+          onSecondary={handleRecoverLive}
+        >
+          <LiveTracker
+            sport={sport}
+            sportLabel={sportLabel}
+            weightKg={profile?.weightKg}
+            saving={saving}
+            resumeFrom={recoveredLive}
+            snapshotRef={liveSnapshot}
+            onExit={() => setMode('quick')}
+            onComplete={handleSaveLive}
+          />
+        </ErrorBoundary>
         <ConflictModal
           visible={conflicts != null}
           conflicts={conflicts ?? []}

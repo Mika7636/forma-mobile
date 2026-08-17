@@ -36,6 +36,7 @@ import {
 } from '../constants/training'
 import { updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
+import { useSafeTimeout } from '../hooks/useSafeTimeout'
 import type { SportType } from '../types/session'
 import type { ExperienceLevel, User } from '../types/user'
 
@@ -71,6 +72,7 @@ export default function OnboardingScreen() {
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const schedule = useSafeTimeout()
 
   const goNext = () => {
     haptics.light()
@@ -160,7 +162,7 @@ export default function OnboardingScreen() {
       setDone(true)
       // Show the "You're all set!" beat, then commit the profile —
       // RootNavigator flips to MainTabs once onboardingCompleted is true.
-      setTimeout(() => {
+      schedule(() => {
         console.log('[Onboarding] Committing profile → RootNavigator → MainTabs')
         setProfile(nextProfile)
       }, 2600)

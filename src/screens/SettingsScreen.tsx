@@ -36,6 +36,8 @@ import {
 import { clearTrainingData } from '../services/sessionService'
 import { getUserProfile, updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
+import { useIsMounted } from '../hooks/useSafeTimeout'
+import { isOffline } from '../store/networkStore'
 import { toast } from '../store/toastStore'
 import { haptics } from '../utils/haptics'
 import type { AppStackParamList } from '../navigation/types'
@@ -99,6 +101,7 @@ export default function SettingsScreen() {
 
   const pendingRef = useRef<Partial<User>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isMounted = useIsMounted()
 
   // Debounced Firestore write. Accumulates partial updates, flushes after a
   // quiet period, and mirrors the result into the store so every other screen
@@ -114,6 +117,9 @@ export default function SettingsScreen() {
     }
     try {
       await updateUserProfile(uid, updates)
+      // setProfile and toast are global stores, so they are safe to call after
+      // unmount — that's what makes the flush-on-unmount below work. Only the
+      // local `saving` flag needs the guard.
       setProfile({ ...base, ...updates })
       // The toast fires the success haptic itself — see toastStore.
       toast.success('Settings saved')
@@ -122,9 +128,9 @@ export default function SettingsScreen() {
         description: 'Your changes are still here. Check your connection.',
       })
     } finally {
-      setSaving(false)
+      if (isMounted.current) setSaving(false)
     }
-  }, [user?.uid, setProfile])
+  }, [user?.uid, setProfile, isMounted])
 
   const queueSave = useCallback(
     (updates: Partial<User>) => {
@@ -276,9 +282,21 @@ export default function SettingsScreen() {
   const handleClearData = async () => {
     const uid = user?.uid
     if (!uid) return
-    await clearTrainingData(uid)
-    setClearOpen(false)
-    toast.warning('All training data cleared')
+    try {
+      await clearTrainingData(uid)
+      setClearOpen(false)
+      toast.warning('All training data cleared')
+    } catch {
+      // Previously an unhandled rejection: the confirm modal simply stayed open
+      // with no explanation, and the user had no idea whether the wipe had
+      // partially happened.
+      setClearOpen(false)
+      toast.error('Could not clear data', {
+        description: isOffline()
+          ? "You're offline — reconnect and try again."
+          : 'Some data may not have been removed. Please try again.',
+      })
+    }
   }
 
   const handleDeleteAccount = async () => {

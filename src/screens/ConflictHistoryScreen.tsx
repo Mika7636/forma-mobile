@@ -2,7 +2,7 @@
 // dismissed — reachable from Settings. Filterable, tap a card for the full
 // explanation and the sessions involved, dismiss the ones still active.
 import { useMemo, useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { FlatList, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeInDown } from 'react-native-reanimated'
@@ -133,23 +133,35 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
       ) : visible.length === 0 ? (
         <HistoryEmptyState filter={filter} />
       ) : (
-        <ScrollView
+        // FlatList, not a ScrollView + map: this list is unbounded (the "All"
+        // filter includes every conflict ever recorded), so mapping it would
+        // mount every card at once and grow steadily heavier with account age.
+        <FlatList
+          data={visible}
+          keyExtractor={(conflict) => conflict.conflictId}
           contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 40, gap: 12 }}
           showsVerticalScrollIndicator={false}
-        >
-          {visible.map((conflict, i) => (
-            <Animated.View key={conflict.conflictId} entering={FadeInDown.delay(i * 40).duration(280)}>
+          initialNumToRender={8}
+          windowSize={7}
+          removeClippedSubviews
+          renderItem={({ item, index }) => (
+            <Animated.View
+              // Cap the stagger: uncapped, the 40th card would wait 1.6s to
+              // appear, and a card scrolled back into view would re-animate
+              // after an ever-longer delay.
+              entering={FadeInDown.delay(Math.min(index, 8) * 40).duration(280)}
+            >
               <HistoryCard
-                conflict={conflict}
-                onPress={() => setDetail(conflict)}
+                conflict={item}
+                onPress={() => setDetail(item)}
                 onDismiss={() => {
                   haptics.light()
-                  void dismiss(conflict.conflictId)
+                  void dismiss(item.conflictId)
                 }}
               />
             </Animated.View>
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
 
       <ConflictDetailSheet

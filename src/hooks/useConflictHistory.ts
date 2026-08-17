@@ -8,6 +8,8 @@ import { collection, onSnapshot } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { resolveConflict } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
+import { isOffline } from '../store/networkStore'
+import { toast } from '../store/toastStore'
 import { detectedAtDate } from '../utils/conflictInfo'
 import type { Conflict } from '../types/conflict'
 
@@ -53,7 +55,19 @@ export function useConflictHistory(): UseConflictHistory {
 
   async function dismiss(id: string) {
     if (!uid) return
-    await resolveConflict(uid, id)
+    try {
+      await resolveConflict(uid, id)
+    } catch {
+      // Every caller invokes this as `void dismiss(id)`, so an escaping
+      // rejection would be an unhandled promise rejection — which a release
+      // build treats as a fatal error, and which in any case left the user with
+      // a card that silently refused to disappear.
+      toast.error('Could not dismiss', {
+        description: isOffline()
+          ? "You're offline — reconnect and try again."
+          : 'Something went wrong. Please try again.',
+      })
+    }
   }
 
   if (!uid) return { conflicts: [], loading: false, dismiss }
