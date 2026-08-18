@@ -27,7 +27,7 @@ import {
   isValidCoordinate,
 } from '../../utils/geo'
 import type { RoutePoint, SportType } from '../../types/session'
-import type { Region } from 'react-native-maps'
+import type { MapRegion } from '../../utils/maps'
 
 /** Data handed back to LogScreen when the user saves a live-tracked session. */
 export interface LiveResult {
@@ -566,7 +566,7 @@ export default function LiveTracker({
   }
 
   // Live follow-cam region: keep the latest fix centred with a tight zoom.
-  const liveRegion = useMemo<Region | undefined>(() => {
+  const liveRegion = useMemo<MapRegion | undefined>(() => {
     const last = route[route.length - 1]
     if (!last || !isValidCoordinate(last.latitude, last.longitude)) return undefined
     return {
@@ -825,7 +825,7 @@ function TrackingView({
   speed: number
   calories: number
   route: RoutePoint[]
-  liveRegion: Region | undefined
+  liveRegion: MapRegion | undefined
   paused: boolean
   searching: boolean
   gpsError: string | null
@@ -916,7 +916,13 @@ function TrackingView({
       {/* Live route map */}
       <View style={{ flex: 1, marginTop: 18, marginBottom: 14 }}>
         {/* `style` flex overrides RouteMap's default fixed height on the main axis. */}
-        <RouteMap coordinates={route} region={liveRegion} showMarkers={false} style={MAP_FILL_STYLE} />
+        <RouteMap
+          coordinates={route}
+          region={liveRegion}
+          showMarkers={false}
+          dark
+          style={MAP_FILL_STYLE}
+        />
       </View>
 
       {/* Controls */}
@@ -1055,7 +1061,7 @@ function SummaryView({
 
         {/* Route map */}
         <View style={{ marginTop: 16 }}>
-          <RouteMap coordinates={route} height={200} showMarkers />
+          <RouteMap coordinates={route} height={200} showMarkers dark />
         </View>
 
         {/* Summary stats */}

@@ -15,8 +15,15 @@
 // The key is read from the environment so it never lands in git:
 //
 //   Local dev build : set GOOGLE_MAPS_API_KEY in your shell before `npx expo …`
-//   EAS build       : eas secret:create --scope project \
-//                       --name GOOGLE_MAPS_API_KEY --value <your key>
+//   EAS build       : eas env:set --name GOOGLE_MAPS_API_KEY --value <your key> \
+//                       --visibility sensitive \
+//                       --environment development preview production
+//
+// Visibility must be `sensitive`, not `secret`: secret-type variables are not
+// readable outside EAS servers, so they are unavailable while EAS CLI resolves
+// this dynamic app config — the key would silently drop out of the manifest.
+// The key is embedded in the APK regardless; it is protected by the package +
+// SHA-1 restrictions on the key itself, not by hiding it.
 //
 // Get a key from https://console.cloud.google.com/ → APIs & Services →
 // Credentials, with the "Maps SDK for Android" API enabled. Restrict it to the
@@ -37,6 +44,12 @@ module.exports = ({ config }) => {
   // the rare callers that invoke this without one.
   const expo = { ...(config ?? base.expo) }
 
+  // Recorded so the *running app* can tell whether this binary was built with a
+  // key, and skip mounting a map that cannot possibly authorise. Only the
+  // boolean is exposed - never the key itself - because `extra` is readable from
+  // JS at runtime, and the app has no reason to know the value.
+  expo.extra = { ...(expo.extra ?? {}), googleMapsConfigured: Boolean(GOOGLE_MAPS_API_KEY) }
+
   if (GOOGLE_MAPS_API_KEY) {
     expo.plugins = [
       ...(expo.plugins ?? []),
@@ -49,7 +62,8 @@ module.exports = ({ config }) => {
     console.warn(
       '\n⚠️  GOOGLE_MAPS_API_KEY is not set.\n' +
         '   Maps work in Expo Go, but a dev/EAS build will ship without a Google Maps\n' +
-        '   API key and the live-tracking map will not render. See app.config.js.\n',
+        '   API key. The app detects this and shows a placeholder instead of the map,\n' +
+        '   but live tracking still records distance, pace and calories. See app.config.js.\n',
     )
   }
 
