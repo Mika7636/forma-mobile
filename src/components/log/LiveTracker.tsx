@@ -23,8 +23,12 @@ import { estimateCalories } from '../../algorithms/calories'
 import {
   calculateSpeed,
   formatPace,
+  formatPaceValue,
   haversineDistance,
   isValidCoordinate,
+  rollingPaceSecPerKm,
+  trimPaceSamples,
+  type PaceSample,
 } from '../../utils/geo'
 import type { RoutePoint, SportType } from '../../types/session'
 import type { MapRegion } from '../../utils/maps'
@@ -77,11 +81,69 @@ type Phase = 'ready' | 'countdown' | 'tracking' | 'summary'
 /** Assumed effort for the *live* calorie ticker before the athlete rates RPE. */
 const LIVE_ASSUMED_RPE = 6
 
-/** GPS fixes worse than this (metres) are too noisy to trust for distance. */
-const MAX_ACCURACY_M = 50
+/**
+ * GPS fixes worse than this (metres) are too noisy to trust for distance.
+ *
+ * Tightened from 50 m: a 50 m-accurate fix can sit anywhere in a 50 m circle, so
+ * two of them in a row can invent ~100 m of "distance" out of nothing. Every
+ * phantom metre makes the pace look faster than it is, and the wander between
+ * them makes it jump. Outdoors with a clear sky a modern chip reports 3–10 m, so
+ * 20 m still accepts everything usable and only rejects fixes that would lie.
+ */
+const MAX_ACCURACY_M = 20
+
+/**
+ * The first few fixes after the countdown arrive while the chip is still
+ * locking on: they are typically a coarse cell/wifi estimate that then snaps
+ * tens of metres to the real position, and that snap is otherwise counted as
+ * distance run. Discard them outright — they cost a couple of seconds of
+ * tracking at the start line, where nobody is moving yet anyway.
+ */
+const WARMUP_FIXES = 3
+
+/**
+ * Reported speed (m/s) below which the athlete counts as standing still. ~0.5
+ * m/s is 1.8 km/h — slower than an amble, so no real movement falls under it.
+ */
+const STATIONARY_SPEED_MS = 0.5
+
+/**
+ * …but only discard a stationary segment if it is also this short.
+ *
+ * Two reasons to cap it, both about never eating real distance. Android's fused
+ * provider reports `speed: 0` when it simply doesn't know rather than when it
+ * knows you've stopped, and its speed estimate lags a step-off by a fix or two —
+ * so an uncapped rule would silently freeze distance on some devices, and would
+ * shave the first few metres off every restart from a traffic light.
+ *
+ * 5 m is the `distanceInterval` we ask the provider for, so genuine movement
+ * arrives as segments of *at least* that. Which leaves this rule acting only in
+ * the 2-5 m band between MIN_SEGMENT_M and a real step — precisely the size of
+ * the drift hops a phone emits while its owner stands at a crossing.
+ */
+const STATIONARY_MAX_SEGMENT_M = 5
 
 /** Below this segment length (m) we treat movement as GPS wander / standing still. */
 const MIN_SEGMENT_M = 2
+
+/* ---- Rolling "current pace" window ------------------------------- */
+
+/**
+ * How far back the current-pace readout looks. Long enough to ride out one bad
+ * fix, short enough to react within a block or two — the same feel as Strava's
+ * current pace. Deriving pace from total distance / total time instead makes it
+ * unusable early on, where a single jittery fix moves the whole average.
+ */
+const PACE_WINDOW_MS = 45_000
+
+/** Under this much movement inside the window the pace is noise, not a pace. */
+const PACE_WINDOW_MIN_M = 30
+
+/** Newest accepted fix older than this → we've stopped; show "--:--". */
+const PACE_SAMPLE_STALE_MS = 12_000
+
+/** Slower than 30 min/km isn't a pace, it's a stall. Show "--:--" instead. */
+const PACE_MAX_SEC_PER_KM = 1_800
 
 /**
  * Reject any segment implying a speed above this (m/s ≈ 108 km/h). The fused
@@ -177,6 +239,13 @@ export default function LiveTracker({
   const [gpsStale, setGpsStale] = useState(false)
   /** Non-null when GPS has failed outright: shown as a banner, tracking pauses. */
   const [gpsError, setGpsError] = useState<string | null>(null)
+  /**
+   * Pace over the trailing PACE_WINDOW_MS, in seconds per km, or null when
+   * there isn't enough recent movement to say. Recomputed once a second on the
+   * timer tick (see below) rather than per fix, so it decays while the athlete
+   * stands still instead of freezing on their last moving pace.
+   */
+  const [currentPaceSec, setCurrentPaceSec] = useState<number | null>(null)
 
   // Summary inputs
   const [rpe, setRpe] = useState(6)
@@ -189,6 +258,18 @@ export default function LiveTracker({
   const watchGenRef = useRef(0)
   const lastPointRef = useRef<RoutePoint | null>(null)
   const lastMilestoneRef = useRef(0)
+  /** Counts down the throwaway fixes taken while the GPS chip locks on. */
+  const warmupLeftRef = useRef(0)
+  /**
+   * Running distance total, mirrored out of state so the pace window can be fed
+   * a cumulative figure from inside the GPS callback — where `distanceM` is
+   * whatever it was at the last render, not what it is now.
+   */
+  const distanceMRef = useRef(resumeFrom?.distanceM ?? 0)
+  /** Cumulative-distance samples backing the rolling current-pace readout. */
+  const paceSamplesRef = useRef<PaceSample[]>([])
+  /** Last whole second the tick published, so pace recomputes once per second. */
+  const lastTickSecRef = useRef(-1)
   const lastRpeRef = useRef(rpe)
   const lastFixAtRef = useRef(0)
   /**
@@ -214,6 +295,10 @@ export default function LiveTracker({
   const distanceKm = distanceM / 1000
   const speed = calculateSpeed(elapsedSec, distanceKm)
   const pace = formatPace(elapsedSec, distanceKm)
+  // Rolling readouts. `currentPaceSec` is null until the window holds real
+  // movement, so both fall back to the placeholder rather than showing a 0.
+  const currentPace = formatPaceValue(currentPaceSec)
+  const currentSpeed = currentPaceSec != null ? 3600 / currentPaceSec : null
   const liveCalories = estimateCalories(sport, elapsedSec / 60, LIVE_ASSUMED_RPE, weightKg)
 
   /* ---- GPS subscription lifecycle ---------------------------------- */
@@ -228,7 +313,12 @@ export default function LiveTracker({
     try {
       const sub = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High,
+          // `Highest` rather than `High`: it asks the chip for its best fix
+          // instead of a ~10 m one, which is what makes the 20 m accuracy
+          // filter above a cheap win rather than a source of dropped fixes.
+          // Sampling cadence is deliberately unchanged — it is the one knob
+          // that moves the recorded distance itself.
+          accuracy: Location.Accuracy.Highest,
           timeInterval: 3000,
           distanceInterval: 5,
         },
@@ -293,7 +383,7 @@ export default function LiveTracker({
       if (!mountedRef.current) return
       const coords = loc?.coords
       if (!coords) return
-      const { latitude, longitude, accuracy } = coords
+      const { latitude, longitude, accuracy, speed: reportedSpeed } = coords
 
       // A non-finite or out-of-range coordinate must never reach state. It would
       // poison distance/pace/calories with NaN, and passing it to the map's
@@ -307,17 +397,47 @@ export default function LiveTracker({
       if (accuracy != null && Number.isFinite(accuracy) && accuracy > MAX_ACCURACY_M) return
 
       const stamp = Number.isFinite(loc.timestamp) ? loc.timestamp : Date.now()
-      lastFixAtRef.current = Date.now()
+      // Wall-clock receipt time, kept separate from the provider's `stamp`.
+      // The pace window is aged against `Date.now()` on the timer tick, and on
+      // some Android builds the provider's clock sits seconds away from the
+      // system one — mixing the two there would age the window wrongly.
+      const receivedAt = Date.now()
+      lastFixAtRef.current = receivedAt
       setHasFix(true)
       setGpsStale(false)
       setGpsError(null)
+
+      // Warm-up: the chip is still settling, so this position is not to be
+      // trusted — and deliberately not adopted as an anchor either, or the
+      // snap from the coarse first estimate to the real fix would be measured
+      // as distance covered.
+      if (warmupLeftRef.current > 0) {
+        warmupLeftRef.current -= 1
+        return
+      }
 
       const point: RoutePoint = { latitude, longitude, timestamp: stamp }
       const prev = lastPointRef.current
       if (prev) {
         const seg = haversineDistance(prev.latitude, prev.longitude, latitude, longitude)
-        // Ignore tiny wander so an indoor / stationary athlete doesn't accrue metres.
+        // Ignore tiny wander so an indoor / stationary athlete doesn't accrue
+        // metres. Note the anchor is deliberately *not* moved here: slow real
+        // movement accumulates across several fixes and lands as one segment
+        // once it clears the threshold, so nothing is lost — only noise.
         if (seg < MIN_SEGMENT_M) return
+        // Same again, but driven by the provider's own reported speed rather
+        // than by segment length alone: standing at a crossing produces a
+        // stream of 2-5 m hops that clear MIN_SEGMENT_M and are still pure
+        // drift. Wait two minutes at a light and that is ~75 phantom metres.
+        if (
+          reportedSpeed != null &&
+          Number.isFinite(reportedSpeed) &&
+          reportedSpeed >= 0 &&
+          reportedSpeed < STATIONARY_SPEED_MS &&
+          seg < STATIONARY_MAX_SEGMENT_M
+        ) {
+          return
+        }
         // Discard provider jumps (cell/wifi estimate → satellite fix), which
         // otherwise add hundreds of phantom metres in a single tick. The point
         // is still adopted as the new anchor so the trail resumes from reality.
@@ -326,10 +446,21 @@ export default function LiveTracker({
           lastPointRef.current = point
           return
         }
-        setDistanceM((d) => {
-          const next = d + seg
-          return Number.isFinite(next) ? next : d
-        })
+        const total = distanceMRef.current + seg
+        if (Number.isFinite(total)) {
+          distanceMRef.current = total
+          setDistanceM(total)
+          // Feed the rolling window. Trimming here as well as on the tick keeps
+          // the buffer bounded even if the tick is throttled in the background.
+          const samples = trimPaceSamples(paceSamplesRef.current, receivedAt, PACE_WINDOW_MS)
+          samples.push({ t: receivedAt, m: total })
+          paceSamplesRef.current = samples
+        }
+      } else {
+        // First anchor of a segment (start, or the first fix after a resume):
+        // it contributes no distance, but it *does* open the pace window, so
+        // the very next fix already has something to measure against.
+        paceSamplesRef.current = [{ t: receivedAt, m: distanceMRef.current }]
       }
       lastPointRef.current = point
       setRoute((r) => appendPoint(r, point))
@@ -363,6 +494,27 @@ export default function LiveTracker({
       // most, and only the clock text actually changes.
       setElapsedSec((prev) => (prev === secs ? prev : secs))
       setGpsStale(Date.now() - lastFixAtRef.current > GPS_STALE_MS)
+
+      // Rolling pace is refreshed on the second boundary, not on all four
+      // ticks: that is exactly when this component re-renders anyway, so the
+      // readout stays live without adding a single extra render (and without
+      // re-rendering the map underneath it) — see the note above.
+      if (secs !== lastTickSecRef.current) {
+        lastTickSecRef.current = secs
+        const now = Date.now()
+        paceSamplesRef.current = trimPaceSamples(paceSamplesRef.current, now, PACE_WINDOW_MS)
+        const next = rollingPaceSecPerKm(paceSamplesRef.current, now, {
+          windowMs: PACE_WINDOW_MS,
+          minDistanceM: PACE_WINDOW_MIN_M,
+          staleMs: PACE_SAMPLE_STALE_MS,
+          maxSecPerKm: PACE_MAX_SEC_PER_KM,
+        })
+        // Quantise to whole seconds/km before comparing: the raw figure drifts
+        // by fractions every tick, and storing that would re-render on every
+        // one of them for a change the display can't even show.
+        const rounded = next == null ? null : Math.round(next)
+        setCurrentPaceSec((prev) => (prev === rounded ? prev : rounded))
+      }
     }
     tick()
     // Sub-second polling so the displayed second flips close to its real
@@ -489,9 +641,14 @@ export default function LiveTracker({
     setHasFix(false)
     setGpsStale(false)
     setGpsError(null)
+    setCurrentPaceSec(null)
     lastFixAtRef.current = Date.now()
     lastPointRef.current = null
     lastMilestoneRef.current = 0
+    distanceMRef.current = 0
+    paceSamplesRef.current = []
+    lastTickSecRef.current = -1
+    warmupLeftRef.current = WARMUP_FIXES
     startedAtRef.current = Date.now()
     sessionStartAtRef.current = Date.now()
     accumulatedMsRef.current = 0
@@ -506,12 +663,17 @@ export default function LiveTracker({
     stopWatch()
     // Break the trail so resuming doesn't draw / count a straight line across the gap.
     lastPointRef.current = null
+    // Drop the pace window too. Its samples straddle the pause otherwise, and
+    // the paused minutes would be measured as time spent covering no ground.
+    paceSamplesRef.current = []
+    setCurrentPaceSec(null)
     haptics.medium()
   }
 
   async function handleResume() {
     startedAtRef.current = Date.now()
     lastFixAtRef.current = Date.now()
+    lastTickSecRef.current = -1
     setPaused(false)
     setGpsError(null)
     haptics.medium()
@@ -605,6 +767,8 @@ export default function LiveTracker({
           distanceKm={distanceKm}
           pace={pace}
           speed={speed}
+          currentPace={currentPace}
+          currentSpeed={currentSpeed}
           calories={liveCalories}
           route={route}
           liveRegion={liveRegion}
@@ -807,6 +971,8 @@ function TrackingView({
   distanceKm,
   pace,
   speed,
+  currentPace,
+  currentSpeed,
   calories,
   route,
   liveRegion,
@@ -821,8 +987,13 @@ function TrackingView({
   clock: string
   isCycling: boolean
   distanceKm: number
+  /** Session average, over total distance and total time. */
   pace: string
   speed: number
+  /** Rolling readout over the last PACE_WINDOW_MS — "--:-- /km" when unknown. */
+  currentPace: string
+  /** Same window, expressed as km/h for cycling; null when unknown. */
+  currentSpeed: number | null
   calories: number
   route: RoutePoint[]
   liveRegion: MapRegion | undefined
@@ -903,12 +1074,23 @@ function TrackingView({
         </Animated.View>
       ) : null}
 
-      {/* Secondary metrics */}
+      {/* Secondary metrics. The headline figure is the *rolling* one — it's
+          what tells you whether you're going too hard right now — with the
+          session average underneath it for context, the way Strava splits the
+          two. Keeping the average as a sub-line rather than a third tile leaves
+          the numbers legible on a narrow screen at arm's length. */}
       <View style={{ flexDirection: 'row', marginTop: 18 }}>
         <Metric
           label={isCycling ? 'SPEED' : 'PACE'}
-          value={isCycling ? `${speed.toFixed(1)}` : pace.replace(' /km', '')}
+          value={
+            isCycling
+              ? currentSpeed != null
+                ? currentSpeed.toFixed(1)
+                : '--.-'
+              : currentPace.replace(' /km', '')
+          }
           unit={isCycling ? 'km/h' : '/km'}
+          sub={isCycling ? `avg ${speed.toFixed(1)} km/h` : `avg ${pace}`}
         />
         <Metric label="CALORIES" value={`${calories}`} unit="kcal" />
       </View>
@@ -939,7 +1121,18 @@ function TrackingView({
   )
 }
 
-function Metric({ label, value, unit }: { label: string; value: string; unit: string }) {
+function Metric({
+  label,
+  value,
+  unit,
+  sub,
+}: {
+  label: string
+  value: string
+  unit: string
+  /** Optional smaller line beneath the figure, e.g. the session average. */
+  sub?: string
+}) {
   return (
     <View
       style={{
@@ -949,6 +1142,9 @@ function Metric({ label, value, unit }: { label: string; value: string; unit: st
         borderRadius: 16,
         paddingVertical: 14,
         alignItems: 'center',
+        // Both tiles stretch to the taller one; centring keeps the calories
+        // figure level with the pace figure now that pace carries a sub-line.
+        justifyContent: 'center',
       }}
     >
       <Text style={{ color: COLORS.subtle, fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>
@@ -962,6 +1158,11 @@ function Metric({ label, value, unit }: { label: string; value: string; unit: st
           {unit}
         </Text>
       </View>
+      {sub ? (
+        <Text style={{ color: COLORS.subtle, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+          {sub}
+        </Text>
+      ) : null}
     </View>
   )
 }
