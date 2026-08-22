@@ -31,7 +31,12 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+# `.env*.local` alone leaves a plain `.env` (and `.env.production` etc.) tracked,
+# which is exactly where `eas env:pull` and hand-written keys land. Ignore the
+# whole family and allow only a committed, value-less example file.
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
