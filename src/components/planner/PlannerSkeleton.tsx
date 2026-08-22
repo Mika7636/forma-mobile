@@ -1,38 +1,44 @@
 import { View } from 'react-native'
-import { Skeleton, SkeletonCard } from '../ui/Skeleton'
-import { RADIUS, SPACING } from '../../constants/theme'
+import { Skeleton } from '../ui/Skeleton'
+import { SPACING } from '../../constants/theme'
+import { WEEKDAY_INITIALS } from '../../hooks/useMonthPlan'
 
 /**
- * Seven placeholder day cards, matching DayCard's real geometry (date column,
- * title, session chips) so the week doesn't jump when the two Firestore
- * listeners behind `useWeeklyPlan` deliver.
+ * Placeholder month grid, matching MonthGrid's real geometry (weekday header,
+ * six rows of date circles) so the calendar doesn't jump when the two Firestore
+ * listeners behind `useMonthPlan` deliver.
  *
- * The varying chip counts are intentional: a column of seven identical boxes
- * reads as a rendering bug, whereas an uneven stack reads as content arriving.
+ * Six rows rather than the month's real height: the placeholder can't know the
+ * shape yet, and shrinking is less jarring than growing into content.
  */
-const CHIPS_PER_DAY = [1, 0, 2, 1, 0, 1, 2]
+const ROWS = 6
+/** Same circle size MonthGrid uses, so nothing shifts on swap. */
+const CIRCLE = 34
 
 export default function PlannerSkeleton() {
   return (
-    <View style={{ gap: SPACING.md }}>
-      {CHIPS_PER_DAY.map((chips, i) => (
-        <SkeletonCard key={i}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-            <Skeleton width={38} height={38} radius={RADIUS.md} />
-            <View style={{ flex: 1, gap: 6 }}>
-              <Skeleton width="42%" height={14} />
-              <Skeleton width="26%" height={10} />
-            </View>
+    <View>
+      <View style={{ flexDirection: 'row', marginBottom: SPACING.sm }}>
+        {WEEKDAY_INITIALS.map((_, i) => (
+          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+            <Skeleton width={10} height={12} />
           </View>
+        ))}
+      </View>
 
-          {chips > 0 ? (
-            <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
-              {Array.from({ length: chips }).map((_, c) => (
-                <Skeleton key={c} height={44} radius={RADIUS.md} />
-              ))}
+      {Array.from({ length: ROWS }).map((_, row) => (
+        <View key={row} style={{ flexDirection: 'row' }}>
+          {WEEKDAY_INITIALS.map((_, col) => (
+            <View
+              key={col}
+              style={{ flex: 1, alignItems: 'center', paddingTop: 6, paddingBottom: 4 }}
+            >
+              <Skeleton width={CIRCLE} height={CIRCLE} radius={CIRCLE / 2} />
+              {/* Empty spacer standing in for the session-dot row. */}
+              <View style={{ height: 6, marginTop: 4 }} />
             </View>
-          ) : null}
-        </SkeletonCard>
+          ))}
+        </View>
       ))}
     </View>
   )

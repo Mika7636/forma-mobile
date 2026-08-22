@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import Slider from '@react-native-community/slider'
+import { formatDistanceKm } from '../../utils/formatting'
 import { haptics } from '../../utils/haptics'
 import * as Location from 'expo-location'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
@@ -1092,7 +1093,7 @@ function TrackingView({
           unit={isCycling ? 'km/h' : '/km'}
           sub={isCycling ? `avg ${speed.toFixed(1)} km/h` : `avg ${pace}`}
         />
-        <Metric label="CALORIES" value={`${calories}`} unit="kcal" />
+        <Metric label="EST. CALORIES" value={`${calories}`} unit="kcal" />
       </View>
 
       {/* Live route map */}
@@ -1276,12 +1277,12 @@ function SummaryView({
         >
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             <SummaryStat label="Duration" value={clock} />
-            <SummaryStat label="Distance" value={`${distanceKm.toFixed(2)} km`} />
+            <SummaryStat label="Distance" value={formatDistanceKm(distanceKm)} />
             <SummaryStat
               label={isCycling ? 'Avg Speed' : 'Avg Pace'}
               value={isCycling ? `${speed.toFixed(1)} km/h` : pace}
             />
-            <SummaryStat label="Calories" value={`🔥 ${calories} kcal`} />
+            <SummaryStat label="Est. Calories" value={`🔥 ${calories} kcal`} />
           </View>
         </View>
 

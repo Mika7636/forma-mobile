@@ -3,7 +3,7 @@ import { Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import CountUp from './CountUp'
 import { COLORS } from '../../constants/theme'
-import { formatThousands } from '../../utils/formatting'
+import { formatDistance, formatThousands } from '../../utils/formatting'
 
 interface MetricGridProps {
   weeklyLoad: number
@@ -129,7 +129,7 @@ export default function MetricGrid({
         <ValueRow icon="📏">
           <CountUp
             value={weeklyDistanceKm}
-            format={(v) => (v >= 100 ? String(Math.round(v)) : v.toFixed(1))}
+            format={formatDistance}
             style={styles.bigNumber}
           />
         </ValueRow>

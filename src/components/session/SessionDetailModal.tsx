@@ -35,6 +35,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useSessionHistory } from '../../hooks/useSessionHistory'
 import { CALIBRATION_SESSION_TARGET } from '../../utils/calibration'
 import { SPORT_META } from '../../utils/sportMeta'
+import { formatDistanceKm } from '../../utils/formatting'
 import type { Session, SportType } from '../../types/session'
 
 const SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.9)
@@ -458,7 +459,7 @@ function ViewMode({
         />
         <StatTile icon="⚡" label="Training Load" value={`${session.loadScore} AU`} />
         {session.estimatedCalories != null ? (
-          <StatTile icon="🔥" label="Calories" value={`${session.estimatedCalories} kcal`} />
+          <StatTile icon="🔥" label="Est. Calories" value={`${session.estimatedCalories} kcal`} />
         ) : null}
         {zone ? (
           <StatTile
@@ -473,7 +474,7 @@ function ViewMode({
           <StatTile icon="⏱️" label="Pace" value={paceValue} />
         ) : null}
         {isDistance && session.distanceKm != null ? (
-          <StatTile icon="📏" label="Distance" value={`${session.distanceKm} km`} />
+          <StatTile icon="📏" label="Distance" value={formatDistanceKm(session.distanceKm)} />
         ) : null}
         {session.avgBpm != null ? (
           <StatTile icon="💓" label="Avg BPM" value={`${session.avgBpm} bpm`} />
@@ -825,7 +826,7 @@ function EditMode({
           }}
         >
           <LivePill label="Load" value={`${estimates.loadScore} AU`} />
-          <LivePill label="Calories" value={`${estimates.estimatedCalories} kcal`} />
+          <LivePill label="Est. Calories" value={`${estimates.estimatedCalories} kcal`} />
           <LivePill label="Zone" value={`Z${estimates.estimatedHRZone.zone}`} />
           {showDistance && estimates.pace ? (
             <LivePill label="Pace" value={estimates.pace} />

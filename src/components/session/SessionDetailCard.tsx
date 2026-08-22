@@ -2,6 +2,7 @@ import { Text, View } from 'react-native'
 import RouteMap from './RouteMap'
 import { COLORS } from '../../constants/theme'
 import { SPORT_OPTIONS } from '../../constants/training'
+import { formatDistanceKm } from '../../utils/formatting'
 import type { Session } from '../../types/session'
 
 /**
@@ -67,7 +68,7 @@ export default function SessionDetailCard({ session }: { session: Session }) {
       >
         <DetailStat label="Duration" value={`${session.durationMinutes} min`} />
         {session.distanceKm != null ? (
-          <DetailStat label="Distance" value={`${session.distanceKm.toFixed(2)} km`} />
+          <DetailStat label="Distance" value={formatDistanceKm(session.distanceKm)} />
         ) : null}
         {paceValue !== '—' ? (
           <DetailStat
@@ -78,7 +79,7 @@ export default function SessionDetailCard({ session }: { session: Session }) {
         <DetailStat label="RPE" value={`${session.rpe} / 10`} />
         <DetailStat label="Load" value={`${session.loadScore} AU`} />
         {session.estimatedCalories != null ? (
-          <DetailStat label="Calories" value={`🔥 ${session.estimatedCalories} kcal`} />
+          <DetailStat label="Est. Calories" value={`🔥 ${session.estimatedCalories} kcal`} />
         ) : null}
       </View>
 

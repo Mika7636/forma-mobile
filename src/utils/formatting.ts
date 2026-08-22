@@ -51,3 +51,21 @@ export function formatTimeAgo(isoDate: string): string {
 
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
+
+/**
+ * Distance in km to exactly two decimals — "0.68", "12.40", "108.35".
+ *
+ * GPS-tracked sessions store a raw haversine sum (0.6753331193…), so every km
+ * figure that reaches the UI goes through here rather than being interpolated
+ * straight into a template string. Non-finite input degrades to "0.00" instead
+ * of printing "NaN".
+ */
+export function formatDistance(km: number): string {
+  if (!Number.isFinite(km)) return '0.00'
+  return km.toFixed(2)
+}
+
+/** {@link formatDistance} with its unit — "0.68 km". */
+export function formatDistanceKm(km: number): string {
+  return `${formatDistance(km)} km`
+}

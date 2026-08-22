@@ -13,8 +13,8 @@ import Animated, {
 import { haptics } from '../../utils/haptics'
 import { COLORS } from '../../constants/theme'
 import { severityStyle, type ConflictSeverity } from '../../constants/conflictColors'
-import { SPORT_OPTIONS } from '../../constants/training'
-import { SPORT_META } from '../../utils/sportMeta'
+import { formatDistanceKm } from '../../utils/formatting'
+import { sportVisual } from '../../utils/sportMeta'
 import type { Session } from '../../types/session'
 
 /** How far the row rests open once the delete button is revealed. */
@@ -39,20 +39,6 @@ interface SessionChipProps {
   onDelete: (session: Session) => Promise<void>
 }
 
-/**
- * Sport accent + icon. Colours come from {@link SPORT_OPTIONS} (the palette the
- * sport pickers use) and fall back to {@link SPORT_META} for anything unknown.
- */
-function sportVisual(session: Session) {
-  const option = SPORT_OPTIONS.find((o) => o.value === session.sport)
-  const meta = SPORT_META[session.sport]
-  return {
-    color: option?.accent ?? meta?.color ?? COLORS.muted,
-    icon: option?.icon ?? meta?.icon ?? '🏅',
-    label: option?.label ?? meta?.label ?? session.sport,
-  }
-}
-
 /** "2:30 PM · 45 min · RPE 7 · 412 kcal" (time only when requested) */
 function metaLine(session: Session, showTime: boolean): string {
   const parts: string[] = []
@@ -66,7 +52,7 @@ function metaLine(session: Session, showTime: boolean): string {
   }
   parts.push(`${session.durationMinutes} min`, `RPE ${session.rpe}`)
   if (session.estimatedCalories != null) parts.push(`${session.estimatedCalories} kcal`)
-  if (session.distanceKm != null) parts.push(`${session.distanceKm} km`)
+  if (session.distanceKm != null) parts.push(formatDistanceKm(session.distanceKm))
   return parts.join(' · ')
 }
 
@@ -77,7 +63,7 @@ export default function SessionChip({
   onPress,
   onDelete,
 }: SessionChipProps) {
-  const { color, icon, label } = sportVisual(session)
+  const { color, icon, label } = sportVisual(session.sport)
   const conflicted = conflictSeverity != null
   const conflictStyle = conflicted ? severityStyle(conflictSeverity) : null
 

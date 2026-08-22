@@ -36,7 +36,7 @@ export default function ProgressStats({ stats, baseDelay = 40 }: ProgressStatsPr
       <StatCard
         delay={baseDelay + 80}
         icon="🔥"
-        label="calories (kcal)"
+        label="est. calories (kcal)"
         value={formatThousands(stats.totalCalories)}
       />
       <StatCard

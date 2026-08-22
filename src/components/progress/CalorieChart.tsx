@@ -36,7 +36,7 @@ interface CalorieChartProps {
  */
 export default function CalorieChart({ weekly, delay = 0 }: CalorieChartProps) {
   return (
-    <ChartCard title="Calories Burned" subtitle="Energy out, week by week" icon="🔥" delay={delay}>
+    <ChartCard title="Est. Calories Burned" subtitle="Energy out, week by week" icon="🔥" delay={delay}>
       {(width) => <CaloriePlot weekly={weekly} width={width} />}
     </ChartCard>
   )
