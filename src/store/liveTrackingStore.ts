@@ -90,6 +90,26 @@ const PERSIST_MIN_INTERVAL_MS = 4000
 const MAX_ACCURACY_M = 20
 
 /**
+ * …but never let the accuracy gate silence a whole run.
+ *
+ * 20 m is the right gate when fixes stream in from a foreground watcher on a
+ * phone with a clear view of the sky. It is *not* safe as an absolute rule: on a
+ * backgrounded phone in a pocket, under cloud, or indoors at the start of a run,
+ * a device can spend minutes reporting nothing better than 30-40 m. The original
+ * gate then rejects every single fix, and the athlete gets 0.00 km with no
+ * indication anything is wrong — silently recording nothing is a far worse
+ * failure than recording something slightly noisy.
+ *
+ * So after {@link ACCURACY_RELAX_AFTER} consecutive rejections the gate opens to
+ * this. `MIN_SEGMENT_M` and the stationary filter still hold the line against
+ * phantom drift, so the cost is a little jitter, not invented kilometres.
+ */
+const RELAXED_ACCURACY_M = 50
+
+/** Consecutive accuracy rejections before the gate relaxes. */
+const ACCURACY_RELAX_AFTER = 8
+
+/**
  * The first few fixes after the countdown arrive while the chip is still
  * locking on: they are typically a coarse cell/wifi estimate that then snaps
  * tens of metres to the real position, and that snap is otherwise counted as
@@ -128,6 +148,26 @@ const MIN_SEGMENT_M = 2
 const MAX_PLAUSIBLE_SPEED_MS = 30
 
 /**
+ * Floor on the elapsed time used for the jump test above, in seconds.
+ *
+ * This constant is the fix for a bug that zeroed out entire runs. The jump test
+ * is `segment / elapsed > 30 m/s`, and `elapsed` used to be floored at **1
+ * second** — so any segment longer than 30 m was classified as a teleport. That
+ * is fine while fixes arrive every 3 s from a foreground watcher (a runner
+ * covers ~10 m), and catastrophic as soon as they don't: batched background
+ * delivery, or a provider that reports every 25 m, produces perfectly ordinary
+ * 25-50 m segments that were *all* discarded. And because the discard branch
+ * re-anchors without appending, the route froze at a single point and distance
+ * stayed at exactly 0.00 km for the whole workout.
+ *
+ * Two changes make that impossible now: elapsed is measured from the **wall
+ * clock** rather than from provider timestamps (which can collapse or repeat
+ * across a batch), and the floor is small enough that it only ever guards
+ * against a divide-by-zero, never against a real segment.
+ */
+const MIN_JUMP_DT_SEC = 0.25
+
+/**
  * Hard cap on stored route points. Past that the route is halved in resolution
  * (see `appendPoint`) so memory, render cost, the size of the AsyncStorage
  * snapshot and the saved Firestore document all stay bounded no matter how long
@@ -156,6 +196,28 @@ export const PACE_MAX_SEC_PER_KM = 1_800
 
 /** No usable fix for this long → tell the user we've lost signal. */
 export const GPS_STALE_MS = 15_000
+
+/* ------------------------------------------------------------------ */
+/* Diagnostics                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Trace every stage of the pipeline to the device log.
+ *
+ * Left on: live tracking fails *silently* — a rejected fix looks exactly like a
+ * stationary athlete — so when a run comes back at 0.00 km the only way to tell
+ * which stage dropped it is a log line per stage. Read it with
+ * `adb logcat -s ReactNativeJS:V | grep liveTracking`.
+ *
+ * Volume is one line per GPS fix (~1 every 3 s), which is nothing next to what
+ * the location subsystem itself logs. Flip to false once the feature has been
+ * trusted on real hardware for a while.
+ */
+const DEBUG = true
+
+function log(...args: unknown[]): void {
+  if (DEBUG) console.log('[liveTracking]', ...args)
+}
 
 /* ------------------------------------------------------------------ */
 /* Location request options                                            */
@@ -261,6 +323,42 @@ export interface LiveTrackingState {
   paceSamples: PaceSample[]
   /** Anchor for the next segment; null after a pause so the gap isn't measured. */
   lastPoint: RoutePoint | null
+  /**
+   * Wall-clock ms at which {@link lastPoint} was accepted.
+   *
+   * The speed sanity check is measured against this rather than against the
+   * difference of two provider timestamps. Provider clocks repeat, collapse
+   * across a batched delivery, and on some Android builds sit seconds away from
+   * the system clock — and a bad elapsed value turns the jump filter into a
+   * filter that rejects the entire run. See {@link MIN_JUMP_DT_SEC}.
+   */
+  lastPointAt: number
+  /**
+   * Newest provider timestamp already folded in, so the same physical fix
+   * delivered by *both* feeds is only counted once. See {@link startLocationFeed}.
+   */
+  lastStamp: number
+  /**
+   * Consecutive fixes rejected for poor accuracy, driving the adaptive gate.
+   * Reset by any accepted fix. See {@link RELAXED_ACCURACY_M}.
+   */
+  accuracyRejects: number
+  /**
+   * True once this device has proved it cannot hold {@link MAX_ACCURACY_M}, so
+   * the gate stays open at {@link RELAXED_ACCURACY_M}.
+   *
+   * This has to **latch** rather than be re-derived from the rejection streak.
+   * A streak alone is self-cancelling: the fix that finally gets through resets
+   * the counter, the next one is measured against the tight gate again and is
+   * rejected, and the device settles into letting exactly one fix in nine
+   * through — which, since the first of those is consumed by the warm-up, means
+   * the trail never gets an anchor and the run records 0.00 km forever. Latching
+   * is the difference between a gate that adapts and one that only looks like it.
+   *
+   * Cleared again the moment a genuinely accurate fix arrives, so a phone that
+   * regains a clear sky goes back to the strict gate for the rest of the run.
+   */
+  accuracyRelaxed: boolean
   /** Counts down the throwaway fixes taken while the GPS chip locks on. */
   warmupLeft: number
   /** Wall-clock ms of the last accepted fix; drives the "GPS lost" banner. */
@@ -293,6 +391,10 @@ const EMPTY: LiveTrackingState = {
   route: [],
   paceSamples: [],
   lastPoint: null,
+  lastPointAt: 0,
+  lastStamp: 0,
+  accuracyRejects: 0,
+  accuracyRelaxed: false,
   warmupLeft: 0,
   lastFixAt: 0,
   hasFix: false,
@@ -359,6 +461,10 @@ async function persist(force = false): Promise<void> {
       route: s.route,
       paceSamples: s.paceSamples,
       lastPoint: s.lastPoint,
+      lastPointAt: s.lastPointAt,
+      lastStamp: s.lastStamp,
+      accuracyRejects: s.accuracyRejects,
+      accuracyRelaxed: s.accuracyRelaxed,
       warmupLeft: s.warmupLeft,
       lastFixAt: s.lastFixAt,
       hasFix: s.hasFix,
@@ -422,6 +528,10 @@ async function readSnapshot(): Promise<void> {
       route: Array.isArray(parsed.route) ? parsed.route : [],
       paceSamples: Array.isArray(parsed.paceSamples) ? parsed.paceSamples : [],
       lastPoint: parsed.lastPoint ?? null,
+      lastPointAt: Number(parsed.lastPointAt) || 0,
+      lastStamp: Number(parsed.lastStamp) || 0,
+      accuracyRejects: Number(parsed.accuracyRejects) || 0,
+      accuracyRelaxed: parsed.accuracyRelaxed === true,
       warmupLeft: Number(parsed.warmupLeft) || 0,
       lastFixAt: Number(parsed.lastFixAt) || 0,
       hasFix: parsed.hasFix === true,
@@ -459,6 +569,11 @@ function appendPoint(route: RoutePoint[], point: RoutePoint): RoutePoint[] {
  * Split out from the store mutation so a whole background batch can be folded in
  * a single `set()` — the OS delivers backgrounded fixes in arrays, and applying
  * them one `set()` at a time would fan out that many store notifications.
+ *
+ * Every rejection is logged. These filters are the difference between a correct
+ * run and a run that silently records nothing, and from the outside a rejected
+ * fix is indistinguishable from standing still — so when a workout comes back at
+ * 0.00 km, the log is what says which filter ate it.
  */
 function foldLocation(
   s: LiveTrackingState,
@@ -473,20 +588,57 @@ function foldLocation(
   // poison distance/pace/calories with NaN, and passing it to the map's Polyline
   // throws inside the Google Maps SDK — a native crash no JS try/catch or error
   // boundary can contain.
-  if (!isValidCoordinate(latitude, longitude)) return null
-
-  // Too imprecise to trust — don't corrupt distance, and don't count this as a
-  // fix either, so the "Searching for GPS…" hint stays up while every reading is
-  // being rejected rather than silently freezing the distance.
-  if (accuracy != null && Number.isFinite(accuracy) && accuracy > MAX_ACCURACY_M) return null
+  if (!isValidCoordinate(latitude, longitude)) {
+    log('reject: invalid coordinate', latitude, longitude)
+    return null
+  }
 
   const stamp = Number.isFinite(loc.timestamp) ? loc.timestamp : receivedAt
+
+  // Both feeds run at once (see `startLocationFeed`), so the same physical fix
+  // can be handed to us twice — once by the foreground watcher and once by the
+  // background task. Counting it twice would inflate distance. Provider
+  // timestamps are the same on both paths, so strictly-increasing is an exact
+  // de-duplication; it is the same rule expo-location applies natively.
+  if (Number.isFinite(loc.timestamp) && stamp <= s.lastStamp) return null
+
+  // Too imprecise to trust — but never permanently. A device that can only
+  // manage 30 m for a while must still record a run; see RELAXED_ACCURACY_M.
+  const gate = s.accuracyRelaxed ? RELAXED_ACCURACY_M : MAX_ACCURACY_M
+  if (accuracy != null && Number.isFinite(accuracy) && accuracy > gate) {
+    const rejects = s.accuracyRejects + 1
+    log(`reject: accuracy ${accuracy.toFixed(0)}m > ${gate}m (streak ${rejects})`)
+    // Deliberately not counted as a fix: the "Searching for GPS…" hint should
+    // stay up while every reading is being thrown away, rather than the distance
+    // appearing to freeze for no reason.
+    return {
+      accuracyRejects: rejects,
+      accuracyRelaxed: s.accuracyRelaxed || rejects >= ACCURACY_RELAX_AFTER,
+    }
+  }
+
+  // Common to every accepted path below. The relax only lifts when the device
+  // shows it can hold the strict gate again — see `accuracyRelaxed`.
+  const accepted = {
+    accuracyRejects: 0,
+    accuracyRelaxed:
+      accuracy != null && Number.isFinite(accuracy) && accuracy <= MAX_ACCURACY_M
+        ? false
+        : s.accuracyRelaxed,
+  }
 
   // Warm-up: the chip is still settling, so this position is not to be trusted —
   // and deliberately not adopted as an anchor either, or the snap from the coarse
   // first estimate to the real fix would be measured as distance covered.
   if (s.warmupLeft > 0) {
-    return { warmupLeft: s.warmupLeft - 1, lastFixAt: receivedAt, hasFix: true }
+    log(`warm-up: discarding fix (${s.warmupLeft} left)`)
+    return {
+      warmupLeft: s.warmupLeft - 1,
+      lastFixAt: receivedAt,
+      lastStamp: stamp,
+      hasFix: true,
+      ...accepted,
+    }
   }
 
   const point: RoutePoint = { latitude, longitude, timestamp: stamp }
@@ -496,10 +648,14 @@ function foldLocation(
     // First anchor of a segment (start, or the first fix after a resume): it
     // contributes no distance, but it *does* open the pace window, so the very
     // next fix already has something to measure against.
+    log('anchor: first point of segment')
     return {
       lastFixAt: receivedAt,
+      lastStamp: stamp,
       hasFix: true,
+      ...accepted,
       lastPoint: point,
+      lastPointAt: receivedAt,
       paceSamples: [{ t: receivedAt, m: s.distanceM }],
       route: appendPoint(s.route, point),
     }
@@ -511,7 +667,9 @@ function foldLocation(
   // The anchor is deliberately *not* moved: slow real movement accumulates across
   // several fixes and lands as one segment once it clears the threshold, so
   // nothing is lost — only noise.
-  if (seg < MIN_SEGMENT_M) return { lastFixAt: receivedAt, hasFix: true }
+  if (seg < MIN_SEGMENT_M) {
+    return { lastFixAt: receivedAt, lastStamp: stamp, hasFix: true, ...accepted }
+  }
 
   // Same again, but driven by the provider's own reported speed rather than by
   // segment length alone: standing at a crossing produces a stream of 2-5 m hops
@@ -524,27 +682,55 @@ function foldLocation(
     reportedSpeed < STATIONARY_SPEED_MS &&
     seg < STATIONARY_MAX_SEGMENT_M
   ) {
-    return { lastFixAt: receivedAt, hasFix: true }
+    log(`stationary: dropping ${seg.toFixed(1)}m of drift`)
+    return { lastFixAt: receivedAt, lastStamp: stamp, hasFix: true, ...accepted }
   }
 
   // Discard provider jumps (cell/wifi estimate → satellite fix), which otherwise
   // add hundreds of phantom metres in a single tick. The point is still adopted
   // as the new anchor so the trail resumes from reality.
-  const dtSec = Math.max((stamp - prev.timestamp) / 1000, 1)
-  if (seg / dtSec > MAX_PLAUSIBLE_SPEED_MS) {
-    return { lastFixAt: receivedAt, hasFix: true, lastPoint: point }
+  //
+  // Elapsed is taken from the WALL CLOCK, not from the difference of two provider
+  // timestamps — see MIN_JUMP_DT_SEC for the run-destroying bug that caused.
+  const dtSec = Math.max((receivedAt - s.lastPointAt) / 1000, MIN_JUMP_DT_SEC)
+  const impliedSpeed = seg / dtSec
+  if (impliedSpeed > MAX_PLAUSIBLE_SPEED_MS) {
+    log(
+      `reject: implausible ${seg.toFixed(0)}m in ${dtSec.toFixed(1)}s ` +
+        `(${impliedSpeed.toFixed(0)} m/s) — re-anchoring`,
+    )
+    return {
+      lastFixAt: receivedAt,
+      lastStamp: stamp,
+      hasFix: true,
+      ...accepted,
+      lastPoint: point,
+      lastPointAt: receivedAt,
+    }
   }
 
   const total = s.distanceM + seg
-  if (!Number.isFinite(total)) return { lastFixAt: receivedAt, hasFix: true, lastPoint: point }
+  if (!Number.isFinite(total)) {
+    return {
+      lastFixAt: receivedAt,
+      lastStamp: stamp,
+      hasFix: true,
+      ...accepted,
+      lastPoint: point,
+      lastPointAt: receivedAt,
+    }
+  }
 
   const samples = trimPaceSamples(s.paceSamples, receivedAt, PACE_WINDOW_MS)
   return {
     lastFixAt: receivedAt,
+    lastStamp: stamp,
     hasFix: true,
+    ...accepted,
     lastPoint: point,
+    lastPointAt: receivedAt,
     distanceM: total,
-    // `slice()` because trimPaceSamples returns the same array reference when
+    // Spread because trimPaceSamples returns the same array reference when
     // nothing needed dropping, and mutating stored state in place would leave
     // subscribers unable to tell the value changed.
     paceSamples: [...samples, { t: receivedAt, m: total }],
@@ -555,10 +741,15 @@ function foldLocation(
 /**
  * Fold a batch of fixes into the store. **This is the single entry point for
  * both feeds** — the background TaskManager task and the foreground
- * `watchPositionAsync` fallback both land here, so a run measures identically
- * whether or not the screen was on.
+ * `watchPositionAsync` watcher both land here, so a run measures identically
+ * whether or not the screen was on, and a fix delivered by both is counted once.
+ *
+ * @param source which feed delivered this batch, for the log only.
  */
-export async function ingestLocations(locations: Location.LocationObject[]): Promise<void> {
+export async function ingestLocations(
+  locations: Location.LocationObject[],
+  source: 'watch' | 'task' = 'task',
+): Promise<void> {
   if (!locations?.length) return
   // The background task can run in a JS context that has never seen this
   // session. Load it before accumulating onto it.
@@ -567,7 +758,10 @@ export async function ingestLocations(locations: Location.LocationObject[]): Pro
   const before = get()
   // Fixes that arrive while paused (the provider can have one in flight when the
   // user hits Pause) must not extend the trail across the break.
-  if (before.status !== 'tracking') return
+  if (before.status !== 'tracking') {
+    log(`ignoring ${locations.length} fix(es) from ${source} — status ${before.status}`)
+    return
+  }
 
   const batchAt = Date.now()
   // Map each fix onto the system clock, preserving the spacing *between* fixes.
@@ -589,31 +783,48 @@ export async function ingestLocations(locations: Location.LocationObject[]): Pro
   const newest = stamps.length ? Math.max(...stamps) : NaN
   const skew = Number.isFinite(newest) ? batchAt - newest : 0
 
-  let next = before
-  let changed = false
+  // `working` is the running state each fold is applied against; `merged` is the
+  // union of the patches they produced, and is what gets written.
+  //
+  // Accumulating the patches rather than listing the fields to copy is
+  // deliberate. The previous version wrote an explicit whitelist of keys out of
+  // the folded state — and silently dropped `accuracyRelaxed` because it was
+  // added to the fold and forgotten here, so the adaptive accuracy gate computed
+  // the right answer and then threw it away. A whitelist of state fields is a
+  // bug waiting for the next field; this cannot miss one.
+  let working = before
+  let merged: Partial<LiveTrackingState> = {}
+  let contributed = 0
   for (const loc of locations) {
     const raw = Number.isFinite(loc?.timestamp) ? loc.timestamp + skew : batchAt
     // Never let a fix claim to be from the future — a clock jump mid-run would
     // otherwise put a sample beyond `now` and make the window's elapsed time
     // negative.
     const receivedAt = Math.min(raw, batchAt)
-    const patch = foldLocation(next, loc, receivedAt)
+    const patch = foldLocation(working, loc, receivedAt)
     if (!patch) continue
-    next = { ...next, ...patch }
-    changed = true
+    working = { ...working, ...patch }
+    merged = { ...merged, ...patch }
+    // Only fixes that actually advanced the trail carry `lastStamp`; a patch
+    // that merely bumped the rejection streak is not a fix we used.
+    if ('lastStamp' in patch) contributed += 1
   }
-  if (!changed) return
 
-  set({
-    distanceM: next.distanceM,
-    route: next.route,
-    paceSamples: next.paceSamples,
-    lastPoint: next.lastPoint,
-    warmupLeft: next.warmupLeft,
-    lastFixAt: next.lastFixAt,
-    hasFix: next.hasFix,
-  })
-  await persist()
+  const touched = Object.keys(merged).length
+  if (touched === 0) {
+    log(`batch from ${source}: ${locations.length} fix(es), all discarded`)
+    return
+  }
+
+  set(merged)
+
+  log(
+    `batch from ${source}: ${contributed}/${locations.length} used · ` +
+      `total ${working.distanceM.toFixed(1)}m · route ${working.route.length} pts` +
+      (working.accuracyRelaxed ? ' · accuracy gate relaxed' : ''),
+  )
+  // Nothing worth persisting if the batch only moved the rejection counter.
+  if (contributed > 0) await persist()
 }
 
 /* ------------------------------------------------------------------ */
@@ -639,49 +850,95 @@ export async function isBackgroundFeedRunning(): Promise<boolean> {
 }
 
 /**
- * Start feeding the store.
+ * Start feeding the store — **both feeds at once, on purpose.**
  *
- * Prefers the background task (survives lock/background, shows the persistent
- * notification) and falls back to a plain foreground watcher when the user
- * declined "Allow all the time" — a degraded run is still much better than no
- * run, and the UI says so.
+ * ## Why two feeds and not one
  *
- * Rejects on failure so the caller can show the GPS error banner.
+ * The first cut of background tracking replaced `watchPositionAsync` with the
+ * TaskManager task whenever background permission was held. That was a mistake
+ * that cost a real run: the task path goes through a completely different native
+ * route (fused provider → PendingIntent broadcast → **JobScheduler** →
+ * `TaskJobService` → JS), and when any link in that chain misbehaves on a
+ * particular device or OEM build, the app records *nothing at all* — while the
+ * timer keeps running, so it looks like it is working right up until you stop.
+ *
+ * Swapping a proven path for an unproven one and having no fallback is what made
+ * a screen-on run — which had always worked — start returning 0.00 km.
+ *
+ * So now:
+ *
+ * - **`watchPositionAsync` always runs.** It is exactly the call that recorded
+ *   distance correctly before any of this existed, with exactly the same options.
+ *   While the screen is on, this alone is enough, and it is the baseline that
+ *   must never regress again.
+ * - **The background task runs *in addition*,** when permission allows. It is the
+ *   only thing still delivering once the screen goes off and the watcher is
+ *   frozen, and it brings the foreground-service notification with it.
+ *
+ * Overlap is free: both feeds surface the same physical fixes with the same
+ * provider timestamps, and `foldLocation` de-duplicates on a strictly-increasing
+ * timestamp, so a fix delivered twice is counted once. Battery cost is not
+ * doubled either — the fused provider merges concurrent requests from the same
+ * app and services them once, at the strictest of the two.
+ *
+ * Failure of *either* feed is survivable and logged; only failing to start both
+ * rejects, so the caller can show the GPS error banner.
  */
 export async function startLocationFeed(useBackground: boolean): Promise<FeedMode> {
   await stopLocationFeed()
   const generation = ++watchGeneration
 
+  // --- background task (optional, additive) ---
+  let background = false
   if (useBackground) {
-    await Location.startLocationUpdatesAsync(LIVE_LOCATION_TASK, {
-      ...locationOptions(),
-      foregroundService: FOREGROUND_SERVICE,
-      // iOS: keep the blue status-bar pill up so the user always knows FORMA has
-      // the GPS, and tell CoreLocation this is a workout so it tunes for it.
-      showsBackgroundLocationIndicator: true,
-      activityType: Location.ActivityType.Fitness,
-      // Left off deliberately: iOS would otherwise decide the athlete has
-      // stopped, power down the GPS and *never resume it on its own*, silently
-      // ending the run.
-      pausesUpdatesAutomatically: false,
-    })
-    set({ feedMode: 'background' })
-    return 'background'
+    try {
+      await Location.startLocationUpdatesAsync(LIVE_LOCATION_TASK, {
+        ...locationOptions(),
+        foregroundService: FOREGROUND_SERVICE,
+        // iOS: keep the blue status-bar pill up so the user always knows FORMA
+        // has the GPS, and tell CoreLocation this is a workout so it tunes for it.
+        showsBackgroundLocationIndicator: true,
+        activityType: Location.ActivityType.Fitness,
+        // Left off deliberately: iOS would otherwise decide the athlete has
+        // stopped, power down the GPS and *never resume it on its own*, silently
+        // ending the run.
+        pausesUpdatesAutomatically: false,
+      })
+      background = true
+      log('background task started')
+    } catch (err) {
+      // Not fatal, and specifically not rethrown: the watcher below is the feed
+      // that actually has to work. Losing background means losing screen-off
+      // tracking, not losing the run.
+      console.warn('[liveTracking] background task failed to start', err)
+    }
   }
 
-  const sub = await Location.watchPositionAsync(locationOptions(), (loc) => {
-    // Deliberately not awaited: this is a native callback, and returning a
-    // promise into it does nothing. ingestLocations swallows its own errors.
-    void ingestLocations([loc])
-  })
-  if (generation !== watchGeneration) {
-    // Stopped while we were awaiting — nothing else holds this reference.
-    sub.remove()
-    return 'none'
+  // --- foreground watcher (always) ---
+  let foreground = false
+  try {
+    const sub = await Location.watchPositionAsync(locationOptions(), (loc) => {
+      // Deliberately not awaited: this is a native callback, and returning a
+      // promise into it does nothing. ingestLocations swallows its own errors.
+      void ingestLocations([loc], 'watch')
+    })
+    if (generation !== watchGeneration) {
+      // Stopped while we were awaiting — nothing else holds this reference.
+      sub.remove()
+      return 'none'
+    }
+    foregroundWatch = sub
+    foreground = true
+    log('foreground watcher started')
+  } catch (err) {
+    console.warn('[liveTracking] foreground watcher failed to start', err)
+    if (!background) throw err
   }
-  foregroundWatch = sub
-  set({ feedMode: 'foreground' })
-  return 'foreground'
+
+  const mode: FeedMode = background ? 'background' : foreground ? 'foreground' : 'none'
+  set({ feedMode: mode })
+  log(`feed mode: ${mode} (background=${background} foreground=${foreground})`)
+  return mode
 }
 
 /**
@@ -740,6 +997,7 @@ export async function beginSession(
     lastFixAt: now,
     hydrated: true,
   })
+  log(`session begin: sport=${sport} background=${useBackground}`)
   await persist(true)
   try {
     return await startLocationFeed(useBackground)
@@ -770,10 +1028,12 @@ export async function pauseSession(): Promise<void> {
     // the gap, and drop the pace window — its samples would otherwise straddle
     // the pause, measuring the paused minutes as time spent covering no ground.
     lastPoint: null,
+    lastPointAt: 0,
     paceSamples: [],
   })
   await persist(true)
   await stopLocationFeed()
+  log('session paused')
 }
 
 /** Restart the clock and the feed after a pause. */
@@ -817,6 +1077,11 @@ export async function stopSession(): Promise<void> {
   })
   await persist(true)
   await stopLocationFeed()
+  const done = get()
+  log(
+    `session stopped: ${(done.distanceM / 1000).toFixed(3)} km · ` +
+      `${Math.round(elapsedMsFrom(done) / 1000)}s · ${done.route.length} route pts`,
+  )
 }
 
 /** Discard the workout entirely and clear its persisted snapshot. */

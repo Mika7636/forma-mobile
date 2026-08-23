@@ -61,12 +61,16 @@ TaskManager.defineTask<LocationTaskData>(LIVE_LOCATION_TASK, async ({ data, erro
     }
 
     const locations = data?.locations
+    // Logged unconditionally, including the empty case: "the task never fired"
+    // and "the task fired with nothing in it" are completely different bugs and
+    // are otherwise indistinguishable from the outside.
+    console.log('[liveLocationTask] woke with', locations?.length ?? 0, 'fix(es)')
     if (!locations?.length) return
 
     // `ingestLocations` hydrates the persisted session first, so this is correct
     // even in a JS context that was created seconds ago purely to receive this
     // batch and has never seen the workout.
-    await ingestLocations(locations)
+    await ingestLocations(locations, 'task')
 
     // If that batch landed on no session at all, the registration is debris:
     // `ingestLocations` silently no-ops, so this is the only thing that would

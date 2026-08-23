@@ -614,6 +614,25 @@ export default function LiveTracker({
   }
 
   function handleSave() {
+    // Read the workout from the store at save time rather than from this
+    // render's closure.
+    //
+    // The rendered values are almost always identical — but "almost" is not good
+    // enough for the one irreversible step in the whole flow. A fix that lands
+    // between the last commit and this tap (entirely possible: the background
+    // task delivers outside React's lifecycle) would otherwise be dropped from
+    // the saved session. `getState()` is by definition current.
+    //
+    // A recovered snapshot still wins, because LogScreen hands it over precisely
+    // when the live path is no longer trustworthy.
+    const live = useLiveTrackingStore.getState()
+    const finalDistanceKm = resumeFrom ? resumeFrom.distanceM / 1000 : live.distanceM / 1000
+    const finalRoute = resumeFrom ? resumeFrom.route : live.route
+    const finalStartedAt = resumeFrom ? resumeFrom.startedAt : live.startedAt
+    const finalElapsedSec = resumeFrom
+      ? resumeFrom.elapsedSec
+      : Math.floor(elapsedMsFrom(live) / 1000)
+
     // Last line of defence before anything is persisted: a NaN or out-of-range
     // value written to Firestore would corrupt every downstream metric (load,
     // CTL/ATL, charts) and crash the session-detail map on the way back in.
@@ -621,18 +640,25 @@ export default function LiveTracker({
     // Note the store is *not* cleared here. LogScreen clears it only once the
     // write has actually landed, so a failed save leaves the whole run — every
     // background-tracked metre of it — intact and retryable.
-    const safeDuration = Number.isFinite(elapsedSec) ? Math.max(1, Math.round(elapsedSec / 60)) : 1
-    const safeDistance = Number.isFinite(distanceKm) && distanceKm > 0 ? distanceKm : 0
-    const safeRoute = route.filter((p) => isValidCoordinate(p.latitude, p.longitude))
+    const safeDuration = Number.isFinite(finalElapsedSec)
+      ? Math.max(1, Math.round(finalElapsedSec / 60))
+      : 1
+    const safeDistance =
+      Number.isFinite(finalDistanceKm) && finalDistanceKm > 0 ? finalDistanceKm : 0
+    const safeRoute = finalRoute.filter((p) => isValidCoordinate(p.latitude, p.longitude))
+    console.log(
+      `[LiveTracker] saving: ${safeDistance.toFixed(3)} km · ${safeDuration} min · ` +
+        `${safeRoute.length} route pts`,
+    )
     onComplete({
       durationMinutes: safeDuration,
       rpe,
       distanceKm: safeDistance,
       notes: notes.trim() || undefined,
       routeCoordinates: safeRoute,
-      averagePace: isCycling ? undefined : formatPace(elapsedSec, safeDistance),
-      averageSpeed: isCycling ? calculateSpeed(elapsedSec, safeDistance) : undefined,
-      startedAt: sessionStartedAt || undefined,
+      averagePace: isCycling ? undefined : formatPace(finalElapsedSec, safeDistance),
+      averageSpeed: isCycling ? calculateSpeed(finalElapsedSec, safeDistance) : undefined,
+      startedAt: finalStartedAt || undefined,
     })
   }
 
