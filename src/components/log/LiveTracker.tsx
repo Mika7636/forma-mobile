@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
+  AppState,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -25,12 +26,30 @@ import {
   calculateSpeed,
   formatPace,
   formatPaceValue,
-  haversineDistance,
-  isValidCoordinate,
   rollingPaceSecPerKm,
-  trimPaceSamples,
-  type PaceSample,
+  isValidCoordinate,
 } from '../../utils/geo'
+import {
+  GPS_STALE_MS,
+  PACE_MAX_SEC_PER_KM,
+  PACE_SAMPLE_STALE_MS,
+  PACE_WINDOW_MIN_M,
+  PACE_WINDOW_MS,
+  beginSession,
+  clearSession,
+  elapsedMsFrom,
+  ensureHydrated,
+  hasActiveSession,
+  hasBackgroundPermission,
+  pauseSession,
+  requestBackgroundPermission,
+  restartFeed,
+  resumeSession,
+  stopLocationFeed,
+  stopSession,
+  useLiveTrackingStore,
+  type FeedMode,
+} from '../../store/liveTrackingStore'
 import type { RoutePoint, SportType } from '../../types/session'
 import type { MapRegion } from '../../utils/maps'
 
@@ -55,6 +74,12 @@ export interface LiveResult {
  * tracker's error boundary trips mid-run the collected distance and time
  * survive the remount and the athlete can still rate and save the session
  * instead of losing it.
+ *
+ * Note this is now the *second* line of defence. The workout itself lives in
+ * `store/liveTrackingStore`, which is mirrored to AsyncStorage and survives the
+ * whole JS context being killed; this ref only covers the narrower case where
+ * the error boundary trips and LogScreen wants to jump the user straight to a
+ * saveable summary.
  */
 export interface LiveSnapshot {
   elapsedSec: number
@@ -77,94 +102,17 @@ interface LiveTrackerProps {
   onComplete: (result: LiveResult) => void
 }
 
-type Phase = 'ready' | 'countdown' | 'tracking' | 'summary'
+/**
+ * `permission` sits between `ready` and `countdown`: it is where we explain what
+ * "Allow all the time" buys before the OS dialog appears. Asking cold, with no
+ * context, is the single best way to get background location refused — and a
+ * refusal here is what puts the athlete back on a run that stops at the lock
+ * screen.
+ */
+type Phase = 'ready' | 'permission' | 'countdown' | 'tracking' | 'summary'
 
 /** Assumed effort for the *live* calorie ticker before the athlete rates RPE. */
 const LIVE_ASSUMED_RPE = 6
-
-/**
- * GPS fixes worse than this (metres) are too noisy to trust for distance.
- *
- * Tightened from 50 m: a 50 m-accurate fix can sit anywhere in a 50 m circle, so
- * two of them in a row can invent ~100 m of "distance" out of nothing. Every
- * phantom metre makes the pace look faster than it is, and the wander between
- * them makes it jump. Outdoors with a clear sky a modern chip reports 3–10 m, so
- * 20 m still accepts everything usable and only rejects fixes that would lie.
- */
-const MAX_ACCURACY_M = 20
-
-/**
- * The first few fixes after the countdown arrive while the chip is still
- * locking on: they are typically a coarse cell/wifi estimate that then snaps
- * tens of metres to the real position, and that snap is otherwise counted as
- * distance run. Discard them outright — they cost a couple of seconds of
- * tracking at the start line, where nobody is moving yet anyway.
- */
-const WARMUP_FIXES = 3
-
-/**
- * Reported speed (m/s) below which the athlete counts as standing still. ~0.5
- * m/s is 1.8 km/h — slower than an amble, so no real movement falls under it.
- */
-const STATIONARY_SPEED_MS = 0.5
-
-/**
- * …but only discard a stationary segment if it is also this short.
- *
- * Two reasons to cap it, both about never eating real distance. Android's fused
- * provider reports `speed: 0` when it simply doesn't know rather than when it
- * knows you've stopped, and its speed estimate lags a step-off by a fix or two —
- * so an uncapped rule would silently freeze distance on some devices, and would
- * shave the first few metres off every restart from a traffic light.
- *
- * 5 m is the `distanceInterval` we ask the provider for, so genuine movement
- * arrives as segments of *at least* that. Which leaves this rule acting only in
- * the 2-5 m band between MIN_SEGMENT_M and a real step — precisely the size of
- * the drift hops a phone emits while its owner stands at a crossing.
- */
-const STATIONARY_MAX_SEGMENT_M = 5
-
-/** Below this segment length (m) we treat movement as GPS wander / standing still. */
-const MIN_SEGMENT_M = 2
-
-/* ---- Rolling "current pace" window ------------------------------- */
-
-/**
- * How far back the current-pace readout looks. Long enough to ride out one bad
- * fix, short enough to react within a block or two — the same feel as Strava's
- * current pace. Deriving pace from total distance / total time instead makes it
- * unusable early on, where a single jittery fix moves the whole average.
- */
-const PACE_WINDOW_MS = 45_000
-
-/** Under this much movement inside the window the pace is noise, not a pace. */
-const PACE_WINDOW_MIN_M = 30
-
-/** Newest accepted fix older than this → we've stopped; show "--:--". */
-const PACE_SAMPLE_STALE_MS = 12_000
-
-/** Slower than 30 min/km isn't a pace, it's a stall. Show "--:--" instead. */
-const PACE_MAX_SEC_PER_KM = 1_800
-
-/**
- * Reject any segment implying a speed above this (m/s ≈ 108 km/h). The fused
- * provider routinely jumps hundreds of metres when it switches between a
- * cell/wifi estimate and a satellite fix; without this, one jump silently adds
- * a kilometre or more to the run.
- */
-const MAX_PLAUSIBLE_SPEED_MS = 30
-
-/**
- * Hard cap on stored route points. Reached after roughly 5 km at the 5 m
- * sampling interval, so most runs never hit it; past that the route is halved in
- * resolution (see `appendPoint`) so memory, render cost and the size of the
- * saved Firestore document all stay bounded no matter how long the session runs.
- * Firestore's hard limit is 1 MiB per document — 1000 points is roughly 60 KB.
- */
-const MAX_ROUTE_POINTS = 1000
-
-/** No usable fix for this long → tell the user we've lost signal. */
-const GPS_STALE_MS = 15_000
 
 const KEEP_AWAKE_TAG = 'forma-live-tracker'
 
@@ -200,6 +148,9 @@ function gpsErrorMessage(err: unknown): string {
   if (lower.includes('unavailable') || lower.includes('provider')) {
     return 'GPS is unavailable right now. Your time is still being recorded.'
   }
+  if (lower.includes('background')) {
+    return 'Background tracking could not start. Keep the screen on to keep recording.'
+  }
   return 'GPS signal lost. Your time is still being recorded.'
 }
 
@@ -224,17 +175,37 @@ export default function LiveTracker({
 }: LiveTrackerProps) {
   const [permission, requestPermission] = Location.useForegroundPermissions()
 
-  // A recovered workout skips straight to the summary: the GPS watcher is gone,
-  // but the distance and time it collected are intact and still worth saving.
+  // A recovered workout skips straight to the summary: the location feed is
+  // gone, but the distance and time it collected are intact and worth saving.
   const [phase, setPhase] = useState<Phase>(resumeFrom ? 'summary' : 'ready')
   const [count, setCount] = useState(3)
   const [permissionDenied, setPermissionDenied] = useState(false)
 
+  /* ---- Background-permission state --------------------------------- */
+  /** Whether "Allow all the time" is held, deciding which feed we start. */
+  const [backgroundGranted, setBackgroundGranted] = useState(false)
+  /** The OS won't ask again — the only route left is the app settings screen. */
+  const [backgroundBlocked, setBackgroundBlocked] = useState(false)
+  const [requestingBackground, setRequestingBackground] = useState(false)
+
+  /* ---- The workout itself lives in the store ------------------------ */
+  // Subscribed per-slice so a fix that only moves `lastFixAt` doesn't re-render
+  // the map underneath the numbers.
+  const storeDistanceM = useLiveTrackingStore((s) => s.distanceM)
+  const storeRoute = useLiveTrackingStore((s) => s.route)
+  const storeStartedAt = useLiveTrackingStore((s) => s.startedAt)
+  const status = useLiveTrackingStore((s) => s.status)
+  const feedMode = useLiveTrackingStore((s) => s.feedMode)
+  const hasFix = useLiveTrackingStore((s) => s.hasFix)
+
+  // A recovered snapshot outranks the store: LogScreen hands it over precisely
+  // because the live path is no longer trustworthy.
+  const distanceM = resumeFrom ? resumeFrom.distanceM : storeDistanceM
+  const route = resumeFrom ? resumeFrom.route : storeRoute
+  const sessionStartedAt = resumeFrom ? resumeFrom.startedAt : storeStartedAt
+  const paused = status === 'paused'
+
   const [elapsedSec, setElapsedSec] = useState(resumeFrom?.elapsedSec ?? 0)
-  const [distanceM, setDistanceM] = useState(resumeFrom?.distanceM ?? 0)
-  const [route, setRoute] = useState<RoutePoint[]>(resumeFrom?.route ?? [])
-  const [paused, setPaused] = useState(false)
-  const [hasFix, setHasFix] = useState(false)
   // Derived on the timer tick rather than from a re-rendered `now` timestamp —
   // see the timer effect for why that distinction matters here.
   const [gpsStale, setGpsStale] = useState(false)
@@ -243,8 +214,8 @@ export default function LiveTracker({
   /**
    * Pace over the trailing PACE_WINDOW_MS, in seconds per km, or null when
    * there isn't enough recent movement to say. Recomputed once a second on the
-   * timer tick (see below) rather than per fix, so it decays while the athlete
-   * stands still instead of freezing on their last moving pace.
+   * timer tick rather than per fix, so it decays while the athlete stands still
+   * instead of freezing on their last moving pace.
    */
   const [currentPaceSec, setCurrentPaceSec] = useState<number | null>(null)
 
@@ -252,45 +223,16 @@ export default function LiveTracker({
   const [rpe, setRpe] = useState(6)
   const [notes, setNotes] = useState('')
 
-  const watchRef = useRef<Location.LocationSubscription | null>(null)
-  const watchStartingRef = useRef(false)
-  // Bumped by stopWatch() so an in-flight startWatch() can tell its subscription
-  // is already obsolete by the time watchPositionAsync resolves.
-  const watchGenRef = useRef(0)
-  const lastPointRef = useRef<RoutePoint | null>(null)
   const lastMilestoneRef = useRef(0)
-  /** Counts down the throwaway fixes taken while the GPS chip locks on. */
-  const warmupLeftRef = useRef(0)
-  /**
-   * Running distance total, mirrored out of state so the pace window can be fed
-   * a cumulative figure from inside the GPS callback — where `distanceM` is
-   * whatever it was at the last render, not what it is now.
-   */
-  const distanceMRef = useRef(resumeFrom?.distanceM ?? 0)
-  /** Cumulative-distance samples backing the rolling current-pace readout. */
-  const paceSamplesRef = useRef<PaceSample[]>([])
   /** Last whole second the tick published, so pace recomputes once per second. */
   const lastTickSecRef = useRef(-1)
   const lastRpeRef = useRef(rpe)
-  const lastFixAtRef = useRef(0)
   /**
-   * False from the moment React tears this component down. The GPS callback runs
-   * outside React's lifecycle — it is invoked by the native location module, not
-   * by a render — so it can fire once more after unmount even though the
-   * subscription has been removed. Every setState below is gated on this.
+   * False from the moment React tears this component down. Location and
+   * permission work resolves outside React's lifecycle, so a continuation can
+   * land after unmount; every setState below is gated on this.
    */
   const mountedRef = useRef(true)
-
-  // Elapsed time is derived from the wall clock, not from counting interval
-  // ticks: JS timers drift and are throttled while the app is backgrounded (a
-  // phone in a pocket mid-run), and elapsed drives duration, pace, calories and
-  // load. `startedAt` is when the current running segment began; `accumulated`
-  // banks the milliseconds from segments before each pause.
-  const startedAtRef = useRef(0)
-  const accumulatedMsRef = useRef(0)
-  // Wall-clock start of the whole session (unlike startedAtRef, this is not
-  // reset by pause/resume) so the saved session is timestamped to its real start.
-  const sessionStartAtRef = useRef(resumeFrom?.startedAt ?? 0)
 
   const isCycling = sport === 'cycling'
   const distanceKm = distanceM / 1000
@@ -302,209 +244,92 @@ export default function LiveTracker({
   const currentSpeed = currentPaceSec != null ? 3600 / currentPaceSec : null
   const liveCalories = estimateCalories(sport, elapsedSec / 60, LIVE_ASSUMED_RPE, weightKg)
 
-  /* ---- GPS subscription lifecycle ---------------------------------- */
-  async function startWatch() {
-    // Guard against a double subscription (e.g. rapid resume taps). The
-    // `starting` flag matters as much as the ref: watchPositionAsync is async,
-    // so two calls could both see a null ref and each subscribe, double-counting
-    // every metre.
-    if (watchRef.current || watchStartingRef.current) return
-    watchStartingRef.current = true
-    const gen = watchGenRef.current
-    try {
-      const sub = await Location.watchPositionAsync(
-        {
-          // `Highest` rather than `High`: it asks the chip for its best fix
-          // instead of a ~10 m one, which is what makes the 20 m accuracy
-          // filter above a cheap win rather than a source of dropped fixes.
-          // Sampling cadence is deliberately unchanged — it is the one knob
-          // that moves the recorded distance itself.
-          accuracy: Location.Accuracy.Highest,
-          timeInterval: 3000,
-          distanceInterval: 5,
-        },
-        handleLocation,
-      )
-      // Stopped, paused or unmounted while we were awaiting: this subscription
-      // is already obsolete, and nothing else holds a reference to remove it.
-      if (gen !== watchGenRef.current || !mountedRef.current) {
-        sub.remove()
-        return
-      }
-      watchRef.current = sub
-      if (mountedRef.current) setGpsError(null)
-    } catch (err) {
-      // watchPositionAsync rejects when location services are switched off
-      // mid-run, when the provider is unavailable, or when the OS revokes the
-      // permission while the app is backgrounded. Previously this rejection was
-      // unhandled: in a release build an unhandled rejection surfaces as a
-      // fatal error rather than a redbox, and the user lost the whole workout.
-      if (mountedRef.current) {
-        setGpsError(gpsErrorMessage(err))
-        haptics.warning()
-      }
-    } finally {
-      watchStartingRef.current = false
-    }
-  }
-
-  function stopWatch() {
-    watchGenRef.current += 1
-    try {
-      watchRef.current?.remove()
-    } catch {
-      // remove() can throw if the native subscription is already gone (e.g. the
-      // OS tore it down when location services were disabled). Nothing to do —
-      // we're dropping the reference either way.
-    }
-    watchRef.current = null
-  }
-
-  /**
-   * Append a point, keeping the stored route bounded.
-   *
-   * Once the cap is hit the route is halved — every other point is dropped and
-   * the newest is always kept — so a 3-hour run costs the same memory as a
-   * 30-minute one, at gently decreasing resolution. Distance is *not* derived
-   * from this array (it accumulates separately, fix by fix), so thinning it
-   * loses no accuracy in the recorded total.
-   */
-  function appendPoint(r: RoutePoint[], point: RoutePoint): RoutePoint[] {
-    if (r.length + 1 <= MAX_ROUTE_POINTS) return [...r, point]
-    const halved = r.filter((_, i) => i % 2 === 0)
-    halved.push(point)
-    return halved
-  }
-
-  function handleLocation(loc: Location.LocationObject) {
-    // The whole body is defensive: this runs on a native callback, outside
-    // React's render cycle, so an exception here is *not* catchable by an error
-    // boundary and would reach the global handler — fatal in a release build.
-    try {
-      if (!mountedRef.current) return
-      const coords = loc?.coords
-      if (!coords) return
-      const { latitude, longitude, accuracy, speed: reportedSpeed } = coords
-
-      // A non-finite or out-of-range coordinate must never reach state. It would
-      // poison distance/pace/calories with NaN, and passing it to the map's
-      // Polyline throws inside the Google Maps SDK — a native crash no JS
-      // try/catch or error boundary can contain.
-      if (!isValidCoordinate(latitude, longitude)) return
-
-      // Too imprecise to trust — don't corrupt distance, and don't count this as
-      // a fix either, so the "Searching for GPS…" hint stays up while every
-      // reading is being rejected rather than silently freezing the distance.
-      if (accuracy != null && Number.isFinite(accuracy) && accuracy > MAX_ACCURACY_M) return
-
-      const stamp = Number.isFinite(loc.timestamp) ? loc.timestamp : Date.now()
-      // Wall-clock receipt time, kept separate from the provider's `stamp`.
-      // The pace window is aged against `Date.now()` on the timer tick, and on
-      // some Android builds the provider's clock sits seconds away from the
-      // system one — mixing the two there would age the window wrongly.
-      const receivedAt = Date.now()
-      lastFixAtRef.current = receivedAt
-      setHasFix(true)
-      setGpsStale(false)
-      setGpsError(null)
-
-      // Warm-up: the chip is still settling, so this position is not to be
-      // trusted — and deliberately not adopted as an anchor either, or the
-      // snap from the coarse first estimate to the real fix would be measured
-      // as distance covered.
-      if (warmupLeftRef.current > 0) {
-        warmupLeftRef.current -= 1
-        return
-      }
-
-      const point: RoutePoint = { latitude, longitude, timestamp: stamp }
-      const prev = lastPointRef.current
-      if (prev) {
-        const seg = haversineDistance(prev.latitude, prev.longitude, latitude, longitude)
-        // Ignore tiny wander so an indoor / stationary athlete doesn't accrue
-        // metres. Note the anchor is deliberately *not* moved here: slow real
-        // movement accumulates across several fixes and lands as one segment
-        // once it clears the threshold, so nothing is lost — only noise.
-        if (seg < MIN_SEGMENT_M) return
-        // Same again, but driven by the provider's own reported speed rather
-        // than by segment length alone: standing at a crossing produces a
-        // stream of 2-5 m hops that clear MIN_SEGMENT_M and are still pure
-        // drift. Wait two minutes at a light and that is ~75 phantom metres.
-        if (
-          reportedSpeed != null &&
-          Number.isFinite(reportedSpeed) &&
-          reportedSpeed >= 0 &&
-          reportedSpeed < STATIONARY_SPEED_MS &&
-          seg < STATIONARY_MAX_SEGMENT_M
-        ) {
-          return
-        }
-        // Discard provider jumps (cell/wifi estimate → satellite fix), which
-        // otherwise add hundreds of phantom metres in a single tick. The point
-        // is still adopted as the new anchor so the trail resumes from reality.
-        const dtSec = Math.max((stamp - prev.timestamp) / 1000, 1)
-        if (seg / dtSec > MAX_PLAUSIBLE_SPEED_MS) {
-          lastPointRef.current = point
-          return
-        }
-        const total = distanceMRef.current + seg
-        if (Number.isFinite(total)) {
-          distanceMRef.current = total
-          setDistanceM(total)
-          // Feed the rolling window. Trimming here as well as on the tick keeps
-          // the buffer bounded even if the tick is throttled in the background.
-          const samples = trimPaceSamples(paceSamplesRef.current, receivedAt, PACE_WINDOW_MS)
-          samples.push({ t: receivedAt, m: total })
-          paceSamplesRef.current = samples
-        }
-      } else {
-        // First anchor of a segment (start, or the first fix after a resume):
-        // it contributes no distance, but it *does* open the pace window, so
-        // the very next fix already has something to measure against.
-        paceSamplesRef.current = [{ t: receivedAt, m: distanceMRef.current }]
-      }
-      lastPointRef.current = point
-      setRoute((r) => appendPoint(r, point))
-    } catch (err) {
-      console.warn('[LiveTracker] location update failed', err)
-    }
-  }
-
-  // Tear down GPS + keep-awake if the component unmounts mid-session.
+  /* ---- Mount / unmount --------------------------------------------- */
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      stopWatch()
       deactivateKeepAwake(KEEP_AWAKE_TAG)
+      // Deliberately NOT stopping the feed when a workout is in progress.
+      // Unmounting is not the same as finishing — the athlete may have switched
+      // tabs, or Android may have torn the activity down with the phone in a
+      // pocket — and killing the background service here would reintroduce the
+      // exact bug this feature exists to fix. A workout that really ended has
+      // already had its feed stopped by `stopSession`/`clearSession`; anything
+      // still running is picked up again by the restore effect below, and by
+      // `reconcileLiveTrackingOnStart` on the next cold start.
+      if (!hasActiveSession(useLiveTrackingStore.getState())) void stopLocationFeed()
     }
+  }, [])
+
+  /* ---- Restore an in-flight workout -------------------------------- */
+  // The screen-off case this whole feature is about: FORMA may have been
+  // backgrounded (React tree intact, store still populated) or killed outright
+  // and relaunched by the OS to deliver GPS batches (store rebuilt from
+  // AsyncStorage). Either way, if a workout is open we drop straight into it
+  // rather than showing the athlete a "Start" button for a run already running.
+  useEffect(() => {
+    if (resumeFrom) {
+      // A recovered snapshot means we're going to the summary, so nothing should
+      // still be recording.
+      void stopLocationFeed()
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        await ensureHydrated()
+        if (cancelled || !mountedRef.current) return
+        const live = useLiveTrackingStore.getState()
+        if (!hasActiveSession(live)) return
+        // Stopped but not yet saved → back to the summary, not to a run the
+        // athlete already finished.
+        if (live.finished) {
+          setPhase('summary')
+          return
+        }
+        const bg = await hasBackgroundPermission()
+        if (cancelled || !mountedRef.current) return
+        setBackgroundGranted(bg)
+        setPhase('tracking')
+      } catch (err) {
+        console.warn('[LiveTracker] restore failed', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* ---- Timer + GPS-staleness ticker -------------------------------- */
   useEffect(() => {
-    if (phase !== 'tracking' || paused) return
-    const tick = () => {
+    // A recovered snapshot is a frozen record — nothing left to tick.
+    if (resumeFrom) return
+    if (phase !== 'tracking' && phase !== 'summary') return
+
+    const sync = () => {
       if (!mountedRef.current) return
-      const ms = accumulatedMsRef.current + (Date.now() - startedAtRef.current)
-      const secs = Math.floor(ms / 1000)
-      // Both setters are passed values that are usually *unchanged*, so React
-      // bails out of the re-render. That is the point: this interval fires 4×
-      // per second, and the previous version stored a fresh `Date.now()` in
-      // state on every tick, so the entire tracker — map included — re-rendered
-      // 4× a second for the whole workout. Now it re-renders once per second at
-      // most, and only the clock text actually changes.
+      const s = useLiveTrackingStore.getState()
+      // Elapsed comes off the wall clock via the store, not from counting
+      // ticks. That is what makes a locked-screen run come back with the right
+      // duration: JS timers are throttled (or stopped outright) in the
+      // background, so a counted clock would under-report every backgrounded
+      // minute even while GPS kept flowing.
+      const secs = Math.floor(elapsedMsFrom(s) / 1000)
+      // Both setters are usually passed *unchanged* values, so React bails out
+      // of the re-render. That is the point: this fires 4× per second, and
+      // storing a fresh `Date.now()` in state each time would re-render the
+      // whole tracker — map included — 4× a second for the entire workout.
       setElapsedSec((prev) => (prev === secs ? prev : secs))
-      setGpsStale(Date.now() - lastFixAtRef.current > GPS_STALE_MS)
+      setGpsStale(s.status === 'tracking' && Date.now() - s.lastFixAt > GPS_STALE_MS)
 
       // Rolling pace is refreshed on the second boundary, not on all four
       // ticks: that is exactly when this component re-renders anyway, so the
-      // readout stays live without adding a single extra render (and without
-      // re-rendering the map underneath it) — see the note above.
+      // readout stays live without adding a single extra render.
       if (secs !== lastTickSecRef.current) {
         lastTickSecRef.current = secs
-        const now = Date.now()
-        paceSamplesRef.current = trimPaceSamples(paceSamplesRef.current, now, PACE_WINDOW_MS)
-        const next = rollingPaceSecPerKm(paceSamplesRef.current, now, {
+        const next = rollingPaceSecPerKm(s.paceSamples, Date.now(), {
           windowMs: PACE_WINDOW_MS,
           minDistanceM: PACE_WINDOW_MIN_M,
           staleMs: PACE_SAMPLE_STALE_MS,
@@ -517,14 +342,31 @@ export default function LiveTracker({
         setCurrentPaceSec((prev) => (prev === rounded ? prev : rounded))
       }
     }
-    tick()
+
+    sync()
+    // Paused, or sitting on the summary: the numbers are settled, so one sync is
+    // the whole job and an interval would just burn renders.
+    if (phase !== 'tracking' || status !== 'tracking') return
+
     // Sub-second polling so the displayed second flips close to its real
     // boundary; a 1s interval would visibly skip or repeat seconds as it slips.
-    const id = setInterval(tick, 250)
-    return () => clearInterval(id)
-  }, [phase, paused])
+    const id = setInterval(sync, 250)
+    // Coming back from the lock screen, the interval has been throttled for
+    // however long the phone was away and the on-screen numbers are stale for up
+    // to a quarter-second. Cheap to just redraw them the instant we're visible —
+    // this is the moment the athlete is checking whether the run kept recording.
+    const appStateSub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') sync()
+    })
+    return () => {
+      clearInterval(id)
+      appStateSub.remove()
+    }
+  }, [phase, status, resumeFrom])
 
   /* ---- Keep the screen awake while active -------------------------- */
+  // Still worth doing even now that backgrounding is survivable: it stops the
+  // display sleeping while the athlete is actually looking at it mid-run.
   useEffect(() => {
     if (phase === 'countdown' || phase === 'tracking') {
       activateKeepAwakeAsync(KEEP_AWAKE_TAG)
@@ -532,6 +374,21 @@ export default function LiveTracker({
         deactivateKeepAwake(KEEP_AWAKE_TAG)
       }
     }
+  }, [phase])
+
+  /* ---- Re-check background permission after a trip to Settings ------ */
+  useEffect(() => {
+    if (phase !== 'permission') return
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return
+      void hasBackgroundPermission().then((ok) => {
+        if (!ok || !mountedRef.current) return
+        setBackgroundGranted(true)
+        haptics.success()
+        setPhase('countdown')
+      })
+    })
+    return () => sub.remove()
   }, [phase])
 
   /* ---- Countdown 3…2…1…Go! ----------------------------------------- */
@@ -562,8 +419,8 @@ export default function LiveTracker({
       setTimeout(() => {
         // `void` is deliberate: beginTracking is async, and an un-awaited
         // rejection from a bare `setTimeout(beginTracking)` is an unhandled
-        // promise rejection — fatal in a release build. startWatch swallows its
-        // own errors, so this is now belt and braces.
+        // promise rejection — fatal in a release build. beginTracking swallows
+        // its own errors, so this is now belt and braces.
         void beginTracking()
       }, 3600),
     )
@@ -585,9 +442,9 @@ export default function LiveTracker({
       elapsedSec,
       distanceM,
       route,
-      startedAt: sessionStartAtRef.current,
+      startedAt: sessionStartedAt,
     }
-  }, [snapshotRef, phase, elapsedSec, distanceM, route])
+  }, [snapshotRef, phase, elapsedSec, distanceM, route, sessionStartedAt])
 
   /* ---- Kilometre-milestone haptics --------------------------------- */
   useEffect(() => {
@@ -618,7 +475,7 @@ export default function LiveTracker({
 
       // Permission granted is *not* the same as GPS being usable: the user can
       // hold the permission while the device's location toggle is off, in which
-      // case watchPositionAsync rejects a few seconds later — mid-countdown,
+      // case the location request rejects a few seconds later — mid-countdown,
       // where the failure is much harder to explain. Check up front instead.
       const servicesOn = await Location.hasServicesEnabledAsync()
       if (!servicesOn) {
@@ -626,78 +483,125 @@ export default function LiveTracker({
         haptics.warning()
         return
       }
+
+      // Already holding "Allow all the time" from a previous run: nothing to
+      // explain, don't make the athlete tap through a screen they've answered.
+      if (await hasBackgroundPermission()) {
+        setBackgroundGranted(true)
+        setPhase('countdown')
+        return
+      }
     } catch (err) {
       setGpsError(gpsErrorMessage(err))
       haptics.warning()
       return
     }
+    setBackgroundGranted(false)
+    setBackgroundBlocked(false)
+    setPhase('permission')
+  }
+
+  /**
+   * Ask for "Allow all the time" — Android 10+ insists this is a second,
+   * separate request made only after foreground location is already held.
+   */
+  async function handleGrantBackground() {
+    setRequestingBackground(true)
+    // requestBackgroundPermission resolves rather than rejects, but this handler
+    // is fired from a Pressable — nothing awaits it, so a rejection would be an
+    // unhandled promise, which is fatal in a release build.
+    const { granted, mustUseSettings } = await requestBackgroundPermission().catch(() => ({
+      granted: false,
+      mustUseSettings: true,
+    }))
+    if (!mountedRef.current) return
+    setRequestingBackground(false)
+    setBackgroundGranted(granted)
+    if (granted) {
+      haptics.success()
+      setPhase('countdown')
+      return
+    }
+    // On Android 11+ there is no in-app dialog for background location at all —
+    // the OS only offers it inside app settings — so a refusal here is usually
+    // "we were never asked" rather than "the user said no".
+    setBackgroundBlocked(mustUseSettings)
+    haptics.warning()
+  }
+
+  /** Proceed with a foreground-only feed; the tracking screen says what that costs. */
+  function handleSkipBackground() {
+    setBackgroundGranted(false)
     setPhase('countdown')
   }
 
   async function beginTracking() {
     if (!mountedRef.current) return
     setElapsedSec(0)
-    setDistanceM(0)
-    setRoute([])
-    setHasFix(false)
     setGpsStale(false)
     setGpsError(null)
     setCurrentPaceSec(null)
-    lastFixAtRef.current = Date.now()
-    lastPointRef.current = null
     lastMilestoneRef.current = 0
-    distanceMRef.current = 0
-    paceSamplesRef.current = []
     lastTickSecRef.current = -1
-    warmupLeftRef.current = WARMUP_FIXES
-    startedAtRef.current = Date.now()
-    sessionStartAtRef.current = Date.now()
-    accumulatedMsRef.current = 0
-    setPaused(false)
     setPhase('tracking')
-    await startWatch()
+    try {
+      await beginSession(sport, backgroundGranted)
+    } catch (err) {
+      // The session is open and the clock is running regardless — a workout with
+      // no GPS is still worth recording — so surface the failure and let the
+      // athlete retry rather than dropping them back to the start screen.
+      if (!mountedRef.current) return
+      setGpsError(gpsErrorMessage(err))
+      haptics.warning()
+    }
   }
 
   function handlePause() {
-    accumulatedMsRef.current += Date.now() - startedAtRef.current
-    setPaused(true)
-    stopWatch()
-    // Break the trail so resuming doesn't draw / count a straight line across the gap.
-    lastPointRef.current = null
-    // Drop the pace window too. Its samples straddle the pause otherwise, and
-    // the paused minutes would be measured as time spent covering no ground.
-    paceSamplesRef.current = []
-    setCurrentPaceSec(null)
     haptics.medium()
+    void pauseSession()
+    setCurrentPaceSec(null)
   }
 
   async function handleResume() {
-    startedAtRef.current = Date.now()
-    lastFixAtRef.current = Date.now()
-    lastTickSecRef.current = -1
-    setPaused(false)
-    setGpsError(null)
     haptics.medium()
-    await startWatch()
+    setGpsError(null)
+    try {
+      await resumeSession(backgroundGranted)
+    } catch (err) {
+      if (!mountedRef.current) return
+      setGpsError(gpsErrorMessage(err))
+      haptics.warning()
+    }
   }
 
   /** Retry GPS after a signal loss without ending the workout. */
   async function handleRetryGps() {
     setGpsError(null)
-    lastFixAtRef.current = Date.now()
-    stopWatch()
-    await startWatch()
+    try {
+      await restartFeed(backgroundGranted)
+    } catch (err) {
+      if (!mountedRef.current) return
+      setGpsError(gpsErrorMessage(err))
+      haptics.warning()
+    }
   }
 
-  function handleStop() {
-    stopWatch()
-    // Bank the final segment (already banked if we stopped from a paused state),
-    // then settle the timer on the exact elapsed total the summary will save.
-    if (!paused) accumulatedMsRef.current += Date.now() - startedAtRef.current
-    setElapsedSec(Math.floor(accumulatedMsRef.current / 1000))
-    setPaused(false)
-    setPhase('summary')
+  async function handleStop() {
     haptics.success()
+    try {
+      // Settles the clock, tears down the location feed and drops the foreground
+      // service notification. The collected distance and route stay in the store
+      // until the session is saved or discarded.
+      await stopSession()
+    } catch (err) {
+      // Whatever went wrong tearing the feed down, the workout is still in the
+      // store and the athlete must be allowed to save it — stranding them on the
+      // tracking screen would cost them the run.
+      console.warn('[LiveTracker] stopping the session failed', err)
+    }
+    if (!mountedRef.current) return
+    setElapsedSec(Math.floor(elapsedMsFrom(useLiveTrackingStore.getState()) / 1000))
+    setPhase('summary')
   }
 
   function handleRpeChange(raw: number) {
@@ -713,6 +617,10 @@ export default function LiveTracker({
     // Last line of defence before anything is persisted: a NaN or out-of-range
     // value written to Firestore would corrupt every downstream metric (load,
     // CTL/ATL, charts) and crash the session-detail map on the way back in.
+    //
+    // Note the store is *not* cleared here. LogScreen clears it only once the
+    // write has actually landed, so a failed save leaves the whole run — every
+    // background-tracked metre of it — intact and retryable.
     const safeDuration = Number.isFinite(elapsedSec) ? Math.max(1, Math.round(elapsedSec / 60)) : 1
     const safeDistance = Number.isFinite(distanceKm) && distanceKm > 0 ? distanceKm : 0
     const safeRoute = route.filter((p) => isValidCoordinate(p.latitude, p.longitude))
@@ -724,8 +632,14 @@ export default function LiveTracker({
       routeCoordinates: safeRoute,
       averagePace: isCycling ? undefined : formatPace(elapsedSec, safeDistance),
       averageSpeed: isCycling ? calculateSpeed(elapsedSec, safeDistance) : undefined,
-      startedAt: sessionStartAtRef.current || undefined,
+      startedAt: sessionStartedAt || undefined,
     })
+  }
+
+  /** Throw the workout away — and with it the persisted snapshot and any feed. */
+  function handleDiscard() {
+    void clearSession()
+    onExit()
   }
 
   // Live follow-cam region: keep the latest fix centred with a tight zoom.
@@ -759,6 +673,16 @@ export default function LiveTracker({
         />
       ) : null}
 
+      {phase === 'permission' ? (
+        <BackgroundPermissionView
+          blocked={backgroundBlocked}
+          requesting={requestingBackground}
+          onAllow={handleGrantBackground}
+          onOpenSettings={() => Linking.openSettings()}
+          onSkip={handleSkipBackground}
+        />
+      ) : null}
+
       {phase === 'countdown' ? <CountdownView count={count} /> : null}
 
       {phase === 'tracking' ? (
@@ -776,6 +700,7 @@ export default function LiveTracker({
           paused={paused}
           searching={searching}
           gpsError={gpsError}
+          feedMode={feedMode}
           onRetryGps={handleRetryGps}
           onPause={handlePause}
           onResume={handleResume}
@@ -800,12 +725,111 @@ export default function LiveTracker({
           onNotesChange={setNotes}
           saving={saving}
           onSave={handleSave}
-          onDiscard={onExit}
+          onDiscard={handleDiscard}
         />
       ) : null}
     </SafeAreaView>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase: PERMISSION                                                   */
+/* ------------------------------------------------------------------ */
+/**
+ * The background-location rationale, shown once before the OS dialog.
+ *
+ * Android deliberately makes "Allow all the time" hard to get: from Android 11
+ * the system refuses to show an in-app dialog for it at all and only offers it
+ * on the app's settings page, and it revokes the grant on its own if the app
+ * goes unused. An app that asks cold, with no explanation, mostly gets refused —
+ * so this screen exists to make the trade obvious *before* the system UI appears,
+ * and to hand the athlete a working run either way.
+ */
+function BackgroundPermissionView({
+  blocked,
+  requesting,
+  onAllow,
+  onOpenSettings,
+  onSkip,
+}: {
+  /** The OS won't prompt again; the settings screen is the only route. */
+  blocked: boolean
+  requesting: boolean
+  onAllow: () => void
+  onOpenSettings: () => void
+  onSkip: () => void
+}) {
+  return (
+    <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center' }}>
+      <View
+        style={{
+          backgroundColor: '#1f2937',
+          borderRadius: 20,
+          padding: 24,
+          borderWidth: 1,
+          borderColor: '#374151',
+        }}
+      >
+        <Text style={{ fontSize: 40, textAlign: 'center' }}>🔒</Text>
+        <Text
+          style={{
+            marginTop: 10,
+            fontSize: 20,
+            fontWeight: '800',
+            color: COLORS.white,
+            textAlign: 'center',
+          }}
+        >
+          Keep tracking with the screen off
+        </Text>
+        <Text
+          style={{
+            marginTop: 10,
+            fontSize: 15,
+            color: COLORS.subtle,
+            textAlign: 'center',
+            lineHeight: 21,
+          }}
+        >
+          FORMA needs to track your route even when the screen is off. Nobody watches their
+          phone while running — without this, your distance stops the moment you pocket it.
+        </Text>
+        <Text
+          style={{
+            marginTop: 12,
+            fontSize: 14,
+            color: COLORS.subtle,
+            textAlign: 'center',
+            lineHeight: 20,
+          }}
+        >
+          {blocked
+            ? 'Android only offers this on FORMA’s settings page. Choose Permissions → Location → Allow all the time.'
+            : 'Choose “Allow all the time” on the next screen. FORMA only uses your location while a workout is recording.'}
+        </Text>
+
+        <View style={{ marginTop: 20 }}>
+          <PrimaryButton
+            label={blocked ? 'Open Settings' : 'Allow background tracking'}
+            onPress={blocked ? onOpenSettings : onAllow}
+            loading={requesting}
+          />
+        </View>
+
+        <Pressable
+          onPress={onSkip}
+          hitSlop={8}
+          style={{ marginTop: 16, alignSelf: 'center', paddingVertical: 6 }}
+        >
+          <Text style={{ color: COLORS.subtle, fontSize: 14, fontWeight: '700' }}>
+            Not now — keep the screen on
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  )
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Phase: READY                                                        */
@@ -980,6 +1004,7 @@ function TrackingView({
   paused,
   searching,
   gpsError,
+  feedMode,
   onRetryGps,
   onPause,
   onResume,
@@ -1001,6 +1026,8 @@ function TrackingView({
   paused: boolean
   searching: boolean
   gpsError: string | null
+  /** Which feed is running — decides whether the lock-screen promise holds. */
+  feedMode: FeedMode
   onRetryGps: () => void
   onPause: () => void
   onResume: () => void
@@ -1071,6 +1098,24 @@ function TrackingView({
         <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', marginTop: 6 }}>
           <Text style={{ color: ZONE_AMBER, fontSize: 13, fontWeight: '700' }}>
             🛰️ Searching for GPS…
+          </Text>
+        </Animated.View>
+      ) : feedMode === 'background' ? (
+        // Mirrors the foreground-service notification the athlete will see on
+        // their lock screen, so the promise is made on both surfaces: they can
+        // pocket the phone without wondering whether it kept counting.
+        <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', marginTop: 6 }}>
+          <Text style={{ color: ZONE_GREEN, fontSize: 13, fontWeight: '700' }}>
+            🔒 Recording with the screen off
+          </Text>
+        </Animated.View>
+      ) : feedMode === 'foreground' && !paused ? (
+        // Background permission was refused, so this run really does stop when
+        // the screen does. Say it plainly rather than letting them find out at
+        // the end of an hour.
+        <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', marginTop: 6 }}>
+          <Text style={{ color: ZONE_AMBER, fontSize: 13, fontWeight: '700' }}>
+            ⚠️ Keep the screen on — background tracking is off
           </Text>
         </Animated.View>
       ) : null}

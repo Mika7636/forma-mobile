@@ -1,4 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import { useNavigation } from '@react-navigation/native'
 import { useEffect } from 'react'
 import { Platform, Text } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -9,9 +10,15 @@ import PlannerScreen from '../screens/PlannerScreen'
 import ProgressScreen from '../screens/ProgressScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import { withScreenBoundary } from '../components/ui/withScreenBoundary'
+import {
+  ensureHydrated as ensureLiveTrackingHydrated,
+  hasActiveSession,
+  useLiveTrackingStore,
+} from '../store/liveTrackingStore'
 import { useToastStore } from '../store/toastStore'
 import { haptics } from '../utils/haptics'
-import type { MainTabsParamList } from './types'
+import type { AppStackParamList, MainTabsParamList } from './types'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 
 const Tab = createBottomTabNavigator<MainTabsParamList>()
 
@@ -38,6 +45,9 @@ const TAB_BAR_HEIGHT = 58
 export default function MainTabs() {
   const insets = useSafeAreaInsets()
   const setBottomOffset = useToastStore((s) => s.setBottomOffset)
+  // MainTabs is a screen of AppStack, so this is the *stack's* navigator — which
+  // is what can address a nested tab by name.
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList, 'MainTabs'>>()
 
   // ToastContainer sits above the navigator and can't see the tab bar, so tell
   // it how much room to leave. Reset on unmount — auth and onboarding have no
@@ -46,6 +56,34 @@ export default function MainTabs() {
     setBottomOffset(TAB_BAR_HEIGHT)
     return () => setBottomOffset(0)
   }, [setBottomOffset])
+
+  // Land on the workout when the app opens mid-run.
+  //
+  // Live tracking now keeps recording with FORMA closed, so a cold start can
+  // happen while a run is in progress — most obviously when the athlete taps the
+  // "FORMA is tracking your run" notification, whose content intent just relaunches
+  // the app. Dropping them on the Dashboard there would look exactly like the bug
+  // this feature fixes ("it stopped tracking"), so focus the Log tab, where
+  // LogScreen restores the live screen.
+  //
+  // Deliberately mount-only rather than on every foreground: re-focusing the tab
+  // each time the app resumes would yank the athlete off Progress or Settings
+  // every time they glanced at another screen mid-run. A merely-backgrounded app
+  // still has the tracking screen mounted and comes back to it on its own.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await ensureLiveTrackingHydrated()
+      if (cancelled) return
+      if (hasActiveSession(useLiveTrackingStore.getState())) {
+        navigation.navigate('MainTabs', { screen: 'Log' })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <Tab.Navigator

@@ -21,6 +21,7 @@
     "expo-notifications": "~57.0.10",
     "expo-splash-screen": "~57.0.6",
     "expo-status-bar": "~57.0.1",
+    "expo-task-manager": "~57.0.12",
     "firebase": "^12.15.0",
     "nativewind": "^4.2.6",
     "react": "19.2.3",

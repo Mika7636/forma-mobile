@@ -13,6 +13,7 @@ import { db } from './src/config/firebase'
 import { useNotificationObserver } from './src/hooks/useNotificationObserver'
 import { navigationRef } from './src/navigation/navigationRef'
 import RootNavigator from './src/navigation/RootNavigator'
+import { reconcileLiveTrackingOnStart } from './src/services/liveLocationTask'
 import { configureNotificationHandler } from './src/services/notificationService'
 
 // Importing firebase.ts initializes the Firebase app on startup. Log the
@@ -23,6 +24,18 @@ console.log('[FORMA] Firebase initialized — Firestore project:', db.app.option
 // than in an effect: this is what makes a notification visible while FORMA is
 // in the foreground instead of being swallowed silently.
 configureNotificationHandler()
+
+// Importing `liveLocationTask` above is what registers the background location
+// task, and it has to happen here — at module scope — rather than in an effect:
+// when the OS wakes FORMA in the background to hand over a batch of GPS fixes it
+// evaluates this bundle *headlessly*, with no React tree ever mounted. A task
+// defined inside a component would not exist in that context and the fixes would
+// be dropped, which is precisely the bug this whole feature fixes.
+//
+// This call is the other half: it stops a foreground service (and its
+// undismissable "tracking your run" notification) left behind by a workout that
+// was already saved or discarded.
+reconcileLiveTrackingOnStart()
 
 // Module scope, per the expo-splash-screen docs — by the time a component's
 // effect runs, the splash has already auto-hidden and the flash has happened.

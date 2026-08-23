@@ -32,6 +32,11 @@ import LiveTracker, {
 } from '../components/log/LiveTracker'
 import ErrorBoundary from '../components/ui/ErrorBoundary'
 import PrimaryButton from '../components/ui/PrimaryButton'
+import {
+  clearSession as clearLiveSession,
+  ensureHydrated as ensureLiveTrackingHydrated,
+  useLiveTrackingStore,
+} from '../store/liveTrackingStore'
 import { isOffline } from '../store/networkStore'
 import { toast } from '../store/toastStore'
 import { worstSeverity } from '../constants/conflictColors'
@@ -177,6 +182,30 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const [recoveredLive, setRecoveredLive] = useState<LiveSnapshot | null>(null)
   const [liveBoundaryKey, setLiveBoundaryKey] = useState(0)
 
+  // Put the athlete back on their run.
+  //
+  // Tracking now survives the screen going off *and* FORMA's process being
+  // killed — the workout lives in `liveTrackingStore`, mirrored to AsyncStorage,
+  // and the OS keeps feeding it through the background location task. So a
+  // relaunch (from the app icon, or from tapping the "FORMA is tracking your
+  // run" notification) can easily land here with a run still in progress. Show
+  // them the tracking screen rather than an empty log form for a workout that is
+  // still recording.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await ensureLiveTrackingHydrated()
+      if (cancelled) return
+      const live = useLiveTrackingStore.getState()
+      if (live.status === 'idle' || !live.sport) return
+      setSport(live.sport)
+      setMode('live')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // A tab's params outlive the visit that set them, so a date handed over by the
   // Planner would still be pinned here days later — the user would tap the Log
   // tab and be told they're logging for last Tuesday. Drop it on the way out.
@@ -274,6 +303,13 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       // The write can outlive the screen (tab switch or logout mid-save). The
       // session is safely persisted either way; there's just no UI left to
       // update, and the conflict modal below would be mounted into nothing.
+      // The run is now safely in Firestore, so the live-tracking store — and the
+      // AsyncStorage snapshot behind it — can go. Deliberately *after* the write
+      // rather than when the athlete taps Save: a failed save must leave every
+      // background-tracked metre intact and retryable. Fire-and-forget, and done
+      // before the mounted check because it has nothing to do with the UI.
+      if (input.trackingMode === 'live') void clearLiveSession()
+
       if (!isMounted.current) return
       setSaving(false)
 
