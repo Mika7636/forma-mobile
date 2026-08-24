@@ -25,6 +25,16 @@ export interface RoutePoint {
 /** How a session's data was collected. */
 export type TrackingMode = 'quick' | 'live'
 
+/**
+ * How much of a live-tracked session the GPS actually covered.
+ *
+ * Recorded so a session with no distance can be read back correctly later: a
+ * 45-minute run saved with `'none'` was tracked indoors, not tracked badly. The
+ * training load (duration x RPE) is unaffected either way, which is why a
+ * `'none'` session is still a complete session.
+ */
+export type GpsQuality = 'good' | 'partial' | 'none'
+
 export interface Session {
   id: string
   userId: string
@@ -53,4 +63,6 @@ export interface Session {
   averagePace?: string
   /** Auto-computed average speed in km/h (cycling). */
   averageSpeed?: number
+  /** GPS coverage summary. Absent on sessions logged before it was recorded. */
+  gpsQuality?: GpsQuality
 }

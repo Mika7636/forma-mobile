@@ -28,6 +28,7 @@ import { calculateLoadScore } from '../algorithms/sRPE'
 import { startOfWeek } from '../utils/dates'
 import { conflictStorageKey, type Conflict } from '../types/conflict'
 import type {
+  GpsQuality,
   RoutePoint,
   Session,
   SessionHRZone,
@@ -61,6 +62,8 @@ export interface LogSessionInput {
   routeCoordinates?: RoutePoint[]
   averagePace?: string
   averageSpeed?: number
+  /** How much of the workout the GPS covered; only meaningful for live sessions. */
+  gpsQuality?: GpsQuality
 }
 
 function sessionsCol(userId: string) {
@@ -143,6 +146,7 @@ export function toSession(id: string, data: DocumentData): Session {
     routeCoordinates: data.routeCoordinates,
     averagePace: data.averagePace,
     averageSpeed: data.averageSpeed,
+    gpsQuality: data.gpsQuality,
   }
 }
 
@@ -213,6 +217,7 @@ export async function logSession(
     routeCoordinates,
     averagePace,
     averageSpeed,
+    gpsQuality,
   } = input
 
   const loadScore = calculateLoadScore(durationMinutes, rpe)
@@ -252,6 +257,7 @@ export async function logSession(
   }
   if (averagePace) docData.averagePace = averagePace
   if (averageSpeed != null && averageSpeed > 0) docData.averageSpeed = averageSpeed
+  if (gpsQuality) docData.gpsQuality = gpsQuality
 
   const ref = await addDoc(sessionsCol(userId), docData)
 
@@ -275,6 +281,7 @@ export async function logSession(
       routeCoordinates && routeCoordinates.length > 0 ? routeCoordinates : undefined,
     averagePace,
     averageSpeed: averageSpeed != null && averageSpeed > 0 ? averageSpeed : undefined,
+    gpsQuality,
   }
 
   // Pull recent training for the conflict engine. A single `where` on `date`

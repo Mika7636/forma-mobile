@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
+  Alert,
   AppState,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -16,10 +16,13 @@ import Animated, { FadeIn } from 'react-native-reanimated'
 import Slider from '@react-native-community/slider'
 import { formatDistanceKm } from '../../utils/formatting'
 import { haptics } from '../../utils/haptics'
-import * as Location from 'expo-location'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
 import PrimaryButton from '../ui/PrimaryButton'
 import RouteMap from '../session/RouteMap'
+import BatteryOptimizationTip from './BatteryOptimizationTip'
+import GpsChip from './GpsChip'
+import { useGpsWarmup } from '../../hooks/useGpsWarmup'
+import { openAppSettings, openLocationSettings } from '../../utils/systemSettings'
 import { COLORS } from '../../constants/theme'
 import { estimateCalories } from '../../algorithms/calories'
 import {
@@ -30,7 +33,6 @@ import {
   isValidCoordinate,
 } from '../../utils/geo'
 import {
-  GPS_STALE_MS,
   PACE_MAX_SEC_PER_KM,
   PACE_SAMPLE_STALE_MS,
   PACE_WINDOW_MIN_M,
@@ -39,9 +41,13 @@ import {
   clearSession,
   elapsedMsFrom,
   ensureHydrated,
+  gpsQualityFrom,
+  gpsQualitySummaryFrom,
   hasActiveSession,
   hasBackgroundPermission,
+  isIndoorBlackout,
   pauseSession,
+  preflightLocation,
   requestBackgroundPermission,
   restartFeed,
   resumeSession,
@@ -49,6 +55,8 @@ import {
   stopSession,
   useLiveTrackingStore,
   type FeedMode,
+  type GpsQuality,
+  type GpsQualitySummary,
 } from '../../store/liveTrackingStore'
 import type { RoutePoint, SportType } from '../../types/session'
 import type { MapRegion } from '../../utils/maps'
@@ -65,6 +73,12 @@ export interface LiveResult {
   /** Epoch ms of when tracking began, so the session is timestamped to its
    *  real start rather than to whenever the summary was saved. */
   startedAt?: number
+  /**
+   * How much of the workout the GPS actually covered. Saved alongside the
+   * session so a 45-minute treadmill run recorded as `'none'` reads as an
+   * indoor session later, rather than as a run whose distance went missing.
+   */
+  gpsQuality?: GpsQualitySummary
 }
 
 /**
@@ -132,26 +146,34 @@ function rpeColor(rpe: number): string {
 }
 
 /**
- * Turn whatever expo-location rejected with into something an athlete mid-run
- * can act on. The raw messages ("Call to function 'ExpoLocation.watchPosition'
- * has been rejected") are useless on a lock screen.
+ * The pre-flight blockers, as alerts.
+ *
+ * These are the *only* two things that stop a session, and both do so before it
+ * begins: with the device's location toggle off, or with location permission
+ * refused, there is nothing to track and no prompt the app can raise from the
+ * countdown that would be less confusing than this. Note neither is reachable
+ * once a session is running — nothing interrupts a workout in progress.
  */
-function gpsErrorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err ?? '')
-  const lower = raw.toLowerCase()
-  if (lower.includes('location services are disabled') || lower.includes('services are not enabled')) {
-    return 'Location services are turned off. Switch GPS on to keep tracking.'
-  }
-  if (lower.includes('permission') || lower.includes('denied')) {
-    return 'Location access was revoked. Re-enable it to keep tracking.'
-  }
-  if (lower.includes('unavailable') || lower.includes('provider')) {
-    return 'GPS is unavailable right now. Your time is still being recorded.'
-  }
-  if (lower.includes('background')) {
-    return 'Background tracking could not start. Keep the screen on to keep recording.'
-  }
-  return 'GPS signal lost. Your time is still being recorded.'
+function alertServicesOff(): void {
+  Alert.alert(
+    'Turn on location',
+    "Your device's location is switched off, so FORMA can't record distance or your route. Your time and effort would still be tracked.",
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Open settings', onPress: openLocationSettings },
+    ],
+  )
+}
+
+function alertPermissionDenied(): void {
+  Alert.alert(
+    'Location access needed',
+    'FORMA needs location access to track your distance, pace and route. You can grant it in Settings → Permissions → Location.',
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Open settings', onPress: openAppSettings },
+    ],
+  )
 }
 
 /** Seconds → "HH:MM:SS". */
@@ -173,13 +195,11 @@ export default function LiveTracker({
   onExit,
   onComplete,
 }: LiveTrackerProps) {
-  const [permission, requestPermission] = Location.useForegroundPermissions()
-
   // A recovered workout skips straight to the summary: the location feed is
   // gone, but the distance and time it collected are intact and worth saving.
   const [phase, setPhase] = useState<Phase>(resumeFrom ? 'summary' : 'ready')
   const [count, setCount] = useState(3)
-  const [permissionDenied, setPermissionDenied] = useState(false)
+  const [starting, setStarting] = useState(false)
 
   /* ---- Background-permission state --------------------------------- */
   /** Whether "Allow all the time" is held, deciding which feed we start. */
@@ -196,7 +216,6 @@ export default function LiveTracker({
   const storeStartedAt = useLiveTrackingStore((s) => s.startedAt)
   const status = useLiveTrackingStore((s) => s.status)
   const feedMode = useLiveTrackingStore((s) => s.feedMode)
-  const hasFix = useLiveTrackingStore((s) => s.hasFix)
 
   // A recovered snapshot outranks the store: LogScreen hands it over precisely
   // because the live path is no longer trustworthy.
@@ -205,12 +224,24 @@ export default function LiveTracker({
   const sessionStartedAt = resumeFrom ? resumeFrom.startedAt : storeStartedAt
   const paused = status === 'paused'
 
+  // Warm the receiver up while they're still deciding to go, and tear it down
+  // the instant the countdown starts so it isn't competing with the session's
+  // own feed. See useGpsWarmup for why this is worth a watcher.
+  const warmupQuality = useGpsWarmup(phase === 'ready' && !resumeFrom)
+
   const [elapsedSec, setElapsedSec] = useState(resumeFrom?.elapsedSec ?? 0)
-  // Derived on the timer tick rather than from a re-rendered `now` timestamp —
-  // see the timer effect for why that distinction matters here.
-  const [gpsStale, setGpsStale] = useState(false)
-  /** Non-null when GPS has failed outright: shown as a banner, tracking pauses. */
-  const [gpsError, setGpsError] = useState<string | null>(null)
+  /**
+   * Signal quality, re-derived on the timer tick rather than published by the
+   * store on every fix.
+   *
+   * It has to decay on a clock, not on an event: "lost" is defined by fixes
+   * *not* arriving, and nothing fires when nothing happens. Reading it here also
+   * keeps it out of the store's subscriber notifications, so a run of weak fixes
+   * doesn't re-render the map underneath the numbers.
+   */
+  const [gpsQuality, setGpsQuality] = useState<GpsQuality>('acquiring')
+  /** True once the blackout has lasted long enough to call it an indoor session. */
+  const [indoor, setIndoor] = useState(false)
   /**
    * Pace over the trailing PACE_WINDOW_MS, in seconds per km, or null when
    * there isn't enough recent movement to say. Recomputed once a second on the
@@ -302,7 +333,14 @@ export default function LiveTracker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* ---- Timer + GPS-staleness ticker -------------------------------- */
+  /* ---- Timer + GPS-quality ticker ----------------------------------- */
+  //
+  // **The timer does not depend on the GPS in any way.** This interval reads the
+  // wall clock through the store and publishes a second count; the GPS quality
+  // it publishes alongside is a display value that nothing here branches on.
+  // There is no path from a missing fix to a stopped clock, a paused session, or
+  // a blocked screen — that was the bug, and this is where it would have to
+  // reappear for it to come back.
   useEffect(() => {
     // A recovered snapshot is a frozen record — nothing left to tick.
     if (resumeFrom) return
@@ -311,25 +349,30 @@ export default function LiveTracker({
     const sync = () => {
       if (!mountedRef.current) return
       const s = useLiveTrackingStore.getState()
+      const now = Date.now()
       // Elapsed comes off the wall clock via the store, not from counting
       // ticks. That is what makes a locked-screen run come back with the right
       // duration: JS timers are throttled (or stopped outright) in the
       // background, so a counted clock would under-report every backgrounded
       // minute even while GPS kept flowing.
-      const secs = Math.floor(elapsedMsFrom(s) / 1000)
-      // Both setters are usually passed *unchanged* values, so React bails out
-      // of the re-render. That is the point: this fires 4× per second, and
+      const secs = Math.floor(elapsedMsFrom(s, now) / 1000)
+      // Every setter here is usually passed an *unchanged* value, so React bails
+      // out of the re-render. That is the point: this fires 4× per second, and
       // storing a fresh `Date.now()` in state each time would re-render the
       // whole tracker — map included — 4× a second for the entire workout.
       setElapsedSec((prev) => (prev === secs ? prev : secs))
-      setGpsStale(s.status === 'tracking' && Date.now() - s.lastFixAt > GPS_STALE_MS)
+
+      const quality = gpsQualityFrom(s, now)
+      setGpsQuality((prev) => (prev === quality ? prev : quality))
+      const dark = isIndoorBlackout(s, now)
+      setIndoor((prev) => (prev === dark ? prev : dark))
 
       // Rolling pace is refreshed on the second boundary, not on all four
       // ticks: that is exactly when this component re-renders anyway, so the
       // readout stays live without adding a single extra render.
       if (secs !== lastTickSecRef.current) {
         lastTickSecRef.current = secs
-        const next = rollingPaceSecPerKm(s.paceSamples, Date.now(), {
+        const next = rollingPaceSecPerKm(s.paceSamples, now, {
           windowMs: PACE_WINDOW_MS,
           minDistanceM: PACE_WINDOW_MIN_M,
           staleMs: PACE_SAMPLE_STALE_MS,
@@ -458,43 +501,53 @@ export default function LiveTracker({
   }, [distanceKm])
 
   /* ---- Actions ----------------------------------------------------- */
+  /**
+   * Pre-flight, then start.
+   *
+   * Everything that can go wrong with location is checked *here*, before the
+   * countdown, because this is the last moment where stopping costs the athlete
+   * nothing. Two outcomes stop the start — the device's location toggle being
+   * off, and permission being refused — and each gets an alert with a button
+   * straight to the screen that fixes it. Everything else proceeds: a run with a
+   * foreground-only feed, or with no GPS at all, is still a run.
+   */
   async function handleStart() {
-    setPermissionDenied(false)
-    setGpsError(null)
+    if (starting) return
+    setStarting(true)
     try {
-      let granted = permission?.granted ?? false
-      if (!granted) {
-        const res = await requestPermission()
-        granted = res?.granted ?? false
-      }
-      if (!granted) {
-        setPermissionDenied(true)
+      // Requests foreground permission if it isn't held, and (unless already
+      // granted) offers the "Allow all the time" prompt — see preflightLocation.
+      // We ask for background *after* the rationale screen below, so pass false.
+      const pre = await preflightLocation(false)
+      if (!mountedRef.current) return
+
+      if (pre.status === 'services-off') {
         haptics.warning()
+        alertServicesOff()
         return
       }
-
-      // Permission granted is *not* the same as GPS being usable: the user can
-      // hold the permission while the device's location toggle is off, in which
-      // case the location request rejects a few seconds later — mid-countdown,
-      // where the failure is much harder to explain. Check up front instead.
-      const servicesOn = await Location.hasServicesEnabledAsync()
-      if (!servicesOn) {
-        setGpsError('Location services are turned off. Switch GPS on to start tracking.')
+      if (pre.status === 'no-foreground') {
         haptics.warning()
+        alertPermissionDenied()
         return
       }
 
       // Already holding "Allow all the time" from a previous run: nothing to
       // explain, don't make the athlete tap through a screen they've answered.
-      if (await hasBackgroundPermission()) {
+      if (pre.background) {
         setBackgroundGranted(true)
         setPhase('countdown')
         return
       }
     } catch (err) {
-      setGpsError(gpsErrorMessage(err))
-      haptics.warning()
-      return
+      // preflightLocation resolves rather than rejects, but this handler is
+      // fired from a Pressable — nothing awaits it, so anything that did throw
+      // would be an unhandled rejection, which is fatal in a release build.
+      // Falling through to the rationale screen is the right recovery: the
+      // session can still start, it just won't have background permission.
+      console.warn('[LiveTracker] pre-flight failed', err)
+    } finally {
+      if (mountedRef.current) setStarting(false)
     }
     setBackgroundGranted(false)
     setBackgroundBlocked(false)
@@ -535,25 +588,22 @@ export default function LiveTracker({
     setPhase('countdown')
   }
 
+  /**
+   * Open the session. Note there is no failure path: `beginSession` starts the
+   * clock first and resolves to whatever feed it managed to establish, so a
+   * refused, broken or absent GPS lands us on the tracking screen with a
+   * running timer and a red chip — which is exactly what should happen.
+   */
   async function beginTracking() {
     if (!mountedRef.current) return
     setElapsedSec(0)
-    setGpsStale(false)
-    setGpsError(null)
+    setGpsQuality('acquiring')
+    setIndoor(false)
     setCurrentPaceSec(null)
     lastMilestoneRef.current = 0
     lastTickSecRef.current = -1
     setPhase('tracking')
-    try {
-      await beginSession(sport, backgroundGranted)
-    } catch (err) {
-      // The session is open and the clock is running regardless — a workout with
-      // no GPS is still worth recording — so surface the failure and let the
-      // athlete retry rather than dropping them back to the start screen.
-      if (!mountedRef.current) return
-      setGpsError(gpsErrorMessage(err))
-      haptics.warning()
-    }
+    await beginSession(sport, backgroundGranted)
   }
 
   function handlePause() {
@@ -562,28 +612,15 @@ export default function LiveTracker({
     setCurrentPaceSec(null)
   }
 
-  async function handleResume() {
+  function handleResume() {
     haptics.medium()
-    setGpsError(null)
-    try {
-      await resumeSession(backgroundGranted)
-    } catch (err) {
-      if (!mountedRef.current) return
-      setGpsError(gpsErrorMessage(err))
-      haptics.warning()
-    }
+    void resumeSession(backgroundGranted)
   }
 
-  /** Retry GPS after a signal loss without ending the workout. */
-  async function handleRetryGps() {
-    setGpsError(null)
-    try {
-      await restartFeed(backgroundGranted)
-    } catch (err) {
-      if (!mountedRef.current) return
-      setGpsError(gpsErrorMessage(err))
-      haptics.warning()
-    }
+  /** Restart the feed after a signal loss, without touching the workout. */
+  function handleRetryGps() {
+    haptics.light()
+    void restartFeed(backgroundGranted)
   }
 
   async function handleStop() {
@@ -646,9 +683,16 @@ export default function LiveTracker({
     const safeDistance =
       Number.isFinite(finalDistanceKm) && finalDistanceKm > 0 ? finalDistanceKm : 0
     const safeRoute = finalRoute.filter((p) => isValidCoordinate(p.latitude, p.longitude))
+    // A recovered snapshot carries no fix counters, so it can only be judged by
+    // what it has: a route means the GPS was working, no route means it wasn't.
+    const quality: GpsQualitySummary = resumeFrom
+      ? safeRoute.length >= 2 && safeDistance > 0
+        ? 'partial'
+        : 'none'
+      : gpsQualitySummaryFrom(live)
     console.log(
       `[LiveTracker] saving: ${safeDistance.toFixed(3)} km · ${safeDuration} min · ` +
-        `${safeRoute.length} route pts`,
+        `${safeRoute.length} route pts · gps ${quality}`,
     )
     onComplete({
       durationMinutes: safeDuration,
@@ -659,6 +703,7 @@ export default function LiveTracker({
       averagePace: isCycling ? undefined : formatPace(finalElapsedSec, safeDistance),
       averageSpeed: isCycling ? calculateSpeed(finalElapsedSec, safeDistance) : undefined,
       startedAt: finalStartedAt || undefined,
+      gpsQuality: quality,
     })
   }
 
@@ -680,8 +725,6 @@ export default function LiveTracker({
     }
   }, [route])
 
-  const searching = phase === 'tracking' && !paused && !gpsError && (!hasFix || gpsStale)
-
   /* ================================================================= */
   /* Render                                                             */
   /* ================================================================= */
@@ -692,8 +735,8 @@ export default function LiveTracker({
       {phase === 'ready' ? (
         <ReadyView
           sportLabel={sportLabel}
-          permissionDenied={permissionDenied}
-          gpsError={gpsError}
+          warmupQuality={warmupQuality}
+          starting={starting}
           onStart={handleStart}
           onExit={onExit}
         />
@@ -704,7 +747,7 @@ export default function LiveTracker({
           blocked={backgroundBlocked}
           requesting={requestingBackground}
           onAllow={handleGrantBackground}
-          onOpenSettings={() => Linking.openSettings()}
+          onOpenSettings={openAppSettings}
           onSkip={handleSkipBackground}
         />
       ) : null}
@@ -724,8 +767,8 @@ export default function LiveTracker({
           route={route}
           liveRegion={liveRegion}
           paused={paused}
-          searching={searching}
-          gpsError={gpsError}
+          gpsQuality={gpsQuality}
+          indoor={indoor}
           feedMode={feedMode}
           onRetryGps={handleRetryGps}
           onPause={handlePause}
@@ -860,16 +903,26 @@ function BackgroundPermissionView({
 /* ------------------------------------------------------------------ */
 /* Phase: READY                                                        */
 /* ------------------------------------------------------------------ */
+/**
+ * The pre-start screen, and the place the GPS warm-up lives.
+ *
+ * Nothing here blocks Start. The warm-up chip is information — "wait five more
+ * seconds if you want a clean first kilometre" — not a gate: an athlete who taps
+ * Start on a grey chip gets a session with a running clock and a red chip, which
+ * is a perfectly good indoor workout.
+ */
 function ReadyView({
   sportLabel,
-  permissionDenied,
-  gpsError,
+  warmupQuality,
+  starting,
   onStart,
   onExit,
 }: {
   sportLabel: string
-  permissionDenied: boolean
-  gpsError: string | null
+  /** Live from the warm-up watcher; same colours as the in-run chip. */
+  warmupQuality: GpsQuality
+  /** Pre-flight checks (and any permission prompt) are in flight. */
+  starting: boolean
   onStart: () => void
   onExit: () => void
 }) {
@@ -887,79 +940,31 @@ function ReadyView({
           {sportLabel}
         </Text>
 
-        {permissionDenied ? (
-          <Animated.View
-            entering={FadeIn.duration(200)}
-            style={{
-              marginTop: 28,
-              backgroundColor: '#1f2937',
-              borderRadius: 16,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: '#374151',
-            }}
-          >
-            <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>
-              📍 Location needed
-            </Text>
-            <Text style={{ marginTop: 8, fontSize: 14, color: COLORS.subtle, textAlign: 'center', lineHeight: 20 }}>
-              GPS is required to track your distance, pace and route. Enable location access
-              for FORMA to start a live workout.
-            </Text>
-            <Pressable
-              onPress={() => Linking.openSettings()}
-              style={{
-                marginTop: 14,
-                alignSelf: 'center',
-                paddingVertical: 10,
-                paddingHorizontal: 20,
-                borderRadius: 10,
-                borderWidth: 1.5,
-                borderColor: COLORS.teal,
-              }}
-            >
-              <Text style={{ color: COLORS.teal, fontWeight: '700', fontSize: 14 }}>
-                Open Settings
-              </Text>
-            </Pressable>
-          </Animated.View>
-        ) : gpsError ? (
-          <Animated.View
-            entering={FadeIn.duration(200)}
-            style={{
-              marginTop: 28,
-              backgroundColor: '#1f2937',
-              borderRadius: 16,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: '#374151',
-            }}
-          >
-            <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.white, textAlign: 'center' }}>
-              🛰️ GPS unavailable
-            </Text>
-            <Text style={{ marginTop: 8, fontSize: 14, color: COLORS.subtle, textAlign: 'center', lineHeight: 20 }}>
-              {gpsError}
-            </Text>
-          </Animated.View>
-        ) : (
-          <Text
-            style={{
-              marginTop: 16,
-              fontSize: 15,
-              color: COLORS.subtle,
-              textAlign: 'center',
-              lineHeight: 22,
-              maxWidth: 300,
-            }}
-          >
-            We'll track your distance, pace and route with GPS. Rate your effort after you finish.
-          </Text>
-        )}
+        <View style={{ marginTop: 18 }}>
+          <GpsChip quality={warmupQuality} variant="warmup" />
+        </View>
+
+        <Text
+          style={{
+            marginTop: 14,
+            fontSize: 15,
+            color: COLORS.subtle,
+            textAlign: 'center',
+            lineHeight: 22,
+            maxWidth: 300,
+          }}
+        >
+          {warmupQuality === 'good'
+            ? "Distance, pace and route are ready to record. Rate your effort after you finish."
+            : "You can start any time — your time and effort are always recorded. Distance needs a GPS lock."}
+        </Text>
+
+        {/* Android only, once ever. See BatteryOptimizationTip. */}
+        <BatteryOptimizationTip />
       </View>
 
       <View style={{ paddingBottom: 24 }}>
-        <StartButton onPress={onStart} label={permissionDenied || gpsError ? 'Try Again' : 'Start'} />
+        <StartButton onPress={onStart} label={starting ? 'Checking…' : 'Start'} />
       </View>
     </View>
   )
@@ -1028,8 +1033,8 @@ function TrackingView({
   route,
   liveRegion,
   paused,
-  searching,
-  gpsError,
+  gpsQuality,
+  indoor,
   feedMode,
   onRetryGps,
   onPause,
@@ -1050,8 +1055,10 @@ function TrackingView({
   route: RoutePoint[]
   liveRegion: MapRegion | undefined
   paused: boolean
-  searching: boolean
-  gpsError: string | null
+  /** Signal state. Rendered as a chip; never gates anything on this screen. */
+  gpsQuality: GpsQuality
+  /** Blackout has lasted long enough to call the session indoors. */
+  indoor: boolean
   /** Which feed is running — decides whether the lock-screen promise holds. */
   feedMode: FeedMode
   onRetryGps: () => void
@@ -1089,61 +1096,64 @@ function TrackingView({
         </Text>
       </View>
 
-      {/* GPS failed outright: say so, keep the timer running, and make it clear
-          the workout is still saveable. Losing signal must never cost a run. */}
-      {gpsError ? (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          style={{
-            marginTop: 8,
-            backgroundColor: '#3f2d16',
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: ZONE_AMBER,
-            paddingVertical: 10,
-            paddingHorizontal: 14,
-          }}
-        >
-          <Text style={{ color: ZONE_AMBER, fontSize: 13, fontWeight: '800', textAlign: 'center' }}>
-            🛰️ {gpsError}
-          </Text>
-          <Pressable onPress={onRetryGps} hitSlop={8} style={{ marginTop: 6, alignSelf: 'center' }}>
-            <Text
+      {/* GPS status, and nothing more.
+          This is the whole of what a lost signal is allowed to do to this
+          screen: a small chip under the distance figure. It covers nothing,
+          blocks nothing, and stops nothing. The timer above it and the Stop
+          button below it behave identically at every quality level.
+          Hidden while paused, where the feed is deliberately off and a signal
+          reading would be stale by construction. */}
+      {!paused ? (
+        <View style={{ marginTop: 8, alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <GpsChip quality={gpsQuality} />
+            {gpsQuality === 'lost' ? (
+              // Offered, never forced: restarting the feed occasionally shakes a
+              // wedged provider loose, and it costs the athlete nothing to
+              // ignore it.
+              <Pressable onPress={onRetryGps} hitSlop={10} style={{ marginLeft: 10 }}>
+                <Text
+                  style={{
+                    color: COLORS.subtle,
+                    fontSize: 12,
+                    fontWeight: '700',
+                    textDecorationLine: 'underline',
+                  }}
+                >
+                  Retry
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {/* A minute of nothing means this is almost certainly an indoor
+              session. Say what is and isn't being recorded, in one line, and
+              accurately: sRPE load is duration × RPE, so the session's actual
+              training value is completely intact without a single fix. */}
+          {indoor ? (
+            <Animated.Text
+              entering={FadeIn.duration(200)}
               style={{
-                color: COLORS.white,
-                fontSize: 13,
-                fontWeight: '700',
-                textDecorationLine: 'underline',
+                marginTop: 6,
+                color: COLORS.subtle,
+                fontSize: 12,
+                fontWeight: '600',
+                textAlign: 'center',
               }}
             >
-              Retry GPS
+              Indoor session — distance unavailable, training load still tracked.
+            </Animated.Text>
+          ) : feedMode === 'foreground' ? (
+            // Background permission was refused, so this run really does stop
+            // when the screen does. Say it plainly rather than letting them find
+            // out at the end of an hour.
+            <Text
+              style={{ marginTop: 6, color: ZONE_AMBER, fontSize: 12, fontWeight: '600' }}
+            >
+              Keep the screen on — background tracking is off
             </Text>
-          </Pressable>
-        </Animated.View>
-      ) : searching ? (
-        <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', marginTop: 6 }}>
-          <Text style={{ color: ZONE_AMBER, fontSize: 13, fontWeight: '700' }}>
-            🛰️ Searching for GPS…
-          </Text>
-        </Animated.View>
-      ) : feedMode === 'background' ? (
-        // Mirrors the foreground-service notification the athlete will see on
-        // their lock screen, so the promise is made on both surfaces: they can
-        // pocket the phone without wondering whether it kept counting.
-        <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', marginTop: 6 }}>
-          <Text style={{ color: ZONE_GREEN, fontSize: 13, fontWeight: '700' }}>
-            🔒 Recording with the screen off
-          </Text>
-        </Animated.View>
-      ) : feedMode === 'foreground' && !paused ? (
-        // Background permission was refused, so this run really does stop when
-        // the screen does. Say it plainly rather than letting them find out at
-        // the end of an hour.
-        <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', marginTop: 6 }}>
-          <Text style={{ color: ZONE_AMBER, fontSize: 13, fontWeight: '700' }}>
-            ⚠️ Keep the screen on — background tracking is off
-          </Text>
-        </Animated.View>
+          ) : null}
+        </View>
       ) : null}
 
       {/* Secondary metrics. The headline figure is the *rolling* one — it's

@@ -388,6 +388,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       routeCoordinates: result.routeCoordinates,
       averagePace: result.averagePace,
       averageSpeed: result.averageSpeed,
+      gpsQuality: result.gpsQuality,
     })
   }
 
