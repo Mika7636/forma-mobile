@@ -22,6 +22,12 @@ import RouteMap from '../session/RouteMap'
 import BatteryOptimizationTip from './BatteryOptimizationTip'
 import GpsChip from './GpsChip'
 import { useGpsWarmup } from '../../hooks/useGpsWarmup'
+import {
+  setupTrackingChannels,
+  startLiveNotification,
+  stopLiveNotification,
+  updateLiveNotification,
+} from '../../services/liveNotification'
 import { openAppSettings, openLocationSettings } from '../../utils/systemSettings'
 import { COLORS } from '../../constants/theme'
 import { estimateCalories } from '../../algorithms/calories'
@@ -281,6 +287,16 @@ export default function LiveTracker({
     return () => {
       mountedRef.current = false
       deactivateKeepAwake(KEEP_AWAKE_TAG)
+      // Take the live notification down with the screen — but ONLY when no
+      // workout is left running.
+      //
+      // Unmounting is not finishing. The athlete may have switched tabs, or
+      // Android may have torn the activity down with the phone in a pocket, and
+      // in both cases the run is still recording through the background task.
+      // Dismissing unconditionally here would rip the lock-screen readout off a
+      // live workout at exactly the moment it becomes the only way to see it —
+      // the same reasoning that keeps the location feed alive below.
+      if (!hasActiveSession(useLiveTrackingStore.getState())) void stopLiveNotification()
       // Deliberately NOT stopping the feed when a workout is in progress.
       // Unmounting is not the same as finishing — the athlete may have switched
       // tabs, or Android may have torn the activity down with the phone in a
@@ -323,6 +339,11 @@ export default function LiveTracker({
         if (cancelled || !mountedRef.current) return
         setBackgroundGranted(bg)
         setPhase('tracking')
+        // The JS context may have been killed and rebuilt by the OS to deliver a
+        // GPS batch, taking the notification's in-memory state with it. Re-present
+        // it: the identifier is fixed, so this replaces whatever is in the shade
+        // rather than stacking a second one.
+        void startLiveNotification(sportLabel)
       } catch (err) {
         console.warn('[LiveTracker] restore failed', err)
       }
@@ -489,6 +510,48 @@ export default function LiveTracker({
     }
   }, [snapshotRef, phase, elapsedSec, distanceM, route, sessionStartedAt])
 
+  /* ---- Mirror the on-screen numbers into the notification ---------- */
+  //
+  // Driven by the rendered values rather than from inside the timer tick, and
+  // that is the point: whatever this component is showing is, by construction,
+  // exactly what goes to the shade. There is no second derivation of elapsed
+  // time, distance or pace that could drift from the screen — `elapsedSec` is
+  // already the store's `elapsedMsFrom` floored to a second, and `gpsQuality` is
+  // already `gpsQualityFrom`, so the notification is a projection of this render
+  // and nothing more.
+  //
+  // These values change once a second; the service throttles the actual
+  // re-present to one every two, and skips it entirely when the composed text
+  // hasn't changed. Nothing here is on a location callback.
+  useEffect(() => {
+    if (phase !== 'tracking') return
+    updateLiveNotification({
+      elapsedMs: elapsedSec * 1000,
+      distanceKm,
+      // Cycling has no pace, so the notification carries speed with its own
+      // unit rather than printing km/h under a "/km" label.
+      paceStr: isCycling
+        ? currentSpeed != null
+          ? currentSpeed.toFixed(1)
+          : '--.-'
+        : currentPace.replace(' /km', ''),
+      paceUnit: isCycling ? 'km/h' : '/km',
+      calories: liveCalories,
+      isPaused: paused,
+      gpsQuality,
+    })
+  }, [
+    phase,
+    elapsedSec,
+    distanceKm,
+    isCycling,
+    currentPace,
+    currentSpeed,
+    liveCalories,
+    paused,
+    gpsQuality,
+  ])
+
   /* ---- Kilometre-milestone haptics --------------------------------- */
   useEffect(() => {
     const milestone = Math.floor(distanceKm)
@@ -603,7 +666,14 @@ export default function LiveTracker({
     lastMilestoneRef.current = 0
     lastTickSecRef.current = -1
     setPhase('tracking')
+    // Before the feed, not after: expo-location creates its own notification
+    // channel the first time the foreground service starts, and Android will not
+    // let an app lower a channel's importance once it exists. Getting our
+    // MIN/SECRET definition in first is the only way that notification stays out
+    // of the way. Memoised, so this is a no-op after the first session.
+    await setupTrackingChannels()
     await beginSession(sport, backgroundGranted)
+    void startLiveNotification(sportLabel)
   }
 
   function handlePause() {
@@ -636,6 +706,10 @@ export default function LiveTracker({
       // tracking screen would cost them the run.
       console.warn('[LiveTracker] stopping the session failed', err)
     }
+    // The workout is over, so the shade should stop claiming otherwise —
+    // including when Stop was tapped from the notification itself and this
+    // screen isn't even visible.
+    void stopLiveNotification()
     if (!mountedRef.current) return
     setElapsedSec(Math.floor(elapsedMsFrom(useLiveTrackingStore.getState()) / 1000))
     setPhase('summary')
@@ -710,6 +784,7 @@ export default function LiveTracker({
   /** Throw the workout away — and with it the persisted snapshot and any feed. */
   function handleDiscard() {
     void clearSession()
+    void stopLiveNotification()
     onExit()
   }
 

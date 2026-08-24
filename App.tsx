@@ -14,6 +14,7 @@ import { useNotificationObserver } from './src/hooks/useNotificationObserver'
 import { navigationRef } from './src/navigation/navigationRef'
 import RootNavigator from './src/navigation/RootNavigator'
 import { reconcileLiveTrackingOnStart } from './src/services/liveLocationTask'
+import { reconcileLiveNotificationOnStart } from './src/services/liveNotification'
 import { configureNotificationHandler } from './src/services/notificationService'
 
 // Importing firebase.ts initializes the Firebase app on startup. Log the
@@ -36,6 +37,17 @@ configureNotificationHandler()
 // undismissable "tracking your run" notification) left behind by a workout that
 // was already saved or discarded.
 reconcileLiveTrackingOnStart()
+
+// Same job for the rich live-session notification, plus creating the two Android
+// channels it and the location service use — which has to happen before the
+// location feed ever starts, because Android will not let an app lower a
+// channel's importance after the channel exists.
+//
+// It is a reconcile, not a blind dismiss: relaunching mid-run is the normal case
+// this whole feature exists for, and tearing the lock-screen readout off a
+// workout that is still recording would be the exact opposite of the point. Only
+// a notification with no session behind it — the residue of a crash — is cleared.
+void reconcileLiveNotificationOnStart()
 
 // Module scope, per the expo-splash-screen docs — by the time a component's
 // effect runs, the splash has already auto-hidden and the flash has happened.

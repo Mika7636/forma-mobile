@@ -1,4 +1,5 @@
-// Routes a tapped notification to the screen it's about.
+// Routes a tapped notification to the screen it's about, and applies the
+// tracking notification's action buttons.
 //
 // Two paths matter and both are handled:
 //  · warm tap — app already running, delivered via the response listener.
@@ -17,6 +18,10 @@ import {
   kindFromResponse,
   type NotificationResponse,
 } from '../services/notificationService'
+import {
+  handleTrackingAction,
+  isLiveNotificationResponse,
+} from '../services/liveNotification'
 import type { MainTabsParamList } from '../navigation/types'
 import type { NotificationKind } from '../types/notifications'
 
@@ -35,6 +40,22 @@ export function useNotificationObserver(): void {
 
     const route = (response: NotificationResponse | null) => {
       if (cancelled || !response) return
+
+      // The live-session notification comes first, and is handled here rather
+      // than on the tracking screen on purpose: its buttons have to work when
+      // that screen isn't mounted at all — phone locked, FORMA backgrounded,
+      // possibly relaunched headlessly since the run began. This hook sits above
+      // the navigator and is the only listener guaranteed to exist.
+      if (isLiveNotificationResponse(response)) {
+        // Pause/Resume are applied in place and stop here — they deliberately
+        // don't foreground the app, so there is nothing to navigate to.
+        if (handleTrackingAction(response)) return
+        // A body tap, or Stop (which does open the app): put the athlete back on
+        // their workout. LogScreen restores live mode from the store on focus.
+        navigateToTab('Log')
+        return
+      }
+
       const kind = kindFromResponse(response)
       if (!kind) return
       navigateToTab(DESTINATION[kind] ?? 'Dashboard')

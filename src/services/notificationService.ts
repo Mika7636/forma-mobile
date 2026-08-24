@@ -65,6 +65,11 @@ import {
 } from '../types/notifications'
 import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
+// The live tracking notification is presented by `liveNotification.ts`, but the
+// foreground-presentation decision above is centralised here, so this file needs
+// to recognise it. Import direction is one-way (that module never imports this
+// one), so there is no cycle.
+import { LIVE_NOTIFICATION_SCREEN } from './liveNotification'
 
 /**
  * Stable identifiers for the repeating schedules. Re-scheduling with the same
@@ -97,15 +102,36 @@ interface NotificationPayload extends Record<string, unknown> {
  * Note the field names: SDK 57 splits the old `shouldShowAlert` into
  * `shouldShowBanner` (the heads-up) and `shouldShowList` (the shade entry).
  * `shouldShowAlert` still typechecks but is deprecated.
+ *
+ * ── The live-session exception ──────────────────────────────────────────────
+ * On Android this handler decides whether a notification presented while the app
+ * is foregrounded gets shown at all, so the live tracking notification has to
+ * come through it too — otherwise the shade would be empty for the entire time
+ * the athlete had FORMA open, and the metrics would only appear once they
+ * backgrounded it. But it re-presents every two seconds for an hour, so it must
+ * come through *silently*: sound and badge off. It is on a LOW-importance
+ * channel, which is what stops `shouldShowBanner: true` from turning into a
+ * heads-up banner every two seconds; the flag is only what makes it visible.
  */
 export function configureNotificationHandler(): void {
   setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
+    handleNotification: async (notification) => {
+      const data = notification.request.content.data as { screen?: unknown } | undefined
+      if (data?.screen === LIVE_NOTIFICATION_SCREEN) {
+        return {
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+        }
+      }
+      return {
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }
+    },
   })
 }
 

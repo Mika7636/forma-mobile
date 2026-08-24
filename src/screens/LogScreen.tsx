@@ -26,6 +26,7 @@ import Animated, {
 import Slider from '@react-native-community/slider'
 import { haptics } from '../utils/haptics'
 import ConflictModal from '../components/log/ConflictModal'
+import { stopLiveNotification } from '../services/liveNotification'
 import LiveTracker, {
   type LiveResult,
   type LiveSnapshot,
@@ -191,20 +192,30 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   // run" notification) can easily land here with a run still in progress. Show
   // them the tracking screen rather than an empty log form for a workout that is
   // still recording.
+  //
+  // Re-run on focus as well as on mount. Tapping the live notification routes to
+  // this tab, and a bottom-tab screen the athlete has already visited is still
+  // mounted — so a mount-only effect would leave them staring at the quick-log
+  // form while their run kept recording in the shade.
   useEffect(() => {
     let cancelled = false
-    void (async () => {
+    const restore = async () => {
       await ensureLiveTrackingHydrated()
       if (cancelled) return
       const live = useLiveTrackingStore.getState()
       if (live.status === 'idle' || !live.sport) return
       setSport(live.sport)
       setMode('live')
-    })()
+    }
+    void restore()
+    const unsubscribe = navigation.addListener('focus', () => {
+      void restore()
+    })
     return () => {
       cancelled = true
+      unsubscribe()
     }
-  }, [])
+  }, [navigation])
 
   // A tab's params outlive the visit that set them, so a date handed over by the
   // Planner would still be pinned here days later — the user would tap the Log
@@ -308,7 +319,13 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       // rather than when the athlete taps Save: a failed save must leave every
       // background-tracked metre intact and retryable. Fire-and-forget, and done
       // before the mounted check because it has nothing to do with the UI.
-      if (input.trackingMode === 'live') void clearLiveSession()
+      if (input.trackingMode === 'live') {
+        void clearLiveSession()
+        // The run is saved; nothing should still be counting in the shade. Stop
+        // also takes it down, so this is the belt to that braces — it covers the
+        // save landing after this screen has been torn down.
+        void stopLiveNotification()
+      }
 
       if (!isMounted.current) return
       setSaving(false)

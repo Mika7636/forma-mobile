@@ -425,26 +425,30 @@ export function warmupLocationOptions(): Location.LocationOptions {
 
 /**
  * The Android foreground-service notification. Its presence is what stops the OS
- * from freezing the process once the screen goes off, and it doubles as the
- * "still tracking" indicator — the Android equivalent of Strava's lock-screen
- * widget. Tapping it reopens FORMA (expo-location wires the notification's
- * content intent to the app's launch intent), and `LogScreen` puts the user back
- * on the tracking screen from there.
+ * from freezing the process once the screen goes off.
  *
- * ### Why the body has no live stats
+ * ### Why the copy is this thin
  *
- * expo-location can only change it by re-registering the task with new
- * `foregroundService` options — and `LocationTaskConsumer.maybeStartForegroundService()`
- * bails out with *"Foreground location task cannot be started while the app is
- * in the background"* whenever the activity is paused. In other words the
- * notification can only be updated at exactly the times the user is already
- * looking at the live screen. Re-registering also tears down and recreates the
- * underlying location request, so polling it would risk dropping fixes mid-run
- * for a benefit that never lands. Static copy it is.
+ * It used to be the "still tracking" indicator, and it carried that whole job in
+ * a body it can never update: expo-location reads these strings once, when the
+ * task is registered, and changing them means re-registering the task — which
+ * tears down and rebuilds the location request (dropping fixes mid-run), and
+ * which `LocationTaskConsumer.maybeStartForegroundService()` refuses outright
+ * while the activity is paused, i.e. exactly when the lock screen is up.
+ *
+ * The metrics now live in a second, separately-managed notification that *can*
+ * be updated — see `services/liveNotification.ts`. This one is demoted to what
+ * it actually is: the receipt for a running service. It is pushed onto a
+ * MIN-importance, SECRET-visibility channel (created by `setupTrackingChannels`
+ * before this ever starts) so it sinks to the bottom of the shade and shows
+ * nothing on the lock screen, leaving the rich notification to speak for FORMA.
+ *
+ * Tapping it still reopens the app — expo-location wires the content intent to
+ * the launch intent, and `LogScreen` puts the athlete back on the tracker.
  */
 const FOREGROUND_SERVICE = {
-  notificationTitle: 'FORMA is tracking your session',
-  notificationBody: 'Tap to return to your workout',
+  notificationTitle: 'FORMA',
+  notificationBody: 'Recording location',
   notificationColor: '#1D9E75',
   /**
    * Keep recording if the user swipes FORMA out of the recents list. Swiping
