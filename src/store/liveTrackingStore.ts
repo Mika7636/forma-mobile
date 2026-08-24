@@ -936,6 +936,39 @@ function foldLocation(
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Ingest observer                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Called once after any batch that changed the store.
+ *
+ * ### Why a registered callback and not an import
+ *
+ * The one subscriber is `services/liveNotification.ts`, which redraws the
+ * lock-screen notification — and that module already imports half of this one
+ * (`elapsedMsFrom`, `gpsQualityFrom`, the pause/resume/stop actions). Importing
+ * it back from here would close an ES module cycle that **crashes the app at
+ * launch**, not merely lint badly: `liveLocationTask` pulls in this module at
+ * bundle scope, this module would pull in `liveNotification`, and
+ * `liveNotification`'s own module scope evaluates
+ * `LOCATION_SERVICE_CHANNEL_ID` — which reads {@link LIVE_LOCATION_TASK} from a
+ * module body that has not run yet. That is a temporal-dead-zone
+ * `ReferenceError` behind a clean typecheck and a clean bundle.
+ *
+ * Inverting the dependency keeps this module free of everything to do with
+ * notifications, which is also the right shape: the store publishes that
+ * something changed and has no opinion about who cares.
+ */
+type IngestObserver = () => void
+
+let ingestObserver: IngestObserver | null = null
+
+/** Register (or, with `null`, clear) the post-ingest observer. */
+export function setIngestObserver(observer: IngestObserver | null): void {
+  ingestObserver = observer
+}
+
 /**
  * Fold a batch of fixes into the store. **This is the single entry point for
  * both feeds** — the background TaskManager task and the foreground
@@ -1019,6 +1052,24 @@ export async function ingestLocations(
       `gps ${gpsQualityFrom(working, batchAt)}`,
   )
   await persist()
+
+  // Tell whoever is listening that the numbers moved.
+  //
+  // This is what keeps the lock-screen notification ticking with the screen off:
+  // React Native stops JS timers once the Android host pauses, so the tracking
+  // screen's interval — the update path while the app is visible — is frozen at
+  // exactly the moment the athlete is most likely to be reading the notification.
+  // A location batch is one of the few things the OS still wakes us for, so it
+  // becomes the heartbeat instead. The observer applies its own throttle; this
+  // is deliberately not the place to decide how often a notification redraws.
+  //
+  // Wrapped because on the background path the caller is a TaskManager executor,
+  // where an unhandled throw would take down the process recording the run.
+  try {
+    ingestObserver?.()
+  } catch (err) {
+    console.warn('[liveTracking] ingest observer failed', err)
+  }
 }
 
 /* ------------------------------------------------------------------ */

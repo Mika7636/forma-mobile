@@ -332,6 +332,9 @@ export default function LiveTracker({
         // Stopped but not yet saved → back to the summary, not to a run the
         // athlete already finished.
         if (live.finished) {
+          // Reachable after Stop was tapped from the notification itself. The
+          // workout is over, so nothing should still be counting in the shade.
+          void stopLiveNotification()
           setPhase('summary')
           return
         }

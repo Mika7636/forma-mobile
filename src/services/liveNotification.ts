@@ -36,30 +36,45 @@
  * state and cannot disagree. Nothing here reads a clock of its own, and nothing
  * here is driven by a location callback.
  *
- * ## KNOWN LIMITATION: the numbers freeze while the screen is off
+ * ## Two refresh paths, because one of them stops when the screen does
  *
- * Updates are driven by the tracking screen's 1 s interval, and **React Native
- * stops JS timers on Android once the host activity pauses** — which is exactly
- * what happens when the screen goes off. `JavaTimerManager.onHostPause()` calls
- * `clearFrameCallback()`, and `TimerFrameCallback.doFrame()` returns early while
- * `isPaused` is set, so no `setInterval` fires (verified in
+ * **Screen on — the timer tick.** The tracking screen mirrors its rendered
+ * values here on its 1 s interval, via {@link updateLiveNotification}. While the
+ * app is visible this is the path, and it is the better one: it forwards
+ * literally what is on screen, so the two surfaces cannot disagree.
+ *
+ * **Screen off — the location feed.** That interval stops dead the moment the
+ * screen does. **React Native halts JS timers on Android once the host activity
+ * pauses**: `JavaTimerManager.onHostPause()` calls `clearFrameCallback()`, and
+ * `TimerFrameCallback.doFrame()` returns early while `isPaused` is set, so no
+ * `setInterval` fires (verified in
  * `react-native/ReactAndroid/.../core/JavaTimerManager.kt`, RN 0.86). The
  * foreground service keeps the *process* alive; it does not keep the RN host
- * resumed.
+ * resumed. Left at that, the notification would freeze at whatever frame the
+ * phone went dark on — precisely when the lock screen is the only way to read it.
  *
- * So in practice this notification is live while FORMA is open, and shows the
- * last frame from just before the screen slept for as long as it stays asleep.
- * The clock catches up the moment the phone is woken (the AppState listener on
- * the tracking screen resyncs), and Pause/Resume tapped from the lock screen
- * redraw it immediately via {@link refreshLiveNotification}, because a
- * notification response is a native event rather than a timer.
+ * So the location feed becomes the heartbeat instead. A GPS batch is one of the
+ * few things the OS still wakes us for, and `ingestLocations` calls the store's
+ * ingest observer, which is {@link refreshLiveNotification} (registered at the
+ * bottom of this file). At the 1 Hz sampling the tracker asks for, that redraws
+ * at the same 2 s cadence the timer path does — the throttle in
+ * {@link updateLiveNotification} is shared by both, so neither can outrun it.
  *
- * The only thing the OS reliably wakes mid-run is the location task. Driving the
- * notification from there would keep it ticking with the screen off, at GPS
- * cadence — but re-presenting from a location callback was ruled out for this
- * implementation, so this is a documented gap rather than an oversight. The
- * change, if it is ever wanted, is one throttled `refreshLiveNotification()` call
- * at the end of `ingestLocations`.
+ * The consequence worth knowing: with the screen off, **updates arrive with the
+ * fixes**. A workout with no signal at all (indoors, tunnel) has no heartbeat,
+ * so its clock stops advancing in the shade until the phone is woken or a fix
+ * lands. The distance was never going to move in that case, and the on-screen
+ * clock is still exact the instant the athlete looks — but the shade will show a
+ * stale time. The alternative would be a timer the OS refuses to run.
+ *
+ * Two smaller redraw triggers hang off the same function: Pause/Resume tapped in
+ * the shade (a notification response is a native event, not a timer, so it fires
+ * with the screen off), and the tracking screen coming back to the foreground.
+ *
+ * Because the screen-off path can run in a JS context that has never seen this
+ * session — Android kills FORMA and rebuilds the bundle to deliver a batch — the
+ * few things the store doesn't carry are mirrored to AsyncStorage. See
+ * {@link NotificationContext}.
  *
  * ## The import style
  *
@@ -68,6 +83,7 @@
  * Go on Android. None of the leaf modules below pull in the offending
  * `DevicePushTokenAutoRegistration.fx`.
  */
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { scheduleNotificationAsync } from 'expo-notifications/build/scheduleNotificationAsync'
@@ -80,14 +96,20 @@ import {
   AndroidNotificationVisibility,
 } from 'expo-notifications/build/NotificationChannelManager.types'
 import type { NotificationResponse } from 'expo-notifications/build/Notifications.types'
+import { formatPaceValue, rollingPaceSecPerKm } from '../utils/geo'
 import {
   LIVE_LOCATION_TASK,
+  PACE_MAX_SEC_PER_KM,
+  PACE_SAMPLE_STALE_MS,
+  PACE_WINDOW_MIN_M,
+  PACE_WINDOW_MS,
   elapsedMsFrom,
   ensureHydrated,
   gpsQualityFrom,
   hasBackgroundPermission,
   pauseSession,
   resumeSession,
+  setIngestObserver,
   stopSession,
   useLiveTrackingStore,
   type GpsQuality,
@@ -350,22 +372,62 @@ function render(sport: string, m: LiveNotificationMetrics): Rendered {
 /* Presentation                                                        */
 /* ------------------------------------------------------------------ */
 
-/** Sport label for the title; non-null exactly while the notification is live. */
-let activeSport: string | null = null
+/**
+ * The handful of things the notification needs that the store does not carry.
+ *
+ * Everything else — clock, distance, paused state, signal quality, the pace
+ * window — is in `liveTrackingStore` and is read from there. This is the
+ * remainder, and it is deliberately tiny, because it has to survive FORMA's JS
+ * context being killed and rebuilt mid-run (see {@link refreshLiveNotification}).
+ */
+interface NotificationContext {
+  /** Display name for the title, e.g. `"Running"`. */
+  sportLabel: string
+  /** `/km` or `km/h`, decided by the sport. */
+  paceUnit: string
+  /**
+   * Calories per millisecond of elapsed time.
+   *
+   * A rate rather than a total, so calories can be recomputed against a live
+   * clock without this module knowing the athlete's weight or assumed RPE.
+   * `estimateCalories` is linear in duration for a fixed sport/effort/weight, so
+   * `rate × elapsed` reproduces the screen's figure exactly — and, crucially, it
+   * keeps advancing during a long screen-off stretch instead of freezing at
+   * whatever the last visible tick happened to say.
+   */
+  caloriesPerMs: number
+}
+
+/** Non-null exactly while the notification is live. */
+let context: NotificationContext | null = null
 /** Wall-clock ms of the last successful present, for the throttle. */
 let lastUpdateAt = 0
 /** What was last sent, so an unchanged second costs no native call at all. */
 let lastRendered: Rendered | null = null
+
+/** Where {@link context} is mirrored so a rebuilt JS context can recover it. */
+const CONTEXT_KEY = 'forma.liveNotification.v1'
+
 /**
- * The last metrics the caller supplied.
- *
- * Kept so {@link refreshLiveNotification} can redraw without a tick. Pace and
- * calories are carried over unchanged — neither lives in the store (calories
- * need the athlete's weight, pace needs the rolling window the screen owns), and
- * both were current as of a second ago, which is well inside what the shade can
- * show anyway.
+ * Don't rewrite the context more often than this. It changes slowly (the
+ * calorie rate is near-constant for a given sport and effort), and it is only
+ * ever read after a process death, so a stale-by-15s copy costs nothing.
  */
-let lastMetrics: LiveNotificationMetrics | null = null
+const CONTEXT_PERSIST_INTERVAL_MS = 15_000
+
+let lastContextPersistAt = 0
+
+function persistContext(force = false): void {
+  const ctx = context
+  if (!ctx) return
+  const now = Date.now()
+  if (!force && now - lastContextPersistAt < CONTEXT_PERSIST_INTERVAL_MS) return
+  lastContextPersistAt = now
+  void AsyncStorage.setItem(CONTEXT_KEY, JSON.stringify(ctx)).catch((err) => {
+    // Costs us the ability to redraw after a process death, nothing more.
+    console.warn('[liveNotification] context persist failed', err)
+  })
+}
 
 /**
  * Do two frames differ in a way the athlete must see immediately?
@@ -417,28 +479,22 @@ async function present(r: Rendered): Promise<void> {
 /**
  * Put the notification up for a session that has just begun.
  *
- * The first frame is rendered from the store rather than from arguments, so the
+ * The first frame is composed from the store rather than from arguments, so the
  * shade is correct from second zero instead of blank until the first tick — and
- * so the very first thing the notification ever shows came from the same
+ * so the very first thing the notification ever shows came off the same
  * `elapsedMsFrom` the screen is reading.
  */
 export async function startLiveNotification(sport: string): Promise<void> {
-  activeSport = sport
+  const ctx: NotificationContext = { sportLabel: sport, paceUnit: '/km', caloriesPerMs: 0 }
+  context = ctx
   lastUpdateAt = 0
   lastRendered = null
-  lastMetrics = null
+  lastContextPersistAt = 0
+  contextRecoveryStarted = false
+  persistContext(true)
   try {
     await setupTrackingChannels()
-    const s = useLiveTrackingStore.getState()
-    const now = Date.now()
-    const first = render(sport, {
-      elapsedMs: elapsedMsFrom(s, now),
-      distanceKm: s.distanceM / 1000,
-      paceStr: '--:--',
-      calories: 0,
-      isPaused: s.status === 'paused',
-      gpsQuality: gpsQualityFrom(s, now),
-    })
+    const first = render(sport, metricsFromStore(ctx))
     await present(first)
     lastUpdateAt = Date.now()
     lastRendered = first
@@ -463,10 +519,17 @@ export async function startLiveNotification(sport: string): Promise<void> {
  *     button that hasn't taken effect for two seconds reads as a broken app.
  */
 export function updateLiveNotification(metrics: LiveNotificationMetrics): void {
-  const sport = activeSport
-  if (!sport) return
+  const ctx = context
+  if (!ctx) return
 
-  const r = render(sport, metrics)
+  // Keep the recovery context current on every tick, whether or not this frame
+  // is actually presented — it is what a rebuilt JS context reads to carry on
+  // drawing, and it must reflect the newest thing the screen knew.
+  ctx.paceUnit = metrics.paceUnit ?? '/km'
+  if (metrics.elapsedMs > 0) ctx.caloriesPerMs = metrics.calories / metrics.elapsedMs
+  persistContext()
+
+  const r = render(ctx.sportLabel, metrics)
   const prev = lastRendered
   if (prev && r.title === prev.title && r.body === prev.body && r.color === prev.color) {
     return
@@ -477,7 +540,6 @@ export function updateLiveNotification(metrics: LiveNotificationMetrics): void {
 
   lastUpdateAt = now
   lastRendered = r
-  lastMetrics = metrics
   void present(r).catch((err) => {
     console.warn('[liveNotification] update failed', err)
     // Let the next tick retry rather than sitting on a frame that never landed.
@@ -486,37 +548,124 @@ export function updateLiveNotification(metrics: LiveNotificationMetrics): void {
 }
 
 /**
- * Redraw immediately from current store state, without waiting for a tick.
+ * Compose a frame entirely from the store plus the recovery context.
  *
- * This exists for one case, and it matters: the athlete taps **Pause on the lock
- * screen**. The action lands (a notification response is a native event, not a
- * timer), the store flips to paused — and then nothing redraws, because the JS
- * timer that drives every other update is stopped while the host is paused. The
- * notification would sit there saying the run is still going, and the button
- * would read as broken.
- *
- * The clock and the signal state are re-read from the store so they are exact;
- * everything else is carried over from the last tick.
+ * Every figure here is produced the same way the tracking screen produces it —
+ * `elapsedMsFrom` for the clock, `gpsQualityFrom` for the signal state, and
+ * `rollingPaceSecPerKm` over the store's own pace samples with the store's own
+ * window constants. It is the same derivation running in a different place, not
+ * a second derivation that could drift.
  */
-export function refreshLiveNotification(): void {
-  if (!activeSport || !lastMetrics) return
+function metricsFromStore(ctx: NotificationContext): LiveNotificationMetrics {
   const s = useLiveTrackingStore.getState()
   const now = Date.now()
-  updateLiveNotification({
-    ...lastMetrics,
-    elapsedMs: elapsedMsFrom(s, now),
+  const elapsedMs = elapsedMsFrom(s, now)
+
+  const secPerKm = rollingPaceSecPerKm(s.paceSamples, now, {
+    windowMs: PACE_WINDOW_MS,
+    minDistanceM: PACE_WINDOW_MIN_M,
+    staleMs: PACE_SAMPLE_STALE_MS,
+    maxSecPerKm: PACE_MAX_SEC_PER_KM,
+  })
+  // Rounded before formatting, exactly as the screen does, so the two can't
+  // disagree by a second at a boundary.
+  const rounded = secPerKm == null ? null : Math.round(secPerKm)
+  const paceStr =
+    ctx.paceUnit === 'km/h'
+      ? rounded != null
+        ? (3600 / rounded).toFixed(1)
+        : '--.-'
+      : formatPaceValue(rounded).replace(' /km', '')
+
+  return {
+    elapsedMs,
     distanceKm: s.distanceM / 1000,
+    paceStr,
+    paceUnit: ctx.paceUnit,
+    calories: ctx.caloriesPerMs * elapsedMs,
     isPaused: s.status === 'paused',
     gpsQuality: gpsQualityFrom(s, now),
-  })
+  }
+}
+
+/** One attempt per JS context at recovering {@link context} from storage. */
+let contextRecoveryStarted = false
+
+async function recoverContext(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(CONTEXT_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw) as Partial<NotificationContext>
+    if (!parsed?.sportLabel) return
+    await setupTrackingChannels()
+    context = {
+      sportLabel: parsed.sportLabel,
+      paceUnit: parsed.paceUnit ?? '/km',
+      caloriesPerMs: Number(parsed.caloriesPerMs) || 0,
+    }
+    // Draw straight away: the batch that woke us is the reason we're here.
+    refreshLiveNotification()
+  } catch (err) {
+    console.warn('[liveNotification] context recovery failed', err)
+  }
+}
+
+/**
+ * Redraw from current store state, without waiting for a timer tick.
+ *
+ * **This is the update path whenever the screen is off** — see the module header.
+ * React Native stops JS timers once the Android host pauses, so the tracking
+ * screen's interval is frozen at exactly the moment the lock screen is up; the
+ * location batches the OS still delivers become the heartbeat instead, via the
+ * store's ingest observer. It is also what redraws after Pause or Resume is
+ * tapped in the shade, where the store flips but no tick is coming to notice.
+ *
+ * Recomputing rather than replaying the last tick's frame is what makes a long
+ * screen-off stretch work: pace comes off the store's live pace window and
+ * calories off a rate against the live clock, so both keep moving instead of
+ * freezing at whatever was on screen when the phone went dark.
+ *
+ * Throttling is left entirely to {@link updateLiveNotification} — the same 2 s
+ * guard the timer path uses, so a 1 Hz GPS feed redraws at the same cadence a
+ * visible screen does.
+ */
+export function refreshLiveNotification(): void {
+  const s = useLiveTrackingStore.getState()
+  // `finished` means Stop has been tapped and the athlete is on the summary; a
+  // late fix must not resurrect a notification for a workout that is over.
+  if (s.status === 'idle' || s.finished) return
+
+  const ctx = context
+  if (!ctx) {
+    // No context in this JS process. Either nothing is running (the store check
+    // above would have caught that), or Android killed FORMA mid-run and rebuilt
+    // the bundle to hand us a location batch — the case this whole background
+    // architecture exists for. Go and find it; the notification itself survived,
+    // because it is owned by the OS rather than by us.
+    if (!contextRecoveryStarted) {
+      contextRecoveryStarted = true
+      void recoverContext()
+    }
+    return
+  }
+
+  updateLiveNotification(metricsFromStore(ctx))
 }
 
 /** Take the notification down. Idempotent; safe to call when nothing is up. */
 export async function stopLiveNotification(): Promise<void> {
-  activeSport = null
+  context = null
   lastUpdateAt = 0
   lastRendered = null
-  lastMetrics = null
+  lastContextPersistAt = 0
+  // Cleared too, or a stray fix arriving after the save would recover the context
+  // and put the notification back up for a workout that no longer exists.
+  contextRecoveryStarted = false
+  try {
+    await AsyncStorage.removeItem(CONTEXT_KEY)
+  } catch (err) {
+    console.warn('[liveNotification] context clear failed', err)
+  }
   try {
     await dismissNotificationAsync(LIVE_NOTIFICATION_ID)
   } catch (err) {
@@ -582,10 +731,12 @@ export function handleTrackingAction(response: NotificationResponse): boolean {
       })
       return true
     case TRACKING_ACTION.stop:
-      // Not dismissed here: `stopSession` settles the clock, and the tracking
-      // screen takes the notification down when it lands on the summary. Doing
-      // it in both places would be harmless but this keeps one owner.
       void stopSession()
+      // Taken down here, not left to the tracking screen: that screen's Stop
+      // handler is a different path entirely, and its restore effect only routes
+      // a finished session to the summary. Without this the shade would keep a
+      // frozen frame up for a workout that had already ended.
+      void stopLiveNotification()
       // Falls through to routing — Stop opens the app, and it should open onto
       // the workout it just ended.
       return false
@@ -596,6 +747,21 @@ export function handleTrackingAction(response: NotificationResponse): boolean {
       return false
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Wiring                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Subscribe to the store's ingest, at module scope.
+ *
+ * Module scope rather than a component effect, for the same reason the location
+ * task is defined there: when Android wakes FORMA headlessly to deliver a batch
+ * there is no React tree, and a subscription registered behind a lifecycle would
+ * simply not exist in that process. Everything downstream of this no-ops cheaply
+ * when no session is running.
+ */
+setIngestObserver(refreshLiveNotification)
 
 /** Is this response from the live-session notification (a tap or an action)? */
 export function isLiveNotificationResponse(response: NotificationResponse): boolean {
