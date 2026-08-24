@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   FlatList,
   Keyboard,
@@ -164,6 +164,13 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const [avgBpm, setAvgBpm] = useState('')
 
   const [saving, setSaving] = useState(false)
+  /**
+   * True for the beat between a live session landing in Firestore and this
+   * screen routing away. It is what turns the Save button into "✓ Saved" — the
+   * write is the one irreversible step in the flow, and acknowledging it before
+   * the screen changes is the difference between "did that work?" and knowing.
+   */
+  const [liveSaved, setLiveSaved] = useState(false)
   const [conflicts, setConflicts] = useState<Conflict[] | null>(null)
   const [savedSessionId, setSavedSessionId] = useState<string | null>(null)
   const [undoing, setUndoing] = useState(false)
@@ -295,6 +302,27 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     }
   }
 
+  /**
+   * Hide the bottom tab bar while the finished-workout summary is up.
+   *
+   * That screen is full-bleed and carries its own sticky Save/Discard bar; a tab
+   * bar under it puts a second, competing set of destinations next to the one
+   * action the athlete is there to take, and cuts the design off at the ankles.
+   * Passing `undefined` restores whatever the navigator's `screenOptions` set.
+   */
+  const handleSummaryChange = useCallback(
+    (inSummary: boolean) => {
+      navigation.setOptions({ tabBarStyle: inSummary ? { display: 'none' } : undefined })
+    },
+    [navigation],
+  )
+
+  // Belt to `handleSummaryChange`'s braces: leaving live mode by any route —
+  // discard, exit, a save that navigated away — puts the bar back.
+  useEffect(() => {
+    if (mode !== 'live') navigation.setOptions({ tabBarStyle: undefined })
+  }, [mode, navigation])
+
   const goBackToPlannerOrReset = () => {
     setMode('quick')
     if (fromPlanner) navigation.navigate('Planner')
@@ -360,6 +388,22 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       toast.success('Session saved', {
         description: `${session.loadScore} AU · ${session.estimatedCalories} kcal`,
       })
+
+      if (input.trackingMode === 'live') {
+        // Hold the summary on screen with the button in its "Saved" state, then
+        // send them to the Dashboard — a live workout's payoff is what it did to
+        // their Form, and that is what the Dashboard shows. Deliberately not the
+        // empty log form they just finished with.
+        setLiveSaved(true)
+        schedule(() => {
+          setLiveSaved(false)
+          setMode('quick')
+          resetForm()
+          navigation.navigate('Dashboard')
+        }, 900)
+        return
+      }
+
       setMode('quick')
       schedule(goBackToPlannerOrReset, 1000)
     } catch {
@@ -406,6 +450,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       averagePace: result.averagePace,
       averageSpeed: result.averageSpeed,
       gpsQuality: result.gpsQuality,
+      title: result.title,
+      movingTimeMs: result.movingTimeMs,
+      splits: result.splits,
+      elevationGain: result.elevationGain,
     })
   }
 
@@ -495,6 +543,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
             sportLabel={sportLabel}
             weightKg={profile?.weightKg}
             saving={saving}
+            saved={liveSaved}
+            onSummaryChange={handleSummaryChange}
             resumeFrom={recoveredLive}
             snapshotRef={liveSnapshot}
             onExit={() => setMode('quick')}

@@ -47,6 +47,12 @@ import {
   trimPaceSamples,
   type PaceSample,
 } from '../utils/geo'
+import {
+  EMPTY_MOVING_TIME,
+  foldMovingTime,
+  settleMovingTime,
+  type MovingTimeState,
+} from '../algorithms/movingTime'
 import type { RoutePoint, SportType } from '../types/session'
 
 /* ------------------------------------------------------------------ */
@@ -65,12 +71,15 @@ import type { RoutePoint, SportType } from '../types/session'
 export const LIVE_LOCATION_TASK = 'forma-live-location'
 
 /**
- * Bumped to v2 when the clock moved from a `segmentStartedAt`/`accumulatedMs`
- * pair to the `startedAt`/`pausedDurationMs` model below. A v1 snapshot has no
- * `pausedDurationMs`, so reading one would silently count every paused minute as
- * training time; a new key discards those instead of mis-restoring them.
+ * Bumped on every change to the snapshot's meaning, because a half-understood
+ * snapshot is worse than none: v2 when the clock moved from a
+ * `segmentStartedAt`/`accumulatedMs` pair to `startedAt`/`pausedDurationMs` (a
+ * v1 snapshot has no `pausedDurationMs`, so restoring one would count every
+ * paused minute as training time), and v3 when moving-time accumulation was
+ * added (a v2 snapshot would restore with `movingMs` at zero and report a run's
+ * entire moving time as the tail after the restore).
  */
-const STORAGE_KEY = 'forma.liveTracking.v2'
+const STORAGE_KEY = 'forma.liveTracking.v3'
 
 /**
  * A persisted session older than this is assumed to be debris — the app was
@@ -511,6 +520,15 @@ export interface LiveTrackingState {
   lastStamp: number
   /** Counts down the throwaway fixes taken while the GPS receiver locks on. */
   warmupLeft: number
+  /**
+   * Moving-time accumulator — elapsed minus any established stop.
+   *
+   * Accumulated here, against every accepted fix, rather than derived from the
+   * route afterwards. The route deliberately drops stationary fixes (they would
+   * draw a scribble where the athlete stood still), so it is the one input that
+   * cannot tell you how long they stood there. See `algorithms/movingTime.ts`.
+   */
+  movingTime: MovingTimeState
 
   /* ---- Signal quality. Display only — nothing branches on these. ---- */
   /**
@@ -566,6 +584,7 @@ const EMPTY: LiveTrackingState = {
   lastPointAt: 0,
   lastStamp: 0,
   warmupLeft: 0,
+  movingTime: EMPTY_MOVING_TIME,
   lastFixAt: 0,
   lastAccuracyM: null,
   hasFix: false,
@@ -610,6 +629,17 @@ export function hasActiveSession(s: LiveTrackingState): boolean {
   return s.status !== 'idle'
 }
 
+/**
+ * Moving time for this session, ready to display or persist.
+ *
+ * Kept as a derivation rather than a stored field so it can never disagree with
+ * the elapsed clock it is bounded by — both are read from the same snapshot at
+ * the same instant. See `algorithms/movingTime.ts` for the stop rule.
+ */
+export function movingTimeMsFrom(s: LiveTrackingState, now = Date.now()): number {
+  return settleMovingTime(s.movingTime, elapsedMsFrom(s, now), s.route.length >= 2)
+}
+
 /* ------------------------------------------------------------------ */
 /* Persistence                                                         */
 /* ------------------------------------------------------------------ */
@@ -649,6 +679,7 @@ async function persist(force = false): Promise<void> {
       lastPointAt: s.lastPointAt,
       lastStamp: s.lastStamp,
       warmupLeft: s.warmupLeft,
+      movingTime: s.movingTime,
       lastFixAt: s.lastFixAt,
       lastAccuracyM: s.lastAccuracyM,
       hasFix: s.hasFix,
@@ -722,6 +753,13 @@ async function readSnapshot(): Promise<void> {
       lastPointAt: Number(parsed.lastPointAt) || 0,
       lastStamp: Number(parsed.lastStamp) || 0,
       warmupLeft: Number(parsed.warmupLeft) || 0,
+      movingTime: {
+        movingMs: Number(parsed.movingTime?.movingMs) || 0,
+        stoppedRunMs: Number(parsed.movingTime?.stoppedRunMs) || 0,
+        // Anchored to nothing on purpose: the gap across a process death is not
+        // time we watched, so the first fix after a restore contributes none.
+        lastSampleAt: 0,
+      },
       lastFixAt: Number(parsed.lastFixAt) || startedAt,
       lastAccuracyM:
         parsed.lastAccuracyM != null && Number.isFinite(Number(parsed.lastAccuracyM))
@@ -782,7 +820,7 @@ function foldLocation(
 ): Partial<LiveTrackingState> | null {
   const coords = loc?.coords
   if (!coords) return null
-  const { latitude, longitude, accuracy, speed: reportedSpeed } = coords
+  const { latitude, longitude, accuracy, altitude, speed: reportedSpeed } = coords
 
   // A non-finite or out-of-range coordinate must never reach state. It would
   // poison distance/pace/calories with NaN, and passing it to the map's Polyline
@@ -821,6 +859,10 @@ function foldLocation(
     return {
       ...seen,
       discardedFixes: s.discardedFixes + 1,
+      // Re-anchor the moving-time sampler without crediting anything. Leaving it
+      // behind would make the next accepted fix look like one long interval and
+      // hand the whole rejected stretch to moving time in a single step.
+      movingTime: { ...s.movingTime, lastSampleAt: receivedAt },
       debugRejects: noteReject(s, {
         at: receivedAt,
         reason: 'accuracy',
@@ -831,7 +873,28 @@ function foldLocation(
     }
   }
 
-  const accepted = { ...seen, acceptedFixes: s.acceptedFixes + 1 }
+  const prev = s.lastPoint
+  const seg = prev
+    ? haversineDistance(prev.latitude, prev.longitude, latitude, longitude)
+    : 0
+
+  // Moving time advances on every fix that cleared the accuracy gate — including
+  // the ones the filters below drop from distance, because standing still is
+  // exactly the case those filters discard and exactly the case this has to
+  // measure. The provider's own speed is preferred; when it doesn't report one
+  // (Android's fused provider often doesn't) the segment gives an implied speed.
+  const sinceLastSampleSec = s.movingTime.lastSampleAt
+    ? (receivedAt - s.movingTime.lastSampleAt) / 1000
+    : 0
+  const effectiveSpeed =
+    reportedSpeed != null && Number.isFinite(reportedSpeed) && reportedSpeed >= 0
+      ? reportedSpeed
+      : prev && sinceLastSampleSec > 0
+        ? seg / sinceLastSampleSec
+        : null
+  const movingTime = foldMovingTime(s.movingTime, receivedAt, effectiveSpeed)
+
+  const accepted = { ...seen, acceptedFixes: s.acceptedFixes + 1, movingTime }
 
   // Warm-up: the receiver is still settling, so this position is not to be
   // trusted — and deliberately not adopted as an anchor either, or the snap from
@@ -842,8 +905,15 @@ function foldLocation(
     return { ...accepted, warmupLeft: s.warmupLeft - 1 }
   }
 
-  const point: RoutePoint = { latitude, longitude, timestamp: stamp }
-  const prev = s.lastPoint
+  const point: RoutePoint = {
+    latitude,
+    longitude,
+    timestamp: stamp,
+    // Only when the fix actually carried one. A missing altitude must stay
+    // missing rather than becoming a 0 m sea-level reading, which would turn
+    // every subsequent real altitude into a mountain of elevation gain.
+    ...(altitude != null && Number.isFinite(altitude) ? { altitude } : null),
+  }
 
   if (!prev) {
     // First anchor of a segment (start, or the first fix after a resume): it
@@ -858,8 +928,6 @@ function foldLocation(
       route: appendPoint(s.route, point),
     }
   }
-
-  const seg = haversineDistance(prev.latitude, prev.longitude, latitude, longitude)
 
   // Ignore tiny wander so an indoor / stationary athlete doesn't accrue metres.
   // The anchor is deliberately *not* moved: slow real movement accumulates across
@@ -904,6 +972,7 @@ function foldLocation(
     return {
       ...seen,
       discardedFixes: s.discardedFixes + 1,
+      movingTime,
       debugRejects: noteReject(s, {
         at: receivedAt,
         reason: 'jump',
@@ -1280,6 +1349,9 @@ export async function pauseSession(): Promise<void> {
     lastPoint: null,
     lastPointAt: 0,
     paceSamples: [],
+    // Break the moving-time interval too, or the whole pause would be credited
+    // as one moving sample the moment the first fix after Resume lands.
+    movingTime: { ...s.movingTime, lastSampleAt: 0, stoppedRunMs: 0 },
   })
   await persist(true)
   await stopLocationFeed()
@@ -1297,6 +1369,7 @@ export async function resumeSession(useBackground: boolean): Promise<FeedMode> {
     pausedDurationMs: s.pausedDurationMs + Math.max(0, now - (s.pausedAt || now)),
     pausedAt: 0,
     lastFixAt: now,
+    movingTime: { ...s.movingTime, lastSampleAt: 0, stoppedRunMs: 0 },
     // Forget the pre-pause accuracy. Keeping it would let the chip read "GPS
     // good" on the strength of a reading taken before the break, for the first
     // few seconds after resuming — i.e. exactly when the feed is coming back up

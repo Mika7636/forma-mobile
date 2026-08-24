@@ -3,7 +3,8 @@ import { useNavigation } from '@react-navigation/native'
 import { useEffect } from 'react'
 import { Platform, Text } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { COLORS, TYPE } from '../constants/theme'
+import { TYPE } from '../constants/theme'
+import { COLOR } from '../theme/tokens'
 import DashboardScreen from '../screens/DashboardScreen'
 import LogScreen from '../screens/LogScreen'
 import PlannerScreen from '../screens/PlannerScreen'
@@ -92,15 +93,24 @@ export default function MainTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         animation: 'fade',
-        tabBarActiveTintColor: COLORS.teal,
-        tabBarInactiveTintColor: COLORS.subtle,
+        // Dark bar, app-wide.
+        //
+        // It used to be white. That was fine when every screen was FORMA's light
+        // system, but live tracking, the finished-workout summary and the route
+        // maps are all dark now, and a white slab pinned to the bottom of them
+        // read as a piece of a different app — the single most visible seam in
+        // the whole UI. A dark bar sits under both palettes; the light screens
+        // keep their white cards and simply gain a grounded base.
+        tabBarActiveTintColor: COLOR.accent,
+        tabBarInactiveTintColor: COLOR.textMuted,
         tabBarStyle: {
           height: TAB_BAR_HEIGHT + insets.bottom,
           // Lift the labels clear of the gesture bar / home indicator.
           paddingBottom: insets.bottom,
           paddingTop: 6,
-          backgroundColor: COLORS.white,
-          borderTopColor: COLORS.border,
+          backgroundColor: COLOR.bg,
+          borderTopColor: COLOR.border,
+          borderTopWidth: 1,
           // Android draws its own shadow from `elevation`; on iOS the hairline
           // border is the whole separation, so no shadow either way.
           elevation: 0,

@@ -54,8 +54,15 @@ function regionForCoordinates(points: RoutePoint[]): MapRegion {
     minLon = Math.min(minLon, p.longitude)
     maxLon = Math.max(maxLon, p.longitude)
   }
-  const latDelta = Math.max((maxLat - minLat) * 1.4, 0.005)
-  const lonDelta = Math.max((maxLon - minLon) * 1.4, 0.005)
+  // The floor exists only to stop a single-point route asking for a zero-sized
+  // viewport, which the native map rejects. It used to be 0.005° — about 500 m —
+  // which quietly broke every short route: a 250 m loop was padded out to a
+  // 500 m viewport, drawn ~15 px across, and disappeared underneath the 40 px
+  // start pin. That is exactly what "the map shows a marker and no route" was.
+  // 0.0015° is ~165 m, small enough that a real route is always the thing
+  // setting the zoom.
+  const latDelta = Math.max((maxLat - minLat) * 1.4, 0.0015)
+  const lonDelta = Math.max((maxLon - minLon) * 1.4, 0.0015)
   return {
     latitude: (minLat + maxLat) / 2,
     longitude: (minLon + maxLon) / 2,

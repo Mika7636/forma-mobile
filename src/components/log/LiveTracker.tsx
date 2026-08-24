@@ -1,26 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
-import {
-  Alert,
-  AppState,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { Alert, AppState, Platform, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeIn } from 'react-native-reanimated'
-import Slider from '@react-native-community/slider'
-import { formatDistanceKm } from '../../utils/formatting'
 import { haptics } from '../../utils/haptics'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
 import PrimaryButton from '../ui/PrimaryButton'
 import RouteMap from '../session/RouteMap'
 import BatteryOptimizationTip from './BatteryOptimizationTip'
 import GpsChip from './GpsChip'
+import WorkoutSummary, { defaultWorkoutTitle } from './WorkoutSummary'
 import { useGpsWarmup } from '../../hooks/useGpsWarmup'
 import {
   setupTrackingChannels,
@@ -31,6 +20,12 @@ import {
 import { openAppSettings, openLocationSettings } from '../../utils/systemSettings'
 import { COLORS } from '../../constants/theme'
 import { estimateCalories } from '../../algorithms/calories'
+import { calculateLoadScore } from '../../algorithms/sRPE'
+import { detectConflicts } from '../../algorithms/conflictDetector'
+import { computeElevationGain, computeSplits } from '../../algorithms/movingTime'
+import { CALIBRATION_SESSION_TARGET } from '../../utils/calibration'
+import { useMetrics } from '../../hooks/useMetrics'
+import { useAuthStore } from '../../store/authStore'
 import {
   calculateSpeed,
   formatPace,
@@ -52,6 +47,7 @@ import {
   hasActiveSession,
   hasBackgroundPermission,
   isIndoorBlackout,
+  movingTimeMsFrom,
   pauseSession,
   preflightLocation,
   requestBackgroundPermission,
@@ -64,7 +60,8 @@ import {
   type GpsQuality,
   type GpsQualitySummary,
 } from '../../store/liveTrackingStore'
-import type { RoutePoint, SportType } from '../../types/session'
+import type { Conflict } from '../../types/conflict'
+import type { RoutePoint, Session, SessionSplit, SportType } from '../../types/session'
 import type { MapRegion } from '../../utils/maps'
 
 /** Data handed back to LogScreen when the user saves a live-tracked session. */
@@ -85,6 +82,12 @@ export interface LiveResult {
    * indoor session later, rather than as a run whose distance went missing.
    */
   gpsQuality?: GpsQualitySummary
+  /** Athlete-editable workout name, defaulted from time of day + sport. */
+  title?: string
+  /** Elapsed minus established stops — the denominator average pace was computed from. */
+  movingTimeMs?: number
+  splits?: SessionSplit[]
+  elevationGain?: number
 }
 
 /**
@@ -114,6 +117,10 @@ interface LiveTrackerProps {
   weightKg?: number
   /** True while LogScreen is persisting the session — drives the Save spinner. */
   saving: boolean
+  /** True once the write has landed, for the Save button's checkmark beat. */
+  saved?: boolean
+  /** Fired when the summary is shown or left, so LogScreen can hide the tab bar. */
+  onSummaryChange?: (inSummary: boolean) => void
   /** When set, mount straight into the summary with this recovered workout. */
   resumeFrom?: LiveSnapshot | null
   /** Written to on every tick/fix so a crash can be recovered from. */
@@ -141,15 +148,8 @@ const MAP_FILL_STYLE = { flex: 1 } as const
 
 const TIMER_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' })
 
-const ZONE_GREEN = '#22c55e'
 const ZONE_AMBER = '#f59e0b'
 const ZONE_RED = '#ef4444'
-
-function rpeColor(rpe: number): string {
-  if (rpe <= 3) return ZONE_GREEN
-  if (rpe <= 7) return ZONE_AMBER
-  return ZONE_RED
-}
 
 /**
  * The pre-flight blockers, as alerts.
@@ -196,6 +196,8 @@ export default function LiveTracker({
   sportLabel,
   weightKg,
   saving,
+  saved = false,
+  onSummaryChange,
   resumeFrom,
   snapshotRef,
   onExit,
@@ -256,20 +258,56 @@ export default function LiveTracker({
    */
   const [currentPaceSec, setCurrentPaceSec] = useState<number | null>(null)
 
-  // Summary inputs
-  const [rpe, setRpe] = useState(6)
+  // Summary inputs.
+  //
+  // `rpe` starts NULL, not at a default. sRPE is the input every downstream
+  // metric is built on, and a pre-filled 6 gets accepted unthinkingly — a
+  // fabricated effort rating silently corrupts load, CTL/ATL, Form and conflict
+  // detection alike. Save stays disabled until the athlete actually chooses.
+  const [rpe, setRpe] = useState<number | null>(null)
   const [notes, setNotes] = useState('')
+  const [title, setTitle] = useState('')
+  /**
+   * Moving time, frozen when the workout ends.
+   *
+   * Settled once rather than re-derived on render: the session is over by the
+   * time the summary is on screen, so this is a fixed property of it, and
+   * recomputing it against a live `Date.now()` would let the displayed figure
+   * drift while the athlete sits deciding on an RPE.
+   */
+  const [summaryMovingMs, setSummaryMovingMs] = useState(0)
+  /**
+   * Distance and route as they stood when the workout ended.
+   *
+   * Frozen for the same reason as the clock, plus one that bites harder:
+   * LogScreen clears the live-tracking store as soon as the write lands, and the
+   * summary stays on screen for a beat after that to show its "Saved" state.
+   * Reading the store live would blank the distance to 0.00 and flip the hero map
+   * to the indoor panel in the moment the athlete is looking at their finished
+   * run. A finished workout is a fixed record; the screen should render it as one.
+   */
+  const [summaryFrozen, setSummaryFrozen] = useState<{
+    distanceM: number
+    route: RoutePoint[]
+  } | null>(null)
 
   const lastMilestoneRef = useRef(0)
   /** Last whole second the tick published, so pace recomputes once per second. */
   const lastTickSecRef = useRef(-1)
-  const lastRpeRef = useRef(rpe)
   /**
    * False from the moment React tears this component down. Location and
    * permission work resolves outside React's lifecycle, so a continuation can
    * land after unmount; every setState below is gated on this.
    */
   const mountedRef = useRef(true)
+
+  /* ---- Data the summary's training-load block needs ------------------ */
+  // Read here rather than threaded down from LogScreen: the conflict preview has
+  // to be recomputed on every RPE tap, and passing five props through two
+  // components to do it would couple the tracker to the log form for no gain.
+  const metrics = useMetrics()
+  const userId = useAuthStore((s) => s.user?.uid)
+  const profile = useAuthStore((s) => s.profile)
 
   const isCycling = sport === 'cycling'
   const distanceKm = distanceM / 1000
@@ -335,6 +373,8 @@ export default function LiveTracker({
           // Reachable after Stop was tapped from the notification itself. The
           // workout is over, so nothing should still be counting in the shade.
           void stopLiveNotification()
+          setSummaryMovingMs(movingTimeMsFrom(live))
+          setSummaryFrozen({ distanceM: live.distanceM, route: live.route })
           setPhase('summary')
           return
         }
@@ -555,6 +595,29 @@ export default function LiveTracker({
     gpsQuality,
   ])
 
+  /* ---- Tell LogScreen when the summary is up ------------------------ */
+  // The summary is a full-bleed dark page with its own sticky CTA; a white tab
+  // bar under it both breaks the design and puts a second navigation target next
+  // to the one action the athlete is meant to take.
+  useEffect(() => {
+    onSummaryChange?.(phase === 'summary')
+  }, [phase, onSummaryChange])
+
+  // Separate from the effect above so it fires only on teardown, not on every
+  // phase change. Discarding a workout unmounts this component straight from the
+  // summary, and a tab bar left hidden would strand the athlete on a screen with
+  // no way out.
+  useEffect(() => {
+    return () => onSummaryChange?.(false)
+  }, [onSummaryChange])
+
+  /* ---- Default the workout title on arrival ------------------------- */
+  // Seeded once, and only while empty, so it never overwrites something typed.
+  useEffect(() => {
+    if (phase !== 'summary') return
+    setTitle((prev) => (prev.trim().length > 0 ? prev : defaultWorkoutTitle(sport, sessionStartedAt)))
+  }, [phase, sport, sessionStartedAt])
+
   /* ---- Kilometre-milestone haptics --------------------------------- */
   useEffect(() => {
     const milestone = Math.floor(distanceKm)
@@ -714,17 +777,16 @@ export default function LiveTracker({
     // screen isn't even visible.
     void stopLiveNotification()
     if (!mountedRef.current) return
-    setElapsedSec(Math.floor(elapsedMsFrom(useLiveTrackingStore.getState()) / 1000))
+    const settled = useLiveTrackingStore.getState()
+    setElapsedSec(Math.floor(elapsedMsFrom(settled) / 1000))
+    setSummaryMovingMs(movingTimeMsFrom(settled))
+    setSummaryFrozen({ distanceM: settled.distanceM, route: settled.route })
     setPhase('summary')
   }
 
-  function handleRpeChange(raw: number) {
-    const next = Math.round(raw)
-    if (next !== lastRpeRef.current) {
-      lastRpeRef.current = next
-      haptics.light()
-      setRpe(next)
-    }
+  function handleRpeChange(next: number) {
+    // The haptic fires inside RpeScale, next to the press it belongs to.
+    setRpe(next)
   }
 
   function handleSave() {
@@ -760,6 +822,9 @@ export default function LiveTracker({
     const safeDistance =
       Number.isFinite(finalDistanceKm) && finalDistanceKm > 0 ? finalDistanceKm : 0
     const safeRoute = finalRoute.filter((p) => isValidCoordinate(p.latitude, p.longitude))
+    const finalMovingMs = resumeFrom
+      ? resumeFrom.elapsedSec * 1000
+      : movingTimeMsFrom(live)
     // A recovered snapshot carries no fix counters, so it can only be judged by
     // what it has: a route means the GPS was working, no route means it wasn't.
     const quality: GpsQualitySummary = resumeFrom
@@ -771,16 +836,24 @@ export default function LiveTracker({
       `[LiveTracker] saving: ${safeDistance.toFixed(3)} km · ${safeDuration} min · ` +
         `${safeRoute.length} route pts · gps ${quality}`,
     )
+    // Pace is reported over MOVING time, not elapsed. Charging every stop at a
+    // crossing to the athlete's pace is what turned a genuine 8:30 /km run into
+    // a reported 12:52 /km; see `algorithms/movingTime.ts`.
+    const movingSec = Math.max(1, Math.round(finalMovingMs / 1000))
     onComplete({
       durationMinutes: safeDuration,
-      rpe,
+      rpe: rpe ?? 5,
       distanceKm: safeDistance,
       notes: notes.trim() || undefined,
       routeCoordinates: safeRoute,
-      averagePace: isCycling ? undefined : formatPace(finalElapsedSec, safeDistance),
-      averageSpeed: isCycling ? calculateSpeed(finalElapsedSec, safeDistance) : undefined,
+      averagePace: isCycling ? undefined : formatPace(movingSec, safeDistance),
+      averageSpeed: isCycling ? calculateSpeed(movingSec, safeDistance) : undefined,
       startedAt: finalStartedAt || undefined,
       gpsQuality: quality,
+      title: title.trim() || undefined,
+      movingTimeMs: finalMovingMs,
+      splits: computeSplits(safeRoute),
+      elevationGain: computeElevationGain(safeRoute),
     })
   }
 
@@ -790,6 +863,52 @@ export default function LiveTracker({
     void stopLiveNotification()
     onExit()
   }
+
+  /**
+   * What the conflict engine would say about this session, recomputed live as
+   * the RPE changes.
+   *
+   * The same pure `detectConflicts` the save path runs, against the same recent
+   * sessions and the same profile — so the banner on this screen and the modal
+   * after saving can never disagree. Empty until an effort is chosen: a conflict
+   * is a function of load, and there is no load without an RPE.
+   */
+  const conflictPreview = useMemo<Conflict[]>(() => {
+    if (phase !== 'summary' || rpe == null || !profile) return []
+    const minutes = Math.max(1, Math.round(elapsedSec / 60))
+    const candidate: Session = {
+      id: '__preview__',
+      userId: userId ?? '',
+      sport,
+      date: new Date(sessionStartedAt || Date.now()).toISOString(),
+      durationMinutes: minutes,
+      distanceKm: distanceKm > 0 ? distanceKm : undefined,
+      rpe,
+      loadScore: calculateLoadScore(minutes, rpe),
+      createdAt: new Date().toISOString(),
+    }
+    try {
+      return detectConflicts(candidate, metrics.sessions, profile, metrics.weeklyHours, {
+        calibrating: metrics.totalSessionCount < CALIBRATION_SESSION_TARGET,
+      })
+    } catch (err) {
+      // A preview is a nicety; the authoritative check still runs on save.
+      console.warn('[LiveTracker] conflict preview failed', err)
+      return []
+    }
+  }, [
+    phase,
+    rpe,
+    profile,
+    userId,
+    sport,
+    sessionStartedAt,
+    elapsedSec,
+    distanceKm,
+    metrics.sessions,
+    metrics.weeklyHours,
+    metrics.totalSessionCount,
+  ])
 
   // Live follow-cam region: keep the latest fix centred with a tight zoom.
   const liveRegion = useMemo<MapRegion | undefined>(() => {
@@ -856,21 +975,25 @@ export default function LiveTracker({
       ) : null}
 
       {phase === 'summary' ? (
-        <SummaryView
+        <WorkoutSummary
+          sport={sport}
           sportLabel={sportLabel}
-          clock={formatClock(elapsedSec)}
-          elapsedSec={elapsedSec}
-          isCycling={isCycling}
-          distanceKm={distanceKm}
-          pace={formatPace(elapsedSec, distanceKm)}
-          speed={calculateSpeed(elapsedSec, distanceKm)}
-          calories={estimateCalories(sport, elapsedSec / 60, rpe, weightKg)}
-          route={route}
+          elapsedMs={elapsedSec * 1000}
+          movingTimeMs={summaryMovingMs}
+          distanceKm={(summaryFrozen?.distanceM ?? distanceM) / 1000}
+          route={summaryFrozen?.route ?? route}
+          startedAt={sessionStartedAt}
+          weightKg={weightKg}
+          currentForm={metrics.formScore}
+          conflicts={conflictPreview}
+          title={title}
+          onTitleChange={setTitle}
           rpe={rpe}
           onRpeChange={handleRpeChange}
           notes={notes}
           onNotesChange={setNotes}
           saving={saving}
+          saved={saved}
           onSave={handleSave}
           onDiscard={handleDiscard}
         />
@@ -1357,173 +1480,5 @@ function ControlButton({
     >
       <Text style={{ color: COLORS.white, fontSize: 18, fontWeight: '800' }}>{label}</Text>
     </Pressable>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Phase: SUMMARY                                                      */
-/* ------------------------------------------------------------------ */
-function SummaryView({
-  sportLabel,
-  clock,
-  elapsedSec,
-  isCycling,
-  distanceKm,
-  pace,
-  speed,
-  calories,
-  route,
-  rpe,
-  onRpeChange,
-  notes,
-  onNotesChange,
-  saving,
-  onSave,
-  onDiscard,
-}: {
-  sportLabel: string
-  clock: string
-  elapsedSec: number
-  isCycling: boolean
-  distanceKm: number
-  pace: string
-  speed: number
-  calories: number
-  route: RoutePoint[]
-  rpe: number
-  onRpeChange: (v: number) => void
-  notes: string
-  onNotesChange: (v: string) => void
-  saving: boolean
-  onSave: () => void
-  onDiscard: () => void
-}) {
-  const color = rpeColor(rpe)
-  return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontSize: 26, fontWeight: '800', color: COLORS.white }}>Workout complete</Text>
-          <Pressable onPress={onDiscard} hitSlop={10}>
-            <Text style={{ color: COLORS.subtle, fontSize: 22 }}>✕</Text>
-          </Pressable>
-        </View>
-        <Text style={{ marginTop: 4, fontSize: 15, color: COLORS.subtle }}>{sportLabel}</Text>
-
-        {elapsedSec < 60 ? (
-          <Text style={{ marginTop: 10, fontSize: 13, color: ZONE_AMBER }}>
-            Short session — under a minute of tracking. It'll still be saved.
-          </Text>
-        ) : null}
-
-        {/* Route map */}
-        <View style={{ marginTop: 16 }}>
-          <RouteMap coordinates={route} height={200} showMarkers dark />
-        </View>
-
-        {/* Summary stats */}
-        <View
-          style={{
-            marginTop: 16,
-            backgroundColor: '#1f2937',
-            borderRadius: 18,
-            padding: 18,
-          }}
-        >
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            <SummaryStat label="Duration" value={clock} />
-            <SummaryStat label="Distance" value={formatDistanceKm(distanceKm)} />
-            <SummaryStat
-              label={isCycling ? 'Avg Speed' : 'Avg Pace'}
-              value={isCycling ? `${speed.toFixed(1)} km/h` : pace}
-            />
-            <SummaryStat label="Est. Calories" value={`🔥 ${calories} kcal`} />
-          </View>
-        </View>
-
-        {/* RPE — rated AFTER the session (sRPE best practice) */}
-        <View
-          style={{
-            marginTop: 18,
-            backgroundColor: '#1f2937',
-            borderRadius: 18,
-            padding: 18,
-          }}
-        >
-          <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.white }}>
-            How hard was that session?
-          </Text>
-          <Text style={{ marginTop: 4, fontSize: 13, color: COLORS.subtle }}>
-            Rate your effort 1–10 (best measured ~30 min post-workout).
-          </Text>
-          <View style={{ alignItems: 'center', marginTop: 8 }}>
-            <Text style={{ fontSize: 48, fontWeight: '800', color }}>{rpe}</Text>
-          </View>
-          <Slider
-            style={{ width: '100%', height: 44 }}
-            minimumValue={1}
-            maximumValue={10}
-            step={1}
-            value={rpe}
-            onValueChange={onRpeChange}
-            minimumTrackTintColor={color}
-            maximumTrackTintColor="#374151"
-            thumbTintColor={color}
-          />
-        </View>
-
-        {/* Notes */}
-        <View style={{ marginTop: 18 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.subtle, marginBottom: 8 }}>
-            NOTES (OPTIONAL)
-          </Text>
-          <View
-            style={{
-              backgroundColor: '#1f2937',
-              borderRadius: 12,
-              paddingHorizontal: 14,
-              paddingVertical: 4,
-            }}
-          >
-            <TextInput
-              value={notes}
-              onChangeText={onNotesChange}
-              multiline
-              placeholder="How did it feel?"
-              placeholderTextColor={COLORS.muted}
-              style={{
-                minHeight: 60,
-                maxHeight: 100,
-                fontSize: 16,
-                color: COLORS.white,
-                paddingTop: 10,
-                textAlignVertical: 'top',
-              }}
-            />
-          </View>
-        </View>
-
-        <View style={{ marginTop: 24 }}>
-          <PrimaryButton label="Save Session" onPress={onSave} loading={saving} />
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  )
-}
-
-function SummaryStat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={{ width: '50%', paddingVertical: 8 }}>
-      <Text style={{ color: COLORS.subtle, fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
-        {label.toUpperCase()}
-      </Text>
-      <Text style={{ color: COLORS.white, fontSize: 20, fontWeight: '800', marginTop: 2 }}>
-        {value}
-      </Text>
-    </View>
   )
 }

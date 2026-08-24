@@ -20,6 +20,28 @@ export interface RoutePoint {
   latitude: number
   longitude: number
   timestamp: number
+  /**
+   * Metres above sea level, when the fix reported one.
+   *
+   * Optional because plenty of fixes don't carry it and every route saved before
+   * this field existed has none. Consumers must treat a missing altitude as
+   * "unknown", never as zero — see `computeElevationGain`.
+   */
+  altitude?: number
+}
+
+/** One kilometre of a live-tracked workout, derived from the route at save time. */
+export interface SessionSplit {
+  /** 1-based kilometre index. */
+  km: number
+  /** Seconds spent covering it. */
+  seconds: number
+  /** Seconds per km. Equal to `seconds` for a full km, extrapolated for a partial. */
+  paceSecPerKm: number
+  /** Metres covered. Below 1000 only for the trailing partial. */
+  metres: number
+  /** True for the trailing sub-kilometre remainder. */
+  partial: boolean
 }
 
 /** How a session's data was collected. */
@@ -65,4 +87,19 @@ export interface Session {
   averageSpeed?: number
   /** GPS coverage summary. Absent on sessions logged before it was recorded. */
   gpsQuality?: GpsQuality
+  /**
+   * Athlete-editable name, e.g. "Morning Run". Absent on older sessions and on
+   * quick-logged ones, where the sport label stands in.
+   */
+  title?: string
+  /**
+   * Elapsed time minus any established stop, in ms. The denominator for average
+   * pace — see `algorithms/movingTime.ts` for why it is not the same as
+   * `durationMinutes`, which stays the wall clock and drives training load.
+   */
+  movingTimeMs?: number
+  /** Per-kilometre splits, computed from the route at save time. */
+  splits?: SessionSplit[]
+  /** Metres climbed, from GPS altitude. 0 when no fix reported one. */
+  elevationGain?: number
 }

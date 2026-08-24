@@ -32,6 +32,7 @@ import type {
   RoutePoint,
   Session,
   SessionHRZone,
+  SessionSplit,
   SportType,
   TrackingMode,
 } from '../types/session'
@@ -64,6 +65,17 @@ export interface LogSessionInput {
   averageSpeed?: number
   /** How much of the workout the GPS covered; only meaningful for live sessions. */
   gpsQuality?: GpsQuality
+  /** Athlete-editable workout name, e.g. "Morning Run". */
+  title?: string
+  /**
+   * Elapsed minus established stops, in ms. Stored alongside `durationMinutes`
+   * rather than replacing it: load is `duration × RPE` and a red light is still
+   * time spent training, so the wall clock stays the training-load input while
+   * this is the pace denominator.
+   */
+  movingTimeMs?: number
+  splits?: SessionSplit[]
+  elevationGain?: number
 }
 
 function sessionsCol(userId: string) {
@@ -147,6 +159,10 @@ export function toSession(id: string, data: DocumentData): Session {
     averagePace: data.averagePace,
     averageSpeed: data.averageSpeed,
     gpsQuality: data.gpsQuality,
+    title: data.title,
+    movingTimeMs: data.movingTimeMs,
+    splits: data.splits,
+    elevationGain: data.elevationGain,
   }
 }
 
@@ -218,6 +234,10 @@ export async function logSession(
     averagePace,
     averageSpeed,
     gpsQuality,
+    title,
+    movingTimeMs,
+    splits,
+    elevationGain,
   } = input
 
   const loadScore = calculateLoadScore(durationMinutes, rpe)
@@ -258,6 +278,12 @@ export async function logSession(
   if (averagePace) docData.averagePace = averagePace
   if (averageSpeed != null && averageSpeed > 0) docData.averageSpeed = averageSpeed
   if (gpsQuality) docData.gpsQuality = gpsQuality
+  // Summary extras. Firestore rejects `undefined`, so each is guarded; splits are
+  // plain {km, seconds, paceSecPerKm, metres, partial} objects and safe to store.
+  if (title?.trim()) docData.title = title.trim()
+  if (movingTimeMs != null && movingTimeMs > 0) docData.movingTimeMs = Math.round(movingTimeMs)
+  if (splits && splits.length > 0) docData.splits = splits
+  if (elevationGain != null && elevationGain > 0) docData.elevationGain = Math.round(elevationGain)
 
   const ref = await addDoc(sessionsCol(userId), docData)
 
@@ -282,6 +308,11 @@ export async function logSession(
     averagePace,
     averageSpeed: averageSpeed != null && averageSpeed > 0 ? averageSpeed : undefined,
     gpsQuality,
+    title: title?.trim() || undefined,
+    movingTimeMs: movingTimeMs != null && movingTimeMs > 0 ? Math.round(movingTimeMs) : undefined,
+    splits: splits && splits.length > 0 ? splits : undefined,
+    elevationGain:
+      elevationGain != null && elevationGain > 0 ? Math.round(elevationGain) : undefined,
   }
 
   // Pull recent training for the conflict engine. A single `where` on `date`
