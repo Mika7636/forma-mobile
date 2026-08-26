@@ -15,9 +15,10 @@ import { formatCompact, niceScale, smoothPath, type Point } from './chartUtils'
 import { COLORS } from '../../constants/theme'
 import { formatThousands } from '../../utils/formatting'
 import type { WeeklyPoint } from '../../utils/progressMetrics'
+import { PALETTE } from '../../theme/tokens'
 
-const LINE = '#F97316'
-const FILL_TOP = '#FB923C'
+const LINE = PALETTE.orange
+const FILL_TOP = PALETTE.orange
 
 const PLOT_H = 178
 const PAD_L = 36
@@ -105,7 +106,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
           return (
             <G key={t}>
               <Line x1={PAD_L} y1={y} x2={width - PAD_R} y2={y} stroke={COLORS.border} strokeWidth={1} />
-              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={COLORS.subtle} textAnchor="end">
+              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={COLORS.muted} textAnchor="end">
                 {formatCompact(t)}
               </SvgText>
             </G>
@@ -122,7 +123,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
               x={geom.xAt(i)}
               y={PLOT_H - 7}
               fontSize={9}
-              fill={COLORS.subtle}
+              fill={COLORS.muted}
               textAnchor="middle"
             >
               {w.weekLabel}
@@ -145,7 +146,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
               cy={geom.pts[active].y}
               r={4.5}
               fill={LINE}
-              stroke={COLORS.white}
+              stroke={COLORS.surface}
               strokeWidth={1.5}
             />
           </G>
@@ -170,16 +171,22 @@ function Tooltip({ point, x, width }: { point: WeeklyPoint; x: number; width: nu
         top: 2,
         left,
         width: BUBBLE_W,
-        backgroundColor: COLORS.ink,
+        // A raised dark surface with a hairline, not the near-black slab this
+        // was. `COLORS.ink` used to be #111827 and made a perfectly good
+        // tooltip; it is now the *lightest* colour in the palette, so this
+        // rendered as a white card with white body copy on it.
+        backgroundColor: COLORS.surfaceAlt,
+        borderWidth: 1,
+        borderColor: COLORS.border,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 10,
       }}
     >
-      <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
+      <Text style={{ color: COLORS.ink, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
         {point.weekLabel} · {point.rangeLabel}
       </Text>
-      <Text style={{ color: '#FDBA74', fontSize: 12, fontWeight: '700' }}>
+      <Text style={{ color: PALETTE.orange, fontSize: 12, fontWeight: '700' }}>
         🔥 {formatThousands(point.calories)} kcal
       </Text>
     </View>

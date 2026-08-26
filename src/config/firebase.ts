@@ -10,6 +10,8 @@ import {
   getFirestore,
   initializeFirestore,
   memoryLocalCache,
+  persistentLocalCache,
+  persistentSingleTabManager,
 } from 'firebase/firestore'
 
 // Same Firebase project as the FORMA web app (project id: forma-sp1) — same
@@ -59,20 +61,58 @@ export const auth = resolveAuth()
 //    collection having docs deleted and re-added on a session edit. Long
 //    polling avoids that path; auto-detect keeps normal streaming where it works.
 //
-//  - memoryLocalCache: no on-device persistence layer for the SDK to reconcile
-//    against the server's existence filter, removing the other BloomFilterError
-//    source. FORMA already treats Firestore as the live source of truth (every
-//    read is a snapshot listener), so we don't rely on an offline cache.
+//  - persistentLocalCache: reads are served from disk when the network is gone,
+//    which is what lets a resumed-while-offline app load the user's profile
+//    instead of hanging on a `getDoc` that never returns. This replaces the
+//    memory-only cache we used to run: that cache is why reopening FORMA
+//    offline dropped the user onto the onboarding wizard, because the profile
+//    read had nowhere to come from and the gate read the failure as "new user".
 //
-// Like auth above, this throws if Firestore was already initialized on a
-// reload; reuse the existing instance in that case.
+//    Single-tab manager, not multi-tab: multi-tab coordination is a browser
+//    concern (it leases the cache across tabs via IndexedDB), and there is
+//    exactly one "tab" in a React Native app.
+//
+// ## The caveat, and why `services/profileCache.ts` exists as well
+//
+// The JS SDK's persistent cache is IndexedDB-backed, and IndexedDB is a browser
+// API that React Native does not provide. So on this platform — the platform
+// FORMA actually ships on — the persistent cache is *not available*, and asking
+// for it anyway gets us nothing.
+//
+// It is requested conditionally rather than unconditionally on purpose. The SDK
+// does degrade to an in-memory cache when it can't open IndexedDB, but that
+// puts a load-bearing property of the login flow at the mercy of a fallback path
+// inside a dependency: something we neither control nor test, on the exact code
+// path where a wrong answer logs an existing athlete out of their account.
+// Probing for the API and choosing the cache ourselves makes the outcome
+// deterministic and inspectable in the log.
+//
+// Which means: on React Native, this is memory-cached Firestore, and the
+// AsyncStorage mirror in `services/profileCache.ts` is what actually makes the
+// onboarding gate survive an offline resume. The persistent branch is here so a
+// web build (or a future RN IndexedDB shim) gets real offline reads for free,
+// not because it is doing the work today.
+function supportsIndexedDb(): boolean {
+  try {
+    return typeof globalThis !== 'undefined' && typeof globalThis.indexedDB !== 'undefined'
+  } catch {
+    // Touching `indexedDB` throws outright in some sandboxed runtimes.
+    return false
+  }
+}
+
 function resolveDb() {
+  const localCache = supportsIndexedDb()
+    ? persistentLocalCache({ tabManager: persistentSingleTabManager(undefined) })
+    : memoryLocalCache()
+
   try {
     return initializeFirestore(app, {
       experimentalAutoDetectLongPolling: true,
-      localCache: memoryLocalCache(),
+      localCache,
     })
   } catch {
+    // Firestore was already initialized on a Fast Refresh; reuse it.
     return getFirestore(app)
   }
 }

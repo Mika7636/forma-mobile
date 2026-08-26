@@ -20,7 +20,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
         entering={FadeIn.duration(150)}
         style={{
           flex: 1,
-          backgroundColor: 'rgba(17, 24, 39, 0.55)',
+          backgroundColor: COLORS.scrim,
           justifyContent: 'center',
           paddingHorizontal: 24,
         }}
@@ -28,12 +28,12 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
         <Animated.View
           entering={FadeInDown.duration(220)}
           style={{
-            backgroundColor: COLORS.white,
+            backgroundColor: COLORS.surface,
             borderRadius: 20,
             paddingTop: 24,
             paddingBottom: 20,
             paddingHorizontal: 22,
-            shadowColor: '#000',
+            shadowColor: COLORS.shadow,
             shadowOpacity: 0.25,
             shadowRadius: 24,
             shadowOffset: { width: 0, height: 12 },
@@ -96,7 +96,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
               backgroundColor: COLORS.teal,
             }}
           >
-            <Text style={{ color: COLORS.white, fontSize: 16, fontWeight: '700' }}>
+            <Text style={{ color: COLORS.onAccent, fontSize: 16, fontWeight: '700' }}>
               Got it
             </Text>
           </Pressable>

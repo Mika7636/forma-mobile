@@ -5,6 +5,7 @@
  * heart rate. We bucket every two RPE points into one of five training zones
  * and turn the %max band into a concrete bpm range using the user's max HR.
  */
+import { PALETTE } from '../theme/tokens'
 
 export interface HRZone {
   zone: number
@@ -33,11 +34,11 @@ interface ZoneDef {
  * the dashboard, planner and log preview all agree.
  */
 const ZONE_DEFS: ZoneDef[] = [
-  { zone: 1, name: 'Recovery', lowerPct: 0.5, upperPct: 0.6, color: '#6b7280', description: 'Very light — active recovery' },
-  { zone: 2, name: 'Endurance', lowerPct: 0.6, upperPct: 0.7, color: '#0ea5e9', description: 'Easy aerobic base building' },
-  { zone: 3, name: 'Aerobic', lowerPct: 0.7, upperPct: 0.8, color: '#22c55e', description: 'Moderate — improves aerobic capacity' },
-  { zone: 4, name: 'Threshold', lowerPct: 0.8, upperPct: 0.9, color: '#f59e0b', description: 'Hard — lactate threshold work' },
-  { zone: 5, name: 'Max', lowerPct: 0.9, upperPct: 1.0, color: '#ef4444', description: 'Maximal — short, very hard efforts' },
+  { zone: 1, name: 'Recovery', lowerPct: 0.5, upperPct: 0.6, color: PALETTE.slate, description: 'Very light — active recovery' },
+  { zone: 2, name: 'Endurance', lowerPct: 0.6, upperPct: 0.7, color: PALETTE.sky, description: 'Easy aerobic base building' },
+  { zone: 3, name: 'Aerobic', lowerPct: 0.7, upperPct: 0.8, color: PALETTE.green, description: 'Moderate — improves aerobic capacity' },
+  { zone: 4, name: 'Threshold', lowerPct: 0.8, upperPct: 0.9, color: PALETTE.amber, description: 'Hard — lactate threshold work' },
+  { zone: 5, name: 'Max', lowerPct: 0.9, upperPct: 1.0, color: PALETTE.red, description: 'Maximal — short, very hard efforts' },
 ]
 
 /** Consistent HR-zone colours keyed by zone number. */

@@ -19,6 +19,7 @@ import {
 } from '../../services/liveNotification'
 import { openAppSettings, openLocationSettings } from '../../utils/systemSettings'
 import { COLORS } from '../../constants/theme'
+import { COLOR } from '../../theme/tokens'
 import { estimateCalories } from '../../algorithms/calories'
 import { calculateLoadScore } from '../../algorithms/sRPE'
 import { detectConflicts } from '../../algorithms/conflictDetector'
@@ -148,8 +149,8 @@ const MAP_FILL_STYLE = { flex: 1 } as const
 
 const TIMER_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' })
 
-const ZONE_AMBER = '#f59e0b'
-const ZONE_RED = '#ef4444'
+const ZONE_AMBER = COLOR.warn
+const ZONE_RED = COLOR.danger
 
 /**
  * The pre-flight blockers, as alerts.
@@ -926,7 +927,7 @@ export default function LiveTracker({
   /* Render                                                             */
   /* ================================================================= */
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.ink }} edges={['top', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top', 'bottom']}>
       <StatusBar style="light" />
 
       {phase === 'ready' ? (
@@ -1033,11 +1034,11 @@ function BackgroundPermissionView({
     <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center' }}>
       <View
         style={{
-          backgroundColor: '#1f2937',
+          backgroundColor: COLOR.surfaceAlt,
           borderRadius: 20,
           padding: 24,
           borderWidth: 1,
-          borderColor: '#374151',
+          borderColor: COLOR.border,
         }}
       >
         <Text style={{ fontSize: 40, textAlign: 'center' }}>🔒</Text>
@@ -1046,7 +1047,7 @@ function BackgroundPermissionView({
             marginTop: 10,
             fontSize: 20,
             fontWeight: '800',
-            color: COLORS.white,
+            color: COLORS.onAccent,
             textAlign: 'center',
           }}
         >
@@ -1137,7 +1138,7 @@ function ReadyView({
         <Text style={{ fontSize: 15, color: COLORS.subtle, letterSpacing: 1, fontWeight: '700' }}>
           LIVE TRACKING
         </Text>
-        <Text style={{ marginTop: 6, fontSize: 28, fontWeight: '800', color: COLORS.white }}>
+        <Text style={{ marginTop: 6, fontSize: 28, fontWeight: '800', color: COLORS.onAccent }}>
           {sportLabel}
         </Text>
 
@@ -1190,7 +1191,7 @@ function StartButton({ onPress, label }: { onPress: () => void; label: string })
         opacity: pressed ? 0.9 : 1,
       }}
     >
-      <Text style={{ color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: 0.5 }}>
+      <Text style={{ color: COLORS.onAccent, fontSize: 22, fontWeight: '800', letterSpacing: 0.5 }}>
         {label}
       </Text>
     </Pressable>
@@ -1276,7 +1277,7 @@ function TrackingView({
         </Text>
         <Text
           style={{
-            color: COLORS.white,
+            color: COLORS.onAccent,
             fontSize: 56,
             fontWeight: '800',
             fontFamily: TIMER_FONT,
@@ -1421,7 +1422,7 @@ function Metric({
       style={{
         flex: 1,
         marginHorizontal: 4,
-        backgroundColor: '#1f2937',
+        backgroundColor: COLOR.surfaceAlt,
         borderRadius: 16,
         paddingVertical: 14,
         alignItems: 'center',
@@ -1434,7 +1435,7 @@ function Metric({
         {label}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 4 }}>
-        <Text style={{ color: COLORS.white, fontSize: 30, fontWeight: '800', fontFamily: TIMER_FONT }}>
+        <Text style={{ color: COLORS.onAccent, fontSize: 30, fontWeight: '800', fontFamily: TIMER_FONT }}>
           {value}
         </Text>
         <Text style={{ color: COLORS.subtle, fontSize: 13, fontWeight: '600', marginLeft: 4, marginBottom: 4 }}>
@@ -1478,7 +1479,7 @@ function ControlButton({
         opacity: pressed ? 0.85 : 1,
       }}
     >
-      <Text style={{ color: COLORS.white, fontSize: 18, fontWeight: '800' }}>{label}</Text>
+      <Text style={{ color: COLORS.onAccent, fontSize: 18, fontWeight: '800' }}>{label}</Text>
     </Pressable>
   )
 }

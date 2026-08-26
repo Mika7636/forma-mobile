@@ -191,7 +191,7 @@ export default function SessionChip({
           style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
         >
           <Text style={{ fontSize: 18 }}>🗑️</Text>
-          <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '800', marginTop: 2 }}>
+          <Text style={{ color: COLORS.onAccent, fontSize: 12, fontWeight: '800', marginTop: 2 }}>
             Delete
           </Text>
         </Pressable>
@@ -203,13 +203,13 @@ export default function SessionChip({
             {
               flexDirection: 'row',
               alignItems: 'center',
-              backgroundColor: COLORS.white,
+              backgroundColor: COLORS.surface,
               borderRadius: 12,
               paddingVertical: 10,
               paddingHorizontal: 12,
               borderWidth: 1,
               borderColor: conflictStyle ? conflictStyle.softBorder : COLORS.border,
-              shadowColor: '#000',
+              shadowColor: COLORS.shadow,
               shadowOpacity: 0.06,
               shadowRadius: 6,
               shadowOffset: { width: 0, height: 2 },

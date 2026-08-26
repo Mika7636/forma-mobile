@@ -1,7 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { useNavigation } from '@react-navigation/native'
 import { useEffect } from 'react'
-import { Platform, Text } from 'react-native'
+import { Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TYPE } from '../constants/theme'
 import { COLOR } from '../theme/tokens'
@@ -11,6 +11,7 @@ import PlannerScreen from '../screens/PlannerScreen'
 import ProgressScreen from '../screens/ProgressScreen'
 import SettingsScreen from '../screens/SettingsScreen'
 import { withScreenBoundary } from '../components/ui/withScreenBoundary'
+import TabIcon, { type TabIconName } from '../components/ui/TabIcon'
 import {
   ensureHydrated as ensureLiveTrackingHydrated,
   hasActiveSession,
@@ -32,12 +33,13 @@ const PlannerTab = withScreenBoundary(PlannerScreen, 'Planner')
 const ProgressTab = withScreenBoundary(ProgressScreen, 'Progress')
 const SettingsTab = withScreenBoundary(SettingsScreen, 'Settings')
 
-const TAB_ICON: Record<string, string> = {
-  Dashboard: '📊',
-  Log: '➕',
-  Planner: '🗓️',
-  Progress: '📈',
-  Settings: '⚙️',
+// Drawn, not emoji — see components/ui/TabIcon.
+const TAB_ICON: Record<string, TabIconName> = {
+  Dashboard: 'activity',
+  Log: 'plus',
+  Planner: 'calendar',
+  Progress: 'trending',
+  Settings: 'sliders',
 }
 
 /** Bar height above the safe-area inset. */
@@ -121,10 +123,12 @@ export default function MainTabs() {
           // Android's default label baseline sits too low inside a taller bar.
           marginTop: Platform.OS === 'android' ? -2 : 0,
         },
-        tabBarIcon: ({ focused }) => (
-          <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.55 }}>
-            {TAB_ICON[route.name] ?? '•'}
-          </Text>
+        // `color` is the navigator's own active/inactive tint. The emoji this
+        // replaced could not accept it, so the inactive state was faked with
+        // opacity — which dimmed a full-colour glyph toward grey rather than
+        // toward the bar's muted colour, and looked like a rendering fault.
+        tabBarIcon: ({ color, focused }) => (
+          <TabIcon name={TAB_ICON[route.name] ?? 'activity'} color={color} focused={focused} />
         ),
       })}
       // A light tick on every tab switch — the single most-used interaction in

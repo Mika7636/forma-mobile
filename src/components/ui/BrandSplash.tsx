@@ -73,7 +73,7 @@ export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: COLORS.white,
+          backgroundColor: COLORS.pageBg,
           alignItems: 'center',
           justifyContent: 'center',
         },

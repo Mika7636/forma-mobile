@@ -76,7 +76,7 @@ function WeeklyPlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number })
           return (
             <G key={t}>
               <Line x1={PAD_L} y1={y} x2={width - PAD_R} y2={y} stroke={COLORS.border} strokeWidth={1} />
-              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={COLORS.subtle} textAnchor="end">
+              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={COLORS.muted} textAnchor="end">
                 {formatCompact(t)}
               </SvgText>
             </G>
@@ -92,7 +92,7 @@ function WeeklyPlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number })
               onPress={() => setActive(active === i ? null : i)}
             />
             {i % labelStep === 0 ? (
-              <SvgText x={b.cx} y={PLOT_H - 6} fontSize={9} fill={COLORS.subtle} textAnchor="middle">
+              <SvgText x={b.cx} y={PLOT_H - 6} fontSize={9} fill={COLORS.muted} textAnchor="middle">
                 {b.w.weekLabel}
               </SvgText>
             ) : null}
@@ -116,19 +116,25 @@ function Tooltip({ point, cx, width }: { point: WeeklyPoint; cx: number; width: 
         top: 0,
         left,
         width: BUBBLE_W,
-        backgroundColor: COLORS.ink,
+        // A raised dark surface with a hairline, not the near-black slab this
+        // was. `COLORS.ink` used to be #111827 and made a perfectly good
+        // tooltip; it is now the *lightest* colour in the palette, so this
+        // rendered as a white card with white body copy on it.
+        backgroundColor: COLORS.surfaceAlt,
+        borderWidth: 1,
+        borderColor: COLORS.border,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 10,
       }}
     >
-      <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
+      <Text style={{ color: COLORS.ink, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
         {point.weekLabel} · {point.rangeLabel}
       </Text>
-      <Text style={{ color: '#D1D5DB', fontSize: 11 }}>
-        <Text style={{ color: COLORS.white, fontWeight: '700' }}>{formatThousands(point.load)}</Text> AU
+      <Text style={{ color: COLORS.body, fontSize: 11 }}>
+        <Text style={{ color: COLORS.ink, fontWeight: '700' }}>{formatThousands(point.load)}</Text> AU
         {'  ·  '}
-        <Text style={{ color: COLORS.white, fontWeight: '700' }}>{point.sessions}</Text>{' '}
+        <Text style={{ color: COLORS.ink, fontWeight: '700' }}>{point.sessions}</Text>{' '}
         {point.sessions === 1 ? 'session' : 'sessions'}
       </Text>
     </View>

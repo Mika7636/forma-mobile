@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import ChartCard from './ChartCard'
 import { COLORS } from '../../constants/theme'
+import { HEAT_RAMP } from '../../theme/tokens'
 import { formatThousands } from '../../utils/formatting'
 import type { HeatmapDay, HeatmapWeek } from '../../utils/progressMetrics'
 
 // Sequential teal ramp (single hue, light → dark) keyed by the day's intensity
 // band; level 0 is a near-white "rest day" grey, not part of the ramp.
-const HEAT = ['#ECEFF1', '#C7EBDD', '#79CDAA', COLORS.teal] as const
+// Empty -> full. Defined in the design tokens so the ramp's monotonic-lightness
+// property is stated and checkable in one place; see `tokens.heat`.
+const HEAT = HEAT_RAMP
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 const GAP = 6

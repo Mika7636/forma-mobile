@@ -27,27 +27,31 @@ export default function OfflineBanner() {
   const offline = status === 'offline'
   if (!offline && !reconnecting) return null
 
+  // On the light theme both slabs were dark with white type. On dark, "a dark
+  // slab" is no longer distinguishable from the page, so the offline state
+  // becomes a raised surface with a hairline and the reconnecting state keeps
+  // its accent fill — where the type has to go dark, not light.
   const look = offline
     ? {
-        bg: COLORS.ink,
-        fg: COLORS.white,
+        bg: COLORS.surfaceAlt,
+        fg: COLORS.ink,
         dot: COLORS.warning,
         text: 'Offline — changes will sync when you’re back online',
       }
     : {
-        bg: COLORS.tealDark,
-        fg: COLORS.white,
-        dot: COLORS.white,
+        bg: COLORS.teal,
+        fg: COLORS.onAccent,
+        dot: COLORS.onAccent,
         text: 'Back online — syncing…',
       }
 
   return (
     <>
-      {/* The bar extends under the status bar, and both its colours are dark —
-          so the screen's own `dark` status-bar style would put near-black text
-          on near-black. expo-status-bar applies the most recently mounted
-          value, so this wins while the banner is up and the screen's own style
-          is restored the moment it unmounts. */}
+      {/* The bar extends under the status bar. Every screen is `light` now, so
+          this is no longer correcting anything — it is here so the banner keeps
+          stating its own requirement rather than inheriting one, since the
+          reconnecting variant fills with the accent and would need light icons
+          regardless of what the screen underneath asked for. */}
       <StatusBar style="light" />
 
       <Animated.View

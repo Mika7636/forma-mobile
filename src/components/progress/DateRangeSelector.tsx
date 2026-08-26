@@ -99,7 +99,7 @@ export default function DateRangeSelector({ value, onChange }: DateRangeSelector
               style={{
                 fontSize: 14,
                 fontWeight: '700',
-                color: active ? COLORS.white : COLORS.body,
+                color: active ? COLORS.onAccent : COLORS.body,
               }}
             >
               {weeks} Weeks

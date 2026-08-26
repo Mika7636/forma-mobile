@@ -46,17 +46,17 @@ export default function ConflictModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onKeep}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.55)' }}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: COLORS.scrim }}>
         <View
           style={{
-            backgroundColor: COLORS.white,
+            backgroundColor: COLORS.surface,
             borderTopLeftRadius: 24,
             borderTopRightRadius: 24,
             paddingTop: 14,
             paddingBottom: 24,
             paddingHorizontal: 20,
             maxHeight: '86%',
-            shadowColor: '#000',
+            shadowColor: COLORS.shadow,
             shadowOpacity: 0.25,
             shadowRadius: 24,
             shadowOffset: { width: 0, height: -6 },
@@ -117,7 +117,7 @@ export default function ConflictModal({
                 backgroundColor: COLORS.teal,
               }}
             >
-              <Text style={{ color: COLORS.white, fontSize: 16, fontWeight: '700' }}>
+              <Text style={{ color: COLORS.onAccent, fontSize: 16, fontWeight: '700' }}>
                 Keep session
               </Text>
             </Pressable>
@@ -136,13 +136,13 @@ export default function ConflictModal({
                 justifyContent: 'center',
                 borderWidth: 1.5,
                 borderColor: COLORS.danger,
-                backgroundColor: COLORS.white,
+                backgroundColor: COLORS.surface,
               }}
             >
               {undoing ? (
-                <ActivityIndicator color={COLORS.danger} />
+                <ActivityIndicator color={COLORS.dangerText} />
               ) : (
-                <Text style={{ color: COLORS.danger, fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: COLORS.dangerText, fontSize: 16, fontWeight: '700' }}>
                   Undo
                 </Text>
               )}

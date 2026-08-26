@@ -71,9 +71,9 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }}>
       {/* White page — dark status-bar content is what stays legible. */}
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -140,7 +140,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
           {error ? (
             <Text
               style={{
-                color: COLORS.danger,
+                color: COLORS.dangerText,
                 fontSize: 14,
                 marginTop: 2,
                 marginBottom: 8,

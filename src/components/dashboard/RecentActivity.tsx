@@ -92,7 +92,7 @@ function SessionRow({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: COLORS.white,
+          backgroundColor: COLORS.surface,
           borderRadius: 16,
           borderWidth: 1,
           borderColor: COLORS.border,
@@ -159,7 +159,7 @@ function SessionRow({
                 paddingVertical: 2,
               }}
             >
-              <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.white }}>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.onAccent }}>
                 Z{zone}
               </Text>
             </View>

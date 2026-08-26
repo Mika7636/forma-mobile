@@ -14,9 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import CountUp from '../dashboard/CountUp'
-import HeroRouteMap from '../session/HeroRouteMap'
+import HeroRouteMap, { TITLE_OVERLAP } from '../session/HeroRouteMap'
 import RpeScale from './RpeScale'
-import { COLOR, RADIUS_T, SPACE, rpeColor } from '../../theme/tokens'
+import { COLOR, RADIUS_T, SPACE, TINT, rpeColor } from '../../theme/tokens'
 import { haptics } from '../../utils/haptics'
 import { calculateSpeed, formatPaceValue } from '../../utils/geo'
 import {
@@ -212,7 +212,9 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
           <Animated.View
             entering={entrance(0)}
             style={{
-              marginTop: -SPACE.lg,
+              // Shared with the hero's scrim, which guarantees an opaque band at
+              // least this tall. See TITLE_OVERLAP.
+              marginTop: -TITLE_OVERLAP,
               paddingHorizontal: SPACE.lg,
             }}
           >
@@ -760,9 +762,9 @@ function TrainingLoadBlock({
           style={{
             marginTop: SPACE.base,
             flexDirection: 'row',
-            backgroundColor: 'rgba(245,158,11,0.10)',
+            backgroundColor: TINT.amber.bg,
             borderWidth: 1,
-            borderColor: 'rgba(245,158,11,0.35)',
+            borderColor: TINT.amber.border,
             borderRadius: RADIUS_T.sm,
             padding: SPACE.md,
           }}

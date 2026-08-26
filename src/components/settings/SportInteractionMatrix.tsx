@@ -84,7 +84,7 @@ export default function SportInteractionMatrix({
                         borderRadius: 10,
                         borderWidth: 1.5,
                         borderColor: on ? lvl.color : COLORS.border,
-                        backgroundColor: on ? lvl.color : COLORS.white,
+                        backgroundColor: on ? lvl.color : COLORS.surfaceAlt,
                         paddingVertical: 9,
                         alignItems: 'center',
                       }}
@@ -93,7 +93,7 @@ export default function SportInteractionMatrix({
                         style={{
                           fontSize: 12,
                           fontWeight: '700',
-                          color: on ? COLORS.white : COLORS.muted,
+                          color: on ? COLORS.onAccent : COLORS.muted,
                         }}
                       >
                         {lvl.label}

@@ -11,30 +11,75 @@ import {
   updateProfile as updateAuthProfile,
   type User as FirebaseUser,
 } from 'firebase/auth'
+import { AppState, type AppStateStatus } from 'react-native'
 import { create } from 'zustand'
 import { auth } from '../config/firebase'
-import { createUserProfile, deleteUserProfile, getUserProfile } from '../services/userService'
+import { createUserProfile, deleteUserProfile, readUserProfile } from '../services/userService'
+import {
+  clearProfileCache,
+  peekProfileCache,
+  readProfileCache,
+  warmProfileCache,
+  writeProfileCache,
+} from '../services/profileCache'
 import { cancelAllNotifications } from '../services/notificationService'
 import { clearTrainingData } from '../services/sessionService'
 import { friendlyAuthError } from '../utils/authErrors'
 import type { User } from '../types/user'
+
+// Start the AsyncStorage read for the last known profile the moment this module
+// is imported — before React mounts, and in parallel with Firebase Auth
+// restoring its own persisted session. On an A7 those two reads overlapping
+// rather than queueing is the difference between a splash frame and three.
+void warmProfileCache()
+
+/**
+ * How the profile read is going. Kept separate from `profile` because the gate
+ * in RootNavigator has to tell four different kinds of "no profile object"
+ * apart, and collapsing them into `profile === null` is what sent returning
+ * users to the onboarding wizard.
+ *
+ * - `unknown` — no answer yet, and nothing cached. Show a splash.
+ * - `loading` — a read is in flight. Show a splash.
+ * - `loaded`  — we have a profile (from the mirror or from Firestore).
+ * - `missing` — the *backend* confirmed there is no profile. The one and only
+ *               state that may route to onboarding.
+ * - `error`   — the read failed. Explicitly NOT `missing`: hold position, retry.
+ */
+export type ProfileStatus = 'unknown' | 'loading' | 'loaded' | 'missing' | 'error'
 
 interface AuthState {
   /** The raw Firebase auth user, or null when signed out. */
   user: FirebaseUser | null
   /** The Firestore profile at /users/{uid}, loaded after auth resolves. */
   profile: User | null
+  /** Which of the five profile states we're in. See {@link ProfileStatus}. */
+  profileStatus: ProfileStatus
   /**
-   * True until the very first `onAuthStateChanged` result (and any profile
-   * load) has settled. RootNavigator shows a splash while this is true so we
-   * never flash the login screen before a persisted session restores.
+   * False until the very first `onAuthStateChanged` result. RootNavigator shows
+   * a splash while it is false so we never flash the login screen before a
+   * persisted session restores.
+   */
+  authResolved: boolean
+  /**
+   * True while the app cannot yet decide what to render: auth unresolved, or
+   * authed with no profile answer of any kind. Derived from the two fields
+   * above and kept in state so consumers don't have to recompute it.
    */
   loading: boolean
   /** Last auth error, as a friendly message ready to show under the inputs. */
   error: string | null
 
-  /** Attaches the auth-state listener. Returns an unsubscribe fn. */
+  /**
+   * Attaches the auth-state listener *and* the AppState resume hook. Returns a
+   * single unsubscribe fn that detaches both.
+   */
   initialize: () => () => void
+  /**
+   * (Re)read the profile for the signed-in user. Safe to call at any time;
+   * no-ops when there is no user or a read is already in flight.
+   */
+  refreshProfile: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, name: string) => Promise<void>
   signOut: () => Promise<void>
@@ -52,31 +97,156 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   profile: null,
+  profileStatus: 'unknown',
+  authResolved: false,
   loading: true,
   error: null,
 
   initialize: () => {
-    return onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       // While a registration is mid-flight we deliberately ignore auth events:
       // createUserWithEmailAndPassword auto-signs-in, but the Register flow
       // wants the user sent back to Login, so signUp suppresses the gate and
       // signs out itself. Skipping here avoids a flash of the onboarding screen.
       if (registering) return
 
-      if (firebaseUser) {
-        // Load the profile before flipping `loading` off so RootNavigator can
-        // route straight to Onboarding vs. Dashboard without an intermediate
-        // flash.
-        try {
-          const profile = await getUserProfile(firebaseUser.uid)
-          set({ user: firebaseUser, profile, loading: false })
-        } catch {
-          set({ user: firebaseUser, profile: null, loading: false })
-        }
-      } else {
-        set({ user: null, profile: null, loading: false })
+      if (!firebaseUser) {
+        cancelRetry()
+        loadToken += 1
+        confirmedFromServer = false
+        set({
+          user: null,
+          profile: null,
+          profileStatus: 'unknown',
+          authResolved: true,
+          loading: false,
+        })
+        return
       }
+
+      // Auth has resolved even though the profile hasn't. Publishing the user
+      // straight away lets every uid-keyed hook start its listener now instead
+      // of waiting on a Firestore round-trip.
+      //
+      // `loading` deliberately stays true: knowing *who* is signed in is not the
+      // same as knowing *where to send them*, and the gap between those two is
+      // precisely where the app used to flash onboarding at an existing user.
+      const cached = peekProfileCache(firebaseUser.uid)
+      set({
+        user: firebaseUser,
+        profile: cached,
+        profileStatus: cached ? 'loaded' : 'unknown',
+        authResolved: true,
+        loading: !cached,
+      })
+
+      void get().refreshProfile()
     })
+
+    // The resume path — the one the bug report is actually about.
+    //
+    // A cold start is easy: everything initialises in order. What broke was
+    // Android reclaiming FORMA's process in the background and rebuilding it
+    // from the recents entry, where the JS restarts but the OS restores state
+    // around it, and any profile read that was in flight died with the old
+    // process. Firebase Auth does not re-emit for that, so without this hook
+    // nothing would ever ask again and the gate would sit on whatever half-
+    // resolved state it woke up in.
+    const onAppStateChange = (next: AppStateStatus) => {
+      const wasBackgrounded = appState !== 'active'
+      appState = next
+      if (next !== 'active' || !wasBackgrounded) return
+
+      const { user, profileStatus } = get()
+      if (!user) return
+      // `missing` is settled by the backend and re-reading it on every glance at
+      // the app would be pure battery burn. Everything else — including a
+      // `loaded` that came from the mirror rather than from Firestore — is a
+      // question we still owe the user, and a resume is the moment connectivity
+      // is most likely to have come back.
+      if (profileStatus === 'missing') return
+      if (profileStatus === 'loaded' && confirmedFromServer) return
+      cancelRetry()
+      void get().refreshProfile()
+    }
+
+    const appStateSub = AppState.addEventListener('change', onAppStateChange)
+
+    return () => {
+      cancelRetry()
+      appStateSub.remove()
+      unsubscribeAuth()
+    }
+  },
+
+  refreshProfile: async () => {
+    const user = auth.currentUser ?? get().user
+    if (!user) return
+    if (inFlight) return
+
+    const uid = user.uid
+    const token = ++loadToken
+    inFlight = true
+
+    // A result from a previous uid (or from before a sign-out) must never be
+    // allowed to land. Every write below goes through this.
+    const stillCurrent = () => token === loadToken && get().user?.uid === uid
+
+    try {
+      // 1 · The mirror. Answers the gate offline and without a network call, so
+      //     a resumed app renders the right screen on its first frame.
+      let cached = peekProfileCache(uid)
+      if (!cached) cached = await readProfileCache(uid)
+      if (cached && stillCurrent() && get().profileStatus !== 'loaded') {
+        set({ profile: cached, profileStatus: 'loaded', loading: false })
+      }
+      if (!cached && stillCurrent()) {
+        set({ profileStatus: 'loading' })
+      }
+
+      // 2 · Firestore, which is still the source of truth. When it disagrees
+      //     with the mirror it wins; when it can't answer, the mirror stands.
+      const result = await readUserProfile(uid)
+      if (!stillCurrent()) return
+
+      if (result.status === 'found') {
+        cancelRetry()
+        confirmedFromServer = true
+        set({ profile: result.profile, profileStatus: 'loaded', loading: false })
+        void writeProfileCache(uid, result.profile)
+        return
+      }
+
+      if (result.status === 'missing') {
+        // The backend confirmed there is no profile document. This is the only
+        // path to onboarding, and it is a genuinely new (or freshly deleted)
+        // account — so the stale mirror, if any, is what's wrong here.
+        cancelRetry()
+        void clearProfileCache(uid)
+        set({ profile: null, profileStatus: 'missing', loading: false })
+        return
+      }
+
+      // 'unknown': offline with nothing cached for this document. Not an error
+      // and emphatically not "no profile" — we simply don't know yet.
+      set({
+        profileStatus: cached ? 'loaded' : 'error',
+        loading: false,
+      })
+      scheduleRetry()
+    } catch (err) {
+      if (!stillCurrent()) return
+      // A failed read is an unanswered question, never an answer. Keep whatever
+      // profile we already had, mark the uncertainty, and try again.
+      console.warn('[FORMA] profile read failed; holding position and retrying', err)
+      set({
+        profileStatus: get().profile ? 'loaded' : 'error',
+        loading: false,
+      })
+      scheduleRetry()
+    } finally {
+      inFlight = false
+    }
   },
 
   signIn: async (email, password) => {
@@ -113,7 +283,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       registering = false
       // We suppressed the listener throughout, so make sure state reflects the
       // signed-out reality.
-      set({ user: null, profile: null })
+      set({ user: null, profile: null, profileStatus: 'unknown', authResolved: true, loading: false })
     }
   },
 
@@ -123,11 +293,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // the previous user's reminders. They're rebuilt from the saved preferences
     // by useNotificationSync on the next sign-in.
     await cancelAllNotifications().catch(() => {})
+    const uid = get().user?.uid ?? null
+    cancelRetry()
+    loadToken += 1
     await firebaseSignOut(auth)
-    set({ user: null, profile: null, error: null })
+    // Drop the mirror too. It is keyed by uid so it wouldn't leak across
+    // accounts, but leaving a signed-out user's profile on disk is not
+    // something to do by accident.
+    await clearProfileCache(uid)
+    set({ user: null, profile: null, profileStatus: 'unknown', error: null })
   },
 
-  setProfile: (profile) => set({ profile }),
+  setProfile: (profile) => {
+    // Onboarding's Finish, the notification-permission choice and every
+    // Settings edit come through here. Mirroring on the same call keeps the
+    // offline copy from ever being a step behind the live one — and it is what
+    // makes "finish onboarding on a train with no signal, kill the app, reopen"
+    // land on the dashboard rather than back at step 1.
+    set({ profile, profileStatus: 'loaded', loading: false })
+    const uid = get().user?.uid
+    if (uid) void writeProfileCache(uid, profile)
+  },
 
   deleteAccount: async () => {
     const current = auth.currentUser
@@ -139,12 +325,90 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await clearTrainingData(current.uid)
     await deleteUserProfile(current.uid)
     await deleteUser(current)
-    set({ user: null, profile: null, error: null })
+    cancelRetry()
+    loadToken += 1
+    await clearProfileCache(current.uid)
+    set({ user: null, profile: null, profileStatus: 'unknown', error: null })
   },
 
   clearError: () => set({ error: null }),
 }))
 
-// Module-scoped guard read by the auth listener. Kept outside the store state
-// because it's purely internal plumbing, not something the UI should react to.
+/* ------------------------------------------------------------------ */
+/* Module-scoped plumbing                                              */
+/*                                                                     */
+/* All of this is internal bookkeeping rather than UI state, so it sits */
+/* outside the store: putting it in state would re-render every         */
+/* subscriber each time a retry timer ticked.                          */
+/* ------------------------------------------------------------------ */
+
+/** Set while a registration is mid-flight; makes the auth listener stand down. */
 let registering = false
+
+/**
+ * Incremented on every profile load and on every sign-out. A load compares the
+ * token it captured against this before writing, so a slow read belonging to a
+ * previous session can't overwrite the current one — the classic way a
+ * signed-out app briefly shows the previous user's data.
+ */
+let loadToken = 0
+
+/** Guards against two overlapping reads (resume + auth event in the same tick). */
+let inFlight = false
+
+/** Last AppState we saw, so we only act on a real background→active edge. */
+let appState: AppStateStatus = AppState.currentState
+
+/**
+ * True once Firestore itself has returned a profile this session, as opposed to
+ * us rendering one out of the AsyncStorage mirror. Distinguishes "settled" from
+ * "good enough to render", which is what decides whether a resume re-reads.
+ */
+let confirmedFromServer = false
+
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let retryAttempt = 0
+
+/** 2s, 4s, 8s, 16s, then every 30s. Capped so a long offline spell stays cheap. */
+function retryDelay(attempt: number): number {
+  return Math.min(2000 * 2 ** attempt, 30_000)
+}
+
+/**
+ * How many times to keep asking when we already have a cached profile on
+ * screen. A stale profile is a perfectly good profile — the app is fully usable
+ * — so this is only a best-effort refresh and does not deserve an open-ended
+ * 30-second poll against a radio that is plainly not connected. With nothing
+ * cached we do keep asking, because the alternative is a splash screen forever.
+ */
+const MAX_RETRIES_WITH_PROFILE = 5
+
+/**
+ * Queue another profile read after a failed or inconclusive one.
+ *
+ * This is the "retry" half of *never route to onboarding on an error*: the gate
+ * holds the user where they are, and this is what eventually resolves the
+ * uncertainty without them having to restart the app.
+ */
+function scheduleRetry(): void {
+  if (retryTimer) return
+  const { profile } = useAuthStore.getState()
+  if (profile && retryAttempt >= MAX_RETRIES_WITH_PROFILE) return
+
+  const delay = retryDelay(retryAttempt)
+  retryAttempt += 1
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    const { user, profileStatus } = useAuthStore.getState()
+    if (!user) return
+    if (profileStatus === 'missing') return
+    void useAuthStore.getState().refreshProfile()
+  }, delay)
+}
+
+/** Stop retrying and reset the backoff — a settled answer, or a signed-out app. */
+function cancelRetry(): void {
+  if (retryTimer) clearTimeout(retryTimer)
+  retryTimer = null
+  retryAttempt = 0
+}

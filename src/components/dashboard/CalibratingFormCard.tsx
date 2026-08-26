@@ -10,10 +10,17 @@ import Animated, {
 import CountUp from './CountUp'
 import FormInfoModal from './FormInfoModal'
 import { CALIBRATION_SESSION_TARGET } from '../../utils/calibration'
+import { COLORS } from '../../constants/theme'
+import { TINT } from '../../theme/tokens'
 
-// Neutral teal/blue — deliberately NOT the alarming red the negative Form state
+// Neutral teal — deliberately NOT the alarming red the negative Form state
 // would otherwise use. During calibration the number is context, not a verdict.
-const GRADIENT = ['#0e7490', '#14b8a6'] as const
+//
+// A deep wash rather than the saturated `#0e7490 → #14b8a6` fill this used to
+// be, for the same reason as its sibling in `FormScoreCard`: on dark, a
+// saturated hero is the brightest thing on the dashboard, and it is a strange
+// thing for the *least* confident number in the app to be.
+const GRADIENT = [TINT.teal.bg, COLORS.surface] as const
 
 interface CalibratingFormCardProps {
   form: number
@@ -61,11 +68,13 @@ export default function CalibratingFormCard({
         {
           borderRadius: 24,
           overflow: 'hidden',
-          shadowColor: '#000',
-          shadowOpacity: 0.28,
-          shadowRadius: 22,
-          shadowOffset: { width: 0, height: 12 },
-          elevation: 10,
+          borderWidth: 1,
+          borderColor: TINT.teal.border,
+          shadowColor: COLORS.shadow,
+          shadowOpacity: 0.45,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
         },
         cardStyle,
       ]}
@@ -93,7 +102,7 @@ export default function CalibratingFormCard({
                 fontSize: 11,
                 fontWeight: '800',
                 letterSpacing: 1.6,
-                color: 'rgba(255,255,255,0.75)',
+                color: COLORS.muted,
               }}
             >
               FORM SCORE
@@ -104,14 +113,16 @@ export default function CalibratingFormCard({
                 flexDirection: 'row',
                 alignItems: 'center',
                 alignSelf: 'flex-start',
-                backgroundColor: 'rgba(255,255,255,0.22)',
+                backgroundColor: COLORS.surfaceAlt,
+                borderWidth: 1,
+                borderColor: TINT.teal.border,
                 borderRadius: 999,
                 paddingHorizontal: 14,
                 paddingVertical: 6,
                 marginTop: 8,
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: TINT.teal.text }}>
                 {status.label}
               </Text>
               <Text style={{ fontSize: 14, marginLeft: 6 }}>{status.emoji}</Text>
@@ -126,7 +137,7 @@ export default function CalibratingFormCard({
               style={{
                 fontSize: 40,
                 fontWeight: '800',
-                color: '#FFFFFF',
+                color: TINT.teal.text,
                 lineHeight: 46,
                 marginTop: 12,
               }}
@@ -135,7 +146,7 @@ export default function CalibratingFormCard({
               style={{
                 fontSize: 12,
                 fontWeight: '600',
-                color: 'rgba(255,255,255,0.82)',
+                color: COLORS.muted,
                 marginTop: 2,
               }}
             >
@@ -150,15 +161,15 @@ export default function CalibratingFormCard({
                 fontSize: 10,
                 fontWeight: '800',
                 letterSpacing: 1,
-                color: 'rgba(255,255,255,0.7)',
+                color: COLORS.muted,
                 textAlign: 'right',
                 marginBottom: 2,
               }}
             >
               CALIBRATING
             </Text>
-            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tint="rgba(56,189,248,0.30)" />
-            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tint="rgba(248,113,113,0.30)" />
+            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tone={TINT.sky} />
+            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tone={TINT.red} />
           </View>
         </View>
 
@@ -171,7 +182,7 @@ export default function CalibratingFormCard({
               marginBottom: 6,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.ink }}>
               {logged} of {target} sessions logged
             </Text>
           </View>
@@ -179,7 +190,10 @@ export default function CalibratingFormCard({
             style={{
               height: 8,
               borderRadius: 999,
-              backgroundColor: 'rgba(255,255,255,0.25)',
+              // The unfilled track. Was a white scrim, which over a deep wash
+              // would read as brighter than the fill it is supposed to sit
+              // behind.
+              backgroundColor: COLORS.surfaceAlt,
               overflow: 'hidden',
             }}
           >
@@ -188,7 +202,7 @@ export default function CalibratingFormCard({
                 width: `${fraction * 100}%`,
                 height: '100%',
                 borderRadius: 999,
-                backgroundColor: '#FFFFFF',
+                backgroundColor: TINT.teal.text,
               }}
             />
           </View>
@@ -197,7 +211,7 @@ export default function CalibratingFormCard({
               marginTop: 10,
               fontSize: 13,
               fontWeight: '600',
-              color: 'rgba(255,255,255,0.9)',
+              color: COLORS.body,
               lineHeight: 18,
             }}
           >
@@ -216,21 +230,21 @@ function MiniStat({
   label,
   sublabel,
   value,
-  tint,
+  tone,
 }: {
   label: string
   sublabel: string
   value: number
-  tint: string
+  tone: { bg: string; border: string; text: string }
 }) {
   return (
     <View
       style={{
         width: 104,
-        backgroundColor: tint,
+        backgroundColor: tone.bg,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.22)',
+        borderColor: tone.border,
         paddingHorizontal: 12,
         paddingVertical: 10,
         marginVertical: 4,
@@ -241,16 +255,16 @@ function MiniStat({
           fontSize: 10,
           fontWeight: '800',
           letterSpacing: 1.1,
-          color: 'rgba(255,255,255,0.8)',
+          color: COLORS.muted,
         }}
       >
         {label}
       </Text>
       <CountUp
         value={value}
-        style={{ fontSize: 26, fontWeight: '800', color: '#FFFFFF', marginTop: 1 }}
+        style={{ fontSize: 26, fontWeight: '800', color: tone.text, marginTop: 1 }}
       />
-      <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.65)' }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: COLORS.subtle }}>
         {sublabel}
       </Text>
     </View>

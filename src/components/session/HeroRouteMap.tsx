@@ -12,6 +12,16 @@ const MAX_RENDERED_POINTS = 300
 
 export const HERO_HEIGHT = 240
 
+/**
+ * How far the workout title is pulled up over the bottom of the hero.
+ *
+ * Exported because the gradient scrim below has to be opaque for at least this
+ * many points, and the two numbers living in separate files is how the title
+ * ended up sitting on bare map imagery. Anything that overlaps the hero must
+ * import this rather than restating it.
+ */
+export const TITLE_OVERLAP = 24
+
 interface HeroRouteMapProps {
   coordinates: RoutePoint[]
   /** Emoji for the indoor panel, e.g. 🏃. */
@@ -68,16 +78,29 @@ function HeroRouteMap({ coordinates, sportIcon, height = HERO_HEIGHT }: HeroRout
     }))
   }, [coordinates])
 
-  const Impl = points.length >= 2 && MAPS_AVAILABLE ? getMapImpl() : null
+  // One point is enough to draw a map.
+  //
+  // This used to demand two, which quietly made "we recorded a single fix" and
+  // "we recorded nothing at all" the same case. They are not: a ten-second
+  // session on a treadmill and a ten-second session standing at the end of the
+  // driveway deserve different screens, and the second one has a perfectly good
+  // answer to *where were you*. `HeroRouteMapView` handles the framing — a lone
+  // point gets a fixed ~300 m region rather than a fit.
+  const Impl = points.length >= 1 && MAPS_AVAILABLE ? getMapImpl() : null
 
   if (!Impl) {
+    // No coordinates at all, or a build with no map available. Either way there
+    // is nothing to point a camera at, so no MapView is mounted — mounting one
+    // with nothing to frame is precisely how this screen ended up showing the
+    // whole world.
+    const mapMissing = points.length >= 1
     return (
       <IndoorHero
         height={height}
         icon={sportIcon}
-        title={points.length >= 2 ? 'Route map unavailable' : 'Indoor session'}
+        title={mapMissing ? 'Route map unavailable' : 'Indoor session'}
         subtitle={
-          points.length >= 2
+          mapMissing
             ? 'Your route was recorded and saved.'
             : 'No GPS route — your time and training load are recorded.'
         }
@@ -97,18 +120,35 @@ function HeroRouteMap({ coordinates, sportIcon, height = HERO_HEIGHT }: HeroRout
     >
       <Impl coordinates={points} height={height} />
 
-      {/* Fades the map into the page so the title below it doesn't sit on a hard
-          edge. Bottom 40%, transparent to the page ground. */}
+      {/* Fades the map into the page, and — more importantly — puts something
+          readable behind the workout title, which is pulled up over this edge by
+          {@link TITLE_OVERLAP}.
+
+          The previous ramp reached the page ground only at its very last pixel,
+          so the title was effectively sitting on live map imagery: white text
+          over whatever happened to be down there, which on a pale road or a
+          river was unreadable outdoors. This one lands on solid ground with room
+          to spare and holds it, so the overlap band is opaque rather than
+          nearly-opaque.
+
+          Bottom 60% of the hero, of which the last ~22% (≈32pt against the 24pt
+          overlap) is the page ground exactly. */}
       <LinearGradient
         pointerEvents="none"
-        colors={['transparent', 'rgba(11,18,32,0.55)', COLOR.bg]}
-        locations={[0, 0.55, 1]}
+        colors={[
+          'transparent',
+          'rgba(11,18,32,0.50)',
+          'rgba(11,18,32,0.92)',
+          COLOR.bg,
+          COLOR.bg,
+        ]}
+        locations={[0, 0.3, 0.6, 0.78, 1]}
         style={{
           position: 'absolute',
           left: 0,
           right: 0,
           bottom: 0,
-          height: height * 0.4,
+          height: height * 0.6,
         }}
       />
     </View>

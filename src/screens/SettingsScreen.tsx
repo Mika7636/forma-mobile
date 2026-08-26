@@ -322,7 +322,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -396,7 +396,7 @@ export default function SettingsScreen() {
                     marginRight: 14,
                   }}
                 >
-                  <Text style={{ color: COLORS.white, fontSize: 24, fontWeight: '800' }}>
+                  <Text style={{ color: COLORS.onAccent, fontSize: 24, fontWeight: '800' }}>
                     {initial}
                   </Text>
                 </View>
@@ -459,7 +459,7 @@ export default function SettingsScreen() {
                         borderRadius: 14,
                         borderWidth: 2,
                         borderColor: selected ? opt.accent : COLORS.border,
-                        backgroundColor: selected ? opt.accent : COLORS.white,
+                        backgroundColor: selected ? opt.accent : COLORS.surfaceAlt,
                         paddingVertical: 16,
                         alignItems: 'center',
                       }}
@@ -470,7 +470,7 @@ export default function SettingsScreen() {
                           marginTop: 6,
                           fontSize: 13,
                           fontWeight: '700',
-                          color: selected ? COLORS.white : COLORS.ink,
+                          color: selected ? COLORS.onAccent : COLORS.ink,
                         }}
                       >
                         {opt.label}
@@ -530,7 +530,7 @@ export default function SettingsScreen() {
                       borderRadius: 14,
                       borderWidth: 2,
                       borderColor: active ? COLORS.teal : COLORS.border,
-                      backgroundColor: active ? COLORS.tealSoft : COLORS.white,
+                      backgroundColor: active ? COLORS.tealSoft : COLORS.surfaceAlt,
                       padding: 14,
                       marginBottom: 10,
                     }}
@@ -609,7 +609,7 @@ export default function SettingsScreen() {
                           style={{
                             fontSize: 14,
                             fontWeight: '700',
-                            color: active ? COLORS.white : COLORS.muted,
+                            color: active ? COLORS.onAccent : COLORS.muted,
                           }}
                         >
                           {u}
@@ -712,7 +712,7 @@ export default function SettingsScreen() {
                 }}
                 style={{ paddingVertical: 12 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.danger }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.dangerText }}>
                   Clear All Training Data
                 </Text>
               </Pressable>
@@ -729,10 +729,10 @@ export default function SettingsScreen() {
                   justifyContent: 'center',
                   borderWidth: 1.5,
                   borderColor: COLORS.danger,
-                  backgroundColor: COLORS.white,
+                  backgroundColor: COLORS.surface,
                 }}
               >
-                <Text style={{ color: COLORS.danger, fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: COLORS.dangerText, fontSize: 16, fontWeight: '700' }}>
                   Log Out
                 </Text>
               </Pressable>
@@ -743,7 +743,7 @@ export default function SettingsScreen() {
                 }}
                 style={{ alignSelf: 'center', marginTop: 14, padding: 6 }}
               >
-                <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: COLORS.danger }}>
+                <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: COLORS.dangerText }}>
                   Delete Account
                 </Text>
               </Pressable>
@@ -866,7 +866,7 @@ function ConfirmTypeModal({
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(17,24,39,0.55)',
+          backgroundColor: COLORS.scrim,
           justifyContent: 'center',
           paddingHorizontal: 24,
         }}
@@ -874,7 +874,7 @@ function ConfirmTypeModal({
         <Animated.View
           entering={FadeInDown.duration(200)}
           style={{
-            backgroundColor: COLORS.white,
+            backgroundColor: COLORS.surface,
             borderRadius: 20,
             padding: 20,
           }}
@@ -883,7 +883,7 @@ function ConfirmTypeModal({
             style={{
               fontSize: 18,
               fontWeight: '800',
-              color: COLORS.danger,
+              color: COLORS.dangerText,
               textAlign: 'center',
             }}
           >
@@ -935,9 +935,9 @@ function ConfirmTypeModal({
             }}
           >
             {busy ? (
-              <ActivityIndicator color={COLORS.white} />
+              <ActivityIndicator color={COLORS.onAccent} />
             ) : (
-              <Text style={{ color: COLORS.white, fontSize: 16, fontWeight: '700' }}>
+              <Text style={{ color: COLORS.onAccent, fontSize: 16, fontWeight: '700' }}>
                 {confirmLabel}
               </Text>
             )}

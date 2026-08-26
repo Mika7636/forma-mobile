@@ -52,9 +52,9 @@ export default function PrimaryButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={COLORS.white} />
+        <ActivityIndicator color={COLORS.onAccent} />
       ) : (
-        <Text style={{ color: COLORS.white, fontSize: 17, fontWeight: '700' }}>{label}</Text>
+        <Text style={{ color: COLORS.onAccent, fontSize: 17, fontWeight: '700' }}>{label}</Text>
       )}
     </PressableScale>
   )

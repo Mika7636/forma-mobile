@@ -105,8 +105,8 @@ export default function NotificationPermissionScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top', 'bottom']}>
+      <StatusBar style="light" />
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, padding: 24, justifyContent: 'center' }}
         showsVerticalScrollIndicator={false}
@@ -189,15 +189,15 @@ export default function NotificationPermissionScreen() {
             <Animated.View
               entering={FadeInDown.duration(200)}
               style={{
-                backgroundColor: '#FFFBEB',
+                backgroundColor: COLORS.warningSoft,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: '#FCD34D',
+                borderColor: COLORS.warningBorder,
                 padding: 14,
                 marginBottom: 16,
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#B45309' }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.warningDeep }}>
                 Notifications are blocked
               </Text>
               <Text
@@ -214,12 +214,12 @@ export default function NotificationPermissionScreen() {
                   borderRadius: 10,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: COLORS.white,
+                  backgroundColor: COLORS.surface,
                   borderWidth: 1.5,
-                  borderColor: '#FCD34D',
+                  borderColor: COLORS.warningBorder,
                 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#B45309' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.warningDeep }}>
                   Open System Settings
                 </Text>
               </Pressable>

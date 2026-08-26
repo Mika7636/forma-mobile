@@ -124,10 +124,10 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const sessionsLabel = `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} this week`
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.fieldBg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
       {/* The header sits on the light page background, not on the hero gradient,
           so dark status-bar content is what stays legible here. */}
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
@@ -174,7 +174,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
               elevation: 6,
             }}
           >
-            <Text style={{ fontSize: 26, fontWeight: '700', color: COLORS.white, marginTop: -3 }}>
+            <Text style={{ fontSize: 26, fontWeight: '700', color: COLORS.onAccent, marginTop: -3 }}>
               +
             </Text>
           </PressableScale>

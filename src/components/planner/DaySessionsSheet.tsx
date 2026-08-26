@@ -62,7 +62,7 @@ export default function DaySessionsSheet({
       <Animated.View
         entering={FadeIn.duration(160)}
         exiting={FadeOut.duration(140)}
-        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(17,24,39,0.45)' }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.scrim }]}
       >
         <Pressable onPress={onClose} style={{ flex: 1 }} accessibilityLabel="Close day" />
       </Animated.View>
@@ -76,7 +76,7 @@ export default function DaySessionsSheet({
           right: 0,
           bottom: 0,
           maxHeight: '72%',
-          backgroundColor: COLORS.white,
+          backgroundColor: COLORS.surface,
           borderTopLeftRadius: 22,
           borderTopRightRadius: 22,
           paddingTop: 12,

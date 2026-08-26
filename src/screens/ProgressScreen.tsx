@@ -55,7 +55,7 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <ScrollView
         contentContainerStyle={{ padding: SPACING.base, paddingBottom: 40, gap: SPACING.base }}
         showsVerticalScrollIndicator={false}
@@ -108,7 +108,7 @@ function ProgressLockedGuard({
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
         <EmptyState
           emoji="📈"

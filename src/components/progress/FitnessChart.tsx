@@ -15,11 +15,12 @@ import ChartCard from './ChartCard'
 import { formatCompact, niceScale, smoothPath, type Point } from './chartUtils'
 import { COLORS } from '../../constants/theme'
 import type { DailyPoint } from '../../utils/progressMetrics'
+import { PALETTE } from '../../theme/tokens'
 
 // The one place the Fitness/Fatigue/Form colour language is defined. Blue reads
 // as "building capacity", red as "cost/fatigue", teal is FORMA's own Form brand.
-const CTL_COLOR = '#2563EB'
-const ATL_COLOR = '#DC2626'
+const CTL_COLOR = PALETTE.sky
+const ATL_COLOR = PALETTE.red
 const FORM_COLOR = COLORS.teal
 
 const PLOT_H = 232
@@ -171,7 +172,7 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
                 x={PAD_L - 6}
                 y={y + 3}
                 fontSize={9}
-                fill={COLORS.subtle}
+                fill={COLORS.muted}
                 textAnchor="end"
               >
                 {formatCompact(t)}
@@ -210,7 +211,7 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
             x={l.x}
             y={PLOT_H - 8}
             fontSize={9}
-            fill={COLORS.subtle}
+            fill={COLORS.muted}
             textAnchor="middle"
           >
             {l.label}
@@ -228,9 +229,9 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
               stroke={COLORS.subtle}
               strokeWidth={1}
             />
-            <Circle cx={geom.xAt(active)} cy={geom.ctlPts[active].y} r={4} fill={CTL_COLOR} stroke={COLORS.white} strokeWidth={1.5} />
-            <Circle cx={geom.xAt(active)} cy={geom.atlPts[active].y} r={4} fill={ATL_COLOR} stroke={COLORS.white} strokeWidth={1.5} />
-            <Circle cx={geom.xAt(active)} cy={geom.formPts[active].y} r={4} fill={FORM_COLOR} stroke={COLORS.white} strokeWidth={1.5} />
+            <Circle cx={geom.xAt(active)} cy={geom.ctlPts[active].y} r={4} fill={CTL_COLOR} stroke={COLORS.surface} strokeWidth={1.5} />
+            <Circle cx={geom.xAt(active)} cy={geom.atlPts[active].y} r={4} fill={ATL_COLOR} stroke={COLORS.surface} strokeWidth={1.5} />
+            <Circle cx={geom.xAt(active)} cy={geom.formPts[active].y} r={4} fill={FORM_COLOR} stroke={COLORS.surface} strokeWidth={1.5} />
           </G>
         ) : null}
 
@@ -256,13 +257,19 @@ function Tooltip({ point, x, width }: { point: DailyPoint; x: number; width: num
         top: 4,
         left,
         width: BUBBLE_W,
-        backgroundColor: COLORS.ink,
+        // A raised dark surface with a hairline, not the near-black slab this
+        // was. `COLORS.ink` used to be #111827 and made a perfectly good
+        // tooltip; it is now the *lightest* colour in the palette, so this
+        // rendered as a white card with white body copy on it.
+        backgroundColor: COLORS.surfaceAlt,
+        borderWidth: 1,
+        borderColor: COLORS.border,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 10,
       }}
     >
-      <Text style={{ color: COLORS.white, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>
+      <Text style={{ color: COLORS.ink, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>
         {point.fullDate}
       </Text>
       <TipRow color={CTL_COLOR} label="Fitness" value={point.ctl} />
@@ -286,8 +293,8 @@ function TipRow({
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1 }}>
       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, marginRight: 6 }} />
-      <Text style={{ color: '#D1D5DB', fontSize: 11, flex: 1 }}>{label}</Text>
-      <Text style={{ color: COLORS.white, fontSize: 11, fontWeight: '700' }}>
+      <Text style={{ color: COLORS.body, fontSize: 11, flex: 1 }}>{label}</Text>
+      <Text style={{ color: COLORS.ink, fontSize: 11, fontWeight: '700' }}>
         {signed && value > 0 ? '+' : ''}
         {value}
       </Text>

@@ -21,6 +21,10 @@ interface ErrorBoundaryProps {
   /** Tag used in the console log, so crashes are attributable in logcat. */
   name?: string
   /** Dark surfaces (the live tracker) need light text. */
+  /**
+   * @deprecated No longer selects anything — the app has a single dark theme.
+   * Retained so existing call sites keep compiling.
+   */
   theme?: 'light' | 'dark'
 }
 
@@ -75,21 +79,29 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
       theme = 'light',
     } = this.props
 
-    const dark = theme === 'dark'
-    const bg = dark ? COLORS.ink : COLORS.pageBg
-    const cardBg = dark ? '#1f2937' : COLORS.white
-    const titleColor = dark ? COLORS.white : COLORS.ink
-    const bodyColor = dark ? COLORS.subtle : COLORS.muted
+    // There used to be a light and a dark rendering of this card, because
+    // LogScreen's live-tracking flow was dark while every other screen was
+    // light. The app is one dark theme now, so the fork is gone and both
+    // callers get the same card. `theme` is kept on the props purely so the
+    // existing call sites keep compiling; it no longer selects anything.
+    void theme
 
     return (
-      <View style={{ flex: 1, backgroundColor: bg, justifyContent: 'center', padding: SPACING.lg }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: COLORS.pageBg,
+          justifyContent: 'center',
+          padding: SPACING.lg,
+        }}
+      >
         <View
           style={{
-            backgroundColor: cardBg,
+            backgroundColor: COLORS.surface,
             borderRadius: RADIUS.card,
             padding: SPACING.lg,
             borderWidth: 1,
-            borderColor: dark ? '#374151' : COLORS.border,
+            borderColor: COLORS.border,
           }}
         >
           <Text style={{ fontSize: 32, textAlign: 'center' }}>⚠️</Text>
@@ -98,7 +110,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
               marginTop: SPACING.md,
               fontSize: TYPE.title,
               fontWeight: WEIGHT.heavy,
-              color: titleColor,
+              color: COLORS.ink,
               textAlign: 'center',
             }}
           >
@@ -108,7 +120,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             style={{
               marginTop: SPACING.sm,
               fontSize: TYPE.body,
-              color: bodyColor,
+              color: COLORS.muted,
               textAlign: 'center',
               lineHeight: 20,
             }}
@@ -122,7 +134,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             <Text
               style={{
                 fontSize: TYPE.caption,
-                color: dark ? COLORS.muted : COLORS.subtle,
+                color: COLORS.subtle,
                 textAlign: 'center',
               }}
             >
@@ -141,7 +153,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: COLORS.white, fontSize: TYPE.subtitle, fontWeight: WEIGHT.heavy }}>
+            <Text style={{ color: COLORS.onAccent, fontSize: TYPE.subtitle, fontWeight: WEIGHT.heavy }}>
               {retryLabel}
             </Text>
           </Pressable>

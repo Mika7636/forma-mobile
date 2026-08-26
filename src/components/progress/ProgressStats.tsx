@@ -5,8 +5,8 @@ import { COLORS } from '../../constants/theme'
 import { formatThousands } from '../../utils/formatting'
 import type { ProgressStatsData } from '../../utils/progressMetrics'
 
-const TREND_UP = '#16a34a'
-const TREND_DOWN = '#dc2626'
+const TREND_UP = COLORS.teal
+const TREND_DOWN = COLORS.danger
 
 interface ProgressStatsProps {
   stats: ProgressStatsData
@@ -92,12 +92,12 @@ function StatCard({
       style={{
         flexBasis: '30%',
         flexGrow: 1,
-        backgroundColor: COLORS.white,
+        backgroundColor: COLORS.surface,
         borderRadius: 16,
         padding: 14,
         borderWidth: 1,
         borderColor: COLORS.border,
-        shadowColor: '#000',
+        shadowColor: COLORS.shadow,
         shadowOpacity: 0.05,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },

@@ -37,6 +37,7 @@ import { CALIBRATION_SESSION_TARGET } from '../../utils/calibration'
 import { SPORT_META } from '../../utils/sportMeta'
 import { formatDistanceKm } from '../../utils/formatting'
 import type { Session, SportType } from '../../types/session'
+import { COLOR } from '../../theme/tokens'
 
 const SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.9)
 const DISMISS_THRESHOLD = 120
@@ -52,9 +53,9 @@ interface SessionDetailModalProps {
 }
 
 function rpeColor(rpe: number): string {
-  if (rpe <= 3) return '#22c55e'
-  if (rpe <= 7) return '#f59e0b'
-  return '#ef4444'
+  if (rpe <= 3) return COLOR.accent
+  if (rpe <= 7) return COLOR.warn
+  return COLOR.danger
 }
 
 /**
@@ -267,7 +268,7 @@ export default function SessionDetailModal({
       {/* Dim backdrop — tap to dismiss. */}
       <Pressable
         onPress={onClose}
-        style={{ flex: 1, backgroundColor: 'rgba(17,24,39,0.55)' }}
+        style={{ flex: 1, backgroundColor: COLORS.scrim }}
       />
 
       <Animated.View
@@ -277,7 +278,7 @@ export default function SessionDetailModal({
           right: 0,
           bottom: 0,
           height: SHEET_HEIGHT,
-          backgroundColor: COLORS.white,
+          backgroundColor: COLORS.surface,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           transform: [{ translateY }],
@@ -518,13 +519,13 @@ function ViewMode({
             justifyContent: 'center',
             borderWidth: 1.5,
             borderColor: COLORS.danger,
-            backgroundColor: COLORS.white,
+            backgroundColor: COLORS.surface,
           }}
         >
           {deleting ? (
-            <ActivityIndicator color={COLORS.danger} />
+            <ActivityIndicator color={COLORS.dangerText} />
           ) : (
-            <Text style={{ color: COLORS.danger, fontSize: 16, fontWeight: '700' }}>Delete</Text>
+            <Text style={{ color: COLORS.dangerText, fontSize: 16, fontWeight: '700' }}>Delete</Text>
           )}
         </Pressable>
       </View>
@@ -551,7 +552,7 @@ function StatTile({
     <View
       style={{
         width: '48%',
-        backgroundColor: COLORS.white,
+        backgroundColor: COLORS.surface,
         borderRadius: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
@@ -584,7 +585,7 @@ function StatTile({
               paddingVertical: 2,
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.white }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.onAccent }}>
               {badge.text}
             </Text>
           </View>
@@ -675,7 +676,7 @@ function EditMode({
                 borderRadius: 14,
                 borderWidth: 2,
                 borderColor: selected ? opt?.accent ?? COLORS.teal : COLORS.border,
-                backgroundColor: selected ? opt?.accent ?? COLORS.teal : COLORS.white,
+                backgroundColor: selected ? opt?.accent ?? COLORS.teal : COLORS.surfaceAlt,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginRight: 10,
@@ -688,7 +689,7 @@ function EditMode({
                   fontSize: 12,
                   fontWeight: '700',
                   textAlign: 'center',
-                  color: selected ? COLORS.white : COLORS.ink,
+                  color: selected ? COLORS.onAccent : COLORS.ink,
                 }}
                 numberOfLines={1}
               >
@@ -918,7 +919,7 @@ function EditMode({
             justifyContent: 'center',
             borderWidth: 1.5,
             borderColor: COLORS.border,
-            backgroundColor: COLORS.white,
+            backgroundColor: COLORS.surface,
           }}
         >
           <Text style={{ color: COLORS.muted, fontSize: 16, fontWeight: '700' }}>Cancel</Text>

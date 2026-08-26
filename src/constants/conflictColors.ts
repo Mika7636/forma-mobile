@@ -3,21 +3,31 @@
 // conflict history, settings). Never hardcode a conflict red/amber elsewhere;
 // import from here so the whole "coach" experience stays visually consistent and
 // colour-blind safe (every colour is always paired with an icon + text).
+import { COLORS } from './theme'
+import { PALETTE } from '../theme/tokens'
 import type { Conflict } from '../types/conflict'
 
 export type ConflictSeverity = 'warning' | 'danger'
 
 export interface SeverityStyle {
   severity: ConflictSeverity
-  /** Primary solid colour — icons, borders, accents. */
+  /** Primary solid colour — icons, left rails, dots, borders. */
   solid: string
-  /** Darker shade for gradient tops and deep accents. */
+  /**
+   * The severity as *type*, printed on {@link softBg}.
+   *
+   * On the light theme this was a darker shade of `solid` (amber → `#B45309`).
+   * On dark it has to go the other way: `softBg` is now a dark tint, so legible
+   * type on it is a *lighter* amber. The name is kept because every call site
+   * already says `style.deep` and they all mean the same thing — "the readable
+   * one" — but it is no longer literally deeper.
+   */
   deep: string
-  /** Very light background tint for cards/rows. */
+  /** Background tint for cards/rows. A dark tint, one step off the surface. */
   softBg: string
-  /** Mid-light border tint that reads against the soft background. */
+  /** Border tint that reads against the soft background. */
   softBorder: string
-  /** Two-stop gradient [deep → solid] for filled banners. */
+  /** Two-stop gradient for filled banners. */
   gradient: readonly [string, string]
   /** Emoji carrying the meaning alongside the colour. */
   icon: string
@@ -28,21 +38,21 @@ export interface SeverityStyle {
 export const CONFLICT_SEVERITY: Record<ConflictSeverity, SeverityStyle> = {
   warning: {
     severity: 'warning',
-    solid: '#F59E0B',
-    deep: '#B45309',
-    softBg: '#FFFBEB',
-    softBorder: '#FCD34D',
-    gradient: ['#B45309', '#F59E0B'],
+    solid: COLORS.warning,
+    deep: COLORS.warningDeep,
+    softBg: COLORS.warningSoft,
+    softBorder: COLORS.warningBorder,
+    gradient: [COLORS.warningSoft, COLORS.warningBorder],
     icon: '⚠️',
     title: 'Training Conflict',
   },
   danger: {
     severity: 'danger',
-    solid: '#DC2626',
-    deep: '#7F1D1D',
-    softBg: '#FEF2F2',
-    softBorder: '#FCA5A5',
-    gradient: ['#7F1D1D', '#DC2626'],
+    solid: COLORS.danger,
+    deep: COLORS.dangerDeep,
+    softBg: COLORS.dangerSoft,
+    softBorder: COLORS.dangerBorder,
+    gradient: [COLORS.dangerSoft, COLORS.dangerBorder],
     icon: '🚨',
     title: 'High Injury Risk',
   },
@@ -73,8 +83,8 @@ export interface InteractionLevel {
 }
 
 export const INTERACTION_LEVELS: InteractionLevel[] = [
-  { value: 0, label: 'None', color: '#9CA3AF', hint: "These sports don't interfere." },
-  { value: 1, label: 'Low', color: '#22C55E', hint: 'Minor overlap — no warnings.' },
+  { value: 0, label: 'None', color: PALETTE.slate, hint: "These sports don't interfere." },
+  { value: 1, label: 'Low', color: PALETTE.green, hint: 'Minor overlap — no warnings.' },
   { value: 2, label: 'Medium', color: CONFLICT_SEVERITY.warning.solid, hint: 'Moderate fatigue overlap.' },
   { value: 3, label: 'High', color: CONFLICT_SEVERITY.danger.solid, hint: 'Significant conflict risk.' },
 ]

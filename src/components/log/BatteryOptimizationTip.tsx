@@ -28,6 +28,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { COLORS } from '../../constants/theme'
 import { haptics } from '../../utils/haptics'
 import { openBatteryOptimizationSettings } from '../../utils/systemSettings'
+import { COLOR } from '../../theme/tokens'
 
 const STORAGE_KEY = 'forma.tip.batteryOptimization.dismissed'
 
@@ -71,10 +72,10 @@ export default function BatteryOptimizationTip() {
         marginTop: 16,
         flexDirection: 'row',
         alignItems: 'flex-start',
-        backgroundColor: '#1f2937',
+        backgroundColor: COLOR.surfaceAlt,
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: '#374151',
+        borderColor: COLOR.border,
         paddingVertical: 12,
         paddingLeft: 14,
         paddingRight: 8,
@@ -91,7 +92,7 @@ export default function BatteryOptimizationTip() {
         style={{ flex: 1 }}
         hitSlop={6}
       >
-        <Text style={{ color: COLORS.white, fontSize: 13, fontWeight: '700' }}>
+        <Text style={{ color: COLORS.onAccent, fontSize: 13, fontWeight: '700' }}>
           🔋 Samsung and some other phones stop background tracking
         </Text>
         <Text style={{ marginTop: 4, color: COLORS.subtle, fontSize: 12, lineHeight: 17 }}>

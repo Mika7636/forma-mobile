@@ -7,6 +7,7 @@ import { COLORS } from '../../constants/theme'
 import { isValidCoordinate } from '../../utils/geo'
 import type { MapRegion } from '../../utils/maps'
 import type { RoutePoint } from '../../types/session'
+import { COLOR } from '../../theme/tokens'
 
 interface RouteMapViewProps {
   /** Already validated and decimated by {@link RouteMap}. Never empty. */
@@ -108,10 +109,10 @@ export default function RouteMapView({
           <Polyline coordinates={points} strokeColor={COLORS.teal} strokeWidth={3} />
         ) : null}
         {showMarkers && first ? (
-          <Marker coordinate={first} title="Start" pinColor="#22c55e" />
+          <Marker coordinate={first} title="Start" pinColor={COLOR.accent} />
         ) : null}
         {showMarkers && last && points.length > 1 ? (
-          <Marker coordinate={last} title="Finish" pinColor="#ef4444" />
+          <Marker coordinate={last} title="Finish" pinColor={COLOR.danger} />
         ) : null}
       </MapView>
 

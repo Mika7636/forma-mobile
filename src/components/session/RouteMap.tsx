@@ -4,6 +4,7 @@ import { COLORS, RADIUS, SPACING, TYPE } from '../../constants/theme'
 import { decimateRoute, isValidCoordinate } from '../../utils/geo'
 import { MAPS_AVAILABLE, MAPS_UNAVAILABLE_REASON, type MapRegion } from '../../utils/maps'
 import type { RoutePoint } from '../../types/session'
+import { COLOR } from '../../theme/tokens'
 
 /**
  * Ceiling on how many points are handed to the native Polyline. A phone screen
@@ -13,8 +14,8 @@ import type { RoutePoint } from '../../types/session'
 const MAX_RENDERED_POINTS = 300
 
 /** The live tracker's card surface + hairline, so placeholders sit in with it. */
-const DARK_SURFACE = '#1F2937'
-const DARK_BORDER = '#374151'
+const DARK_SURFACE = COLOR.surfaceAlt
+const DARK_BORDER = COLOR.border
 
 interface RouteMapProps {
   coordinates: RoutePoint[]
@@ -170,7 +171,7 @@ function MapPlaceholder({
       <Text
         style={{
           fontSize: TYPE.small,
-          color: dark ? COLORS.white : COLORS.muted,
+          color: dark ? COLORS.ink : COLORS.muted,
           fontWeight: '600',
           textAlign: 'center',
         }}

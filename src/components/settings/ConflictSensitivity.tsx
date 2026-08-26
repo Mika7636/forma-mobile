@@ -55,7 +55,7 @@ export default function ConflictSensitivity({ value, onChange }: ConflictSensiti
               borderRadius: 14,
               borderWidth: 2,
               borderColor: active ? COLORS.teal : COLORS.border,
-              backgroundColor: active ? COLORS.tealSoft : COLORS.white,
+              backgroundColor: active ? COLORS.tealSoft : COLORS.surfaceAlt,
               padding: 14,
               marginBottom: 10,
             }}

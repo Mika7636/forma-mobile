@@ -19,7 +19,15 @@ import { configureNotificationHandler } from './src/services/notificationService
 
 // Importing firebase.ts initializes the Firebase app on startup. Log the
 // Firestore instance's project id to confirm it wired up without errors.
-console.log('[FORMA] Firebase initialized — Firestore project:', db.app.options.projectId)
+console.log(
+  '[FORMA] Firebase initialized — Firestore project:',
+  db.app.options.projectId,
+  '· local cache:',
+  // Which cache Firestore actually got. Worth a line in the log: it decides
+  // whether an offline profile read can be served from Firestore at all, and on
+  // React Native the answer is "no" — see src/config/firebase.ts.
+  typeof globalThis.indexedDB !== 'undefined' ? 'persistent' : 'memory (AsyncStorage mirror in use)',
+)
 
 // Must run before any notification can arrive, so it's at module scope rather
 // than in an effect: this is what makes a notification visible while FORMA is
@@ -100,7 +108,7 @@ export default function App() {
 
         {/* Per-screen <StatusBar> components override this; it's the default for
             anything that doesn't declare one. */}
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

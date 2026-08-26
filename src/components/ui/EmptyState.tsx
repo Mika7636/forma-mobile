@@ -62,7 +62,7 @@ export default function EmptyState({
         quiet
           ? null
           : {
-              backgroundColor: COLORS.white,
+              backgroundColor: COLORS.surface,
               borderRadius: RADIUS.xl,
               borderWidth: 1,
               borderColor: COLORS.border,

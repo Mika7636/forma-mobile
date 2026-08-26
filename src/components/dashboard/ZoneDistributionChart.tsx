@@ -167,12 +167,12 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
 }
 
 const card = {
-  backgroundColor: COLORS.white,
+  backgroundColor: COLORS.surface,
   borderRadius: 16,
   borderWidth: 1,
   borderColor: COLORS.border,
   padding: 16,
-  shadowColor: '#000',
+  shadowColor: COLORS.shadow,
   shadowOpacity: 0.05,
   shadowRadius: 8,
   shadowOffset: { width: 0, height: 3 },

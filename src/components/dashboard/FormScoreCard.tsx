@@ -12,26 +12,78 @@ import Animated, {
 import CountUp from './CountUp'
 import FormInfoModal from './FormInfoModal'
 import { getFormStatus } from '../../algorithms/formScore'
+import { COLORS } from '../../constants/theme'
+import { TINT } from '../../theme/tokens'
 
 interface HeroStyle {
-  /** Two-stop gradient, tuned to the form state. */
+  /** Two-stop gradient across the card's tinted surface. Deep, not saturated. */
   gradient: readonly [string, string]
+  /** The hue as type: the score itself, and the status pill's label. */
+  ink: string
+  /** Hairline around the card, and the pill's border. */
+  border: string
   /** Emoji shown in the status pill. */
   emoji: string
   /** Animated sheen overlay — the Peaked state only. */
   shimmer?: boolean
 }
 
-// Keyed by the colour name getFormStatus() returns, so the thresholds live in
-// the algorithm and this file only decides how each state *looks*. Matches the
-// web app's dashboard hero.
+/**
+ * How each form state looks.
+ *
+ * Keyed by the colour name `getFormStatus()` returns, so the thresholds live in
+ * the algorithm and this file only decides how each state *looks*.
+ *
+ * ## Tinted surfaces, not saturated fills
+ *
+ * This card used to be a bold gradient block — `#15803d → #22c55e` for a healthy
+ * form — with white text on it. That was designed against a white page, where a
+ * saturated card is the natural way to make a hero stand out. On the dark theme
+ * it inverts: the card became the single brightest object on the screen, glaring
+ * out of a dark dashboard, and its white-on-green numerals sat at about 2.6:1.
+ *
+ * So each state is now a *deep* wash of its hue, with the hue returning as the
+ * numerals — the score is the brightest thing on the card, which is what a
+ * dashboard hero is actually for. See `tokens.tint`.
+ */
 const HERO_STYLES: Record<string, HeroStyle> = {
-  red: { gradient: ['#7f1d1d', '#991b1b'], emoji: '🥵' },
-  orange: { gradient: ['#7c2d12', '#c2410c'], emoji: '🔥' },
-  yellow: { gradient: ['#a16207', '#d97706'], emoji: '📈' },
-  lightgreen: { gradient: ['#0f766e', '#14b8a6'], emoji: '⚖️' },
-  green: { gradient: ['#15803d', '#22c55e'], emoji: '⚡' },
-  brightgreen: { gradient: ['#16a34a', '#4ade80'], emoji: '🚀', shimmer: true },
+  red: {
+    gradient: [TINT.red.bg, COLORS.surface],
+    ink: TINT.red.text,
+    border: TINT.red.border,
+    emoji: '🥵',
+  },
+  orange: {
+    gradient: [TINT.orange.bg, COLORS.surface],
+    ink: TINT.orange.text,
+    border: TINT.orange.border,
+    emoji: '🔥',
+  },
+  yellow: {
+    gradient: [TINT.amber.bg, COLORS.surface],
+    ink: TINT.amber.text,
+    border: TINT.amber.border,
+    emoji: '📈',
+  },
+  lightgreen: {
+    gradient: [TINT.teal.bg, COLORS.surface],
+    ink: TINT.teal.text,
+    border: TINT.teal.border,
+    emoji: '⚖️',
+  },
+  green: {
+    gradient: [TINT.green.bg, COLORS.surface],
+    ink: TINT.green.text,
+    border: TINT.green.border,
+    emoji: '⚡',
+  },
+  brightgreen: {
+    gradient: [TINT.green.bg, COLORS.surface],
+    ink: TINT.green.text,
+    border: TINT.green.border,
+    emoji: '🚀',
+    shimmer: true,
+  },
 }
 
 interface FormScoreCardProps {
@@ -41,8 +93,8 @@ interface FormScoreCardProps {
 }
 
 /**
- * The dashboard's hero. A bold gradient card whose colour and mood track the
- * athlete's current Form (CTL − ATL), with fitness/fatigue readouts alongside.
+ * The dashboard's hero. A tinted card whose hue and mood track the athlete's
+ * current Form (CTL − ATL), with fitness/fatigue readouts alongside.
  */
 export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
   const { status, message, color } = getFormStatus(form)
@@ -76,11 +128,16 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
         {
           borderRadius: 24,
           overflow: 'hidden',
-          shadowColor: '#000',
-          shadowOpacity: 0.28,
-          shadowRadius: 22,
-          shadowOffset: { width: 0, height: 12 },
-          elevation: 10,
+          // The hairline is what separates this card from the page now. On dark
+          // a drop shadow has almost nothing to fall on, so it is kept mainly
+          // for Android's elevation ordering rather than for visible depth.
+          borderWidth: 1,
+          borderColor: style.border,
+          shadowColor: COLORS.shadow,
+          shadowOpacity: 0.45,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
         },
         cardStyle,
       ]}
@@ -101,7 +158,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 bottom: -40,
                 width: 70,
                 left: -70,
-                backgroundColor: 'rgba(255,255,255,0.22)',
+                backgroundColor: 'rgba(74,222,128,0.10)',
               },
               sheenStyle,
             ]}
@@ -125,7 +182,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 fontSize: 11,
                 fontWeight: '800',
                 letterSpacing: 1.6,
-                color: 'rgba(255,255,255,0.75)',
+                color: COLORS.muted,
               }}
             >
               FORM SCORE
@@ -141,7 +198,9 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
               style={{
                 fontSize: 64,
                 fontWeight: '800',
-                color: '#FFFFFF',
+                // The hue, as the numerals. This is the accent-coloured figure
+                // the tinted surface exists to carry.
+                color: style.ink,
                 lineHeight: 70,
                 marginTop: 2,
               }}
@@ -152,14 +211,16 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 flexDirection: 'row',
                 alignItems: 'center',
                 alignSelf: 'flex-start',
-                backgroundColor: 'rgba(255,255,255,0.22)',
+                backgroundColor: COLORS.surfaceAlt,
+                borderWidth: 1,
+                borderColor: style.border,
                 borderRadius: 999,
                 paddingHorizontal: 14,
                 paddingVertical: 6,
                 marginTop: 10,
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: style.ink }}>
                 {status}
               </Text>
               <Text style={{ fontSize: 14, marginLeft: 6 }}>{style.emoji}</Text>
@@ -170,7 +231,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 marginTop: 10,
                 fontSize: 13,
                 fontWeight: '600',
-                color: 'rgba(255,255,255,0.88)',
+                color: COLORS.body,
                 lineHeight: 18,
               }}
             >
@@ -180,8 +241,8 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
 
           {/* Right: stacked fitness / fatigue mini-cards. */}
           <View style={{ marginLeft: 14, justifyContent: 'center' }}>
-            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tint="rgba(56,189,248,0.30)" />
-            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tint="rgba(248,113,113,0.30)" />
+            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tone={TINT.sky} />
+            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tone={TINT.red} />
           </View>
         </View>
       </LinearGradient>
@@ -191,25 +252,33 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
   )
 }
 
+/**
+ * A fitness/fatigue readout.
+ *
+ * Took a translucent white `tint` before, which only works over a saturated
+ * fill — over a deep wash it turns into an indistinct grey smear. It now takes a
+ * whole tint tone and builds an opaque tile from it, so the two stats stay
+ * legible and stay visibly *different from each other*.
+ */
 function MiniStat({
   label,
   sublabel,
   value,
-  tint,
+  tone,
 }: {
   label: string
   sublabel: string
   value: number
-  tint: string
+  tone: { bg: string; border: string; text: string }
 }) {
   return (
     <View
       style={{
         width: 104,
-        backgroundColor: tint,
+        backgroundColor: tone.bg,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.22)',
+        borderColor: tone.border,
         paddingHorizontal: 12,
         paddingVertical: 10,
         marginVertical: 4,
@@ -220,16 +289,16 @@ function MiniStat({
           fontSize: 10,
           fontWeight: '800',
           letterSpacing: 1.1,
-          color: 'rgba(255,255,255,0.8)',
+          color: COLORS.muted,
         }}
       >
         {label}
       </Text>
       <CountUp
         value={value}
-        style={{ fontSize: 26, fontWeight: '800', color: '#FFFFFF', marginTop: 1 }}
+        style={{ fontSize: 26, fontWeight: '800', color: tone.text, marginTop: 1 }}
       />
-      <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.65)' }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: COLORS.subtle }}>
         {sublabel}
       </Text>
     </View>

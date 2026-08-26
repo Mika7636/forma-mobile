@@ -17,12 +17,22 @@
  * ready screen), so the colour language is identical on both sides of Start.
  */
 import { Text, View } from 'react-native'
+import { COLOR, TINT } from '../../theme/tokens'
 import type { GpsQuality } from '../../store/liveTrackingStore'
 
-const DOT_GREEN = '#22c55e'
-const DOT_AMBER = '#f59e0b'
-const DOT_RED = '#ef4444'
-const DOT_GREY = '#9ca3af'
+const DOT_GREEN = COLOR.accent
+const DOT_AMBER = COLOR.warn
+const DOT_RED = COLOR.danger
+const DOT_GREY = COLOR.textMuted
+
+// The chip's *type* colours. Deliberately a tint lighter than the dot beside
+// them: the dot is the signal and the words are the caption, and a saturated
+// accent at 12pt on a dark ground vibrates. These are the accent, warn and
+// danger hues lifted toward the page's text colour until they read as calm
+// labels rather than as alerts — all above 7:1 on `surfaceAlt`.
+const LIGHT_ACCENT = TINT.green.text
+const LIGHT_WARN = TINT.amber.text
+const LIGHT_DANGER = TINT.red.text
 
 interface Appearance {
   dot: string
@@ -32,18 +42,18 @@ interface Appearance {
 }
 
 const TRACKING: Record<GpsQuality, Appearance> = {
-  acquiring: { dot: DOT_GREY, label: 'GPS searching', text: '#9ca3af' },
-  good: { dot: DOT_GREEN, label: 'GPS good', text: '#86efac' },
-  weak: { dot: DOT_AMBER, label: 'GPS weak', text: '#fcd34d' },
-  lost: { dot: DOT_RED, label: 'GPS lost', text: '#fca5a5' },
+  acquiring: { dot: DOT_GREY, label: 'GPS searching', text: COLOR.textMuted },
+  good: { dot: DOT_GREEN, label: 'GPS good', text: LIGHT_ACCENT },
+  weak: { dot: DOT_AMBER, label: 'GPS weak', text: LIGHT_WARN },
+  lost: { dot: DOT_RED, label: 'GPS lost', text: LIGHT_DANGER },
 }
 
 /** Pre-start wording: the question there is "can I go yet?", not "is it right?". */
 const WARMUP: Record<GpsQuality, Appearance> = {
-  acquiring: { dot: DOT_GREY, label: 'Finding GPS…', text: '#9ca3af' },
-  good: { dot: DOT_GREEN, label: 'GPS ready', text: '#86efac' },
-  weak: { dot: DOT_AMBER, label: 'GPS weak', text: '#fcd34d' },
-  lost: { dot: DOT_RED, label: 'No GPS signal', text: '#fca5a5' },
+  acquiring: { dot: DOT_GREY, label: 'Finding GPS…', text: COLOR.textMuted },
+  good: { dot: DOT_GREEN, label: 'GPS ready', text: LIGHT_ACCENT },
+  weak: { dot: DOT_AMBER, label: 'GPS weak', text: LIGHT_WARN },
+  lost: { dot: DOT_RED, label: 'No GPS signal', text: LIGHT_DANGER },
 }
 
 export default function GpsChip({
@@ -67,7 +77,7 @@ export default function GpsChip({
         paddingVertical: 4,
         paddingHorizontal: 10,
         borderRadius: 999,
-        backgroundColor: '#1f2937',
+        backgroundColor: COLOR.surfaceAlt,
       }}
     >
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot }} />

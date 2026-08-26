@@ -53,7 +53,7 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       {/* Header */}
       <View
@@ -94,7 +94,7 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
                 borderRadius: 999,
                 paddingVertical: 9,
                 alignItems: 'center',
-                backgroundColor: active ? COLORS.teal : COLORS.white,
+                backgroundColor: active ? COLORS.teal : COLORS.surfaceAlt,
                 borderWidth: 1,
                 borderColor: active ? COLORS.teal : COLORS.border,
               }}
@@ -103,7 +103,7 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
                 style={{
                   fontSize: 13,
                   fontWeight: '700',
-                  color: active ? COLORS.white : COLORS.body,
+                  color: active ? COLORS.onAccent : COLORS.body,
                 }}
               >
                 {f.label} {counts[f.value] > 0 ? `(${counts[f.value]})` : ''}
@@ -193,7 +193,7 @@ function HistoryCard({
     <Pressable
       onPress={onPress}
       style={{
-        backgroundColor: COLORS.white,
+        backgroundColor: COLORS.surface,
         borderRadius: 16,
         borderWidth: 1,
         borderColor: COLORS.border,

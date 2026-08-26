@@ -1,5 +1,6 @@
 import type { SportType } from '../types/session'
 import type { ConflictSensitivity, ExperienceLevel } from '../types/user'
+import { PALETTE } from '../theme/tokens'
 
 export interface SportOption {
   value: SportType
@@ -11,13 +12,18 @@ export interface SportOption {
 
 // Selection-UI accents for the sport cards (onboarding + settings).
 export const SPORT_OPTIONS: SportOption[] = [
-  { value: 'running', label: 'Running', icon: '🏃', accent: '#22c55e' },
-  { value: 'swimming', label: 'Swimming', icon: '🏊', accent: '#0ea5e9' },
-  { value: 'combat', label: 'Combat Sports', icon: '🥊', accent: '#ef4444' },
-  { value: 'football', label: 'Football', icon: '⚽', accent: '#f59e0b' },
-  { value: 'cycling', label: 'Cycling', icon: '🚴', accent: '#8b5cf6' },
-  { value: 'gym', label: 'Gym / Strength', icon: '💪', accent: '#6b7280' },
-  { value: 'strength', label: 'Strength Training', icon: '🏋️', accent: '#b45309' },
+  // Accents come from the categorical palette, and the assignment is shared
+  // verbatim with `utils/sportMeta.ts`. The two files used to disagree —
+  // running was green here and orange there, football amber here and green
+  // there — so the same run showed up in two colours depending on which
+  // screen you were on.
+  { value: 'running', label: 'Running', icon: '🏃', accent: PALETTE.orange },
+  { value: 'swimming', label: 'Swimming', icon: '🏊', accent: PALETTE.sky },
+  { value: 'combat', label: 'Combat Sports', icon: '🥊', accent: PALETTE.red },
+  { value: 'football', label: 'Football', icon: '⚽', accent: PALETTE.green },
+  { value: 'cycling', label: 'Cycling', icon: '🚴', accent: PALETTE.violet },
+  { value: 'gym', label: 'Gym / Strength', icon: '💪', accent: PALETTE.slate },
+  { value: 'strength', label: 'Strength Training', icon: '🏋️', accent: PALETTE.bronze },
 ]
 
 export interface ExperienceOption {

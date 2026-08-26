@@ -97,6 +97,7 @@ import {
 } from 'expo-notifications/build/NotificationChannelManager.types'
 import type { NotificationResponse } from 'expo-notifications/build/Notifications.types'
 import { formatPaceValue, rollingPaceSecPerKm } from '../utils/geo'
+import { COLOR } from '../theme/tokens'
 import {
   LIVE_LOCATION_TASK,
   PACE_MAX_SEC_PER_KM,
@@ -172,8 +173,8 @@ export const TRACKING_ACTION = {
 /** Routing payload read by the response listener; see `useNotificationObserver`. */
 export const LIVE_NOTIFICATION_SCREEN = 'live-tracker'
 
-const COLOR_ACTIVE = '#22C55E'
-const COLOR_PAUSED = '#F59E0B'
+const COLOR_ACTIVE = COLOR.accent
+const COLOR_PAUSED = COLOR.warn
 
 /**
  * Minimum gap between re-presents.

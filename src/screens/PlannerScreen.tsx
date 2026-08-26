@@ -169,12 +169,12 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       {/* --- Header --------------------------------------------------- */}
       <View
         style={{
-          backgroundColor: COLORS.white,
+          backgroundColor: COLORS.surface,
           paddingHorizontal: 20,
           paddingTop: 8,
           paddingBottom: 14,
@@ -224,7 +224,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
               borderRadius: RADIUS.pill,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: isCurrentMonth ? COLORS.teal : COLORS.white,
+              backgroundColor: isCurrentMonth ? COLORS.teal : COLORS.surfaceAlt,
               borderWidth: 1.5,
               borderColor: isCurrentMonth ? COLORS.teal : COLORS.border,
             }}
@@ -233,7 +233,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
               style={{
                 fontSize: 13,
                 fontWeight: '700',
-                color: isCurrentMonth ? COLORS.white : COLORS.muted,
+                color: isCurrentMonth ? COLORS.onAccent : COLORS.muted,
               }}
             >
               Today
@@ -388,7 +388,7 @@ function SelectedDayBar({ day, onPress }: { day: CalendarDay | null; onPress: ()
         height: 54,
         justifyContent: 'center',
         paddingHorizontal: 20,
-        backgroundColor: COLORS.white,
+        backgroundColor: COLORS.surface,
         borderTopWidth: 1,
         borderTopColor: COLORS.border,
       }}

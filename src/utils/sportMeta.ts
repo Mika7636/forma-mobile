@@ -1,5 +1,6 @@
 import { SPORT_OPTIONS } from '../constants/training'
 import type { SportType } from '../types/session'
+import { PALETTE } from '../theme/tokens'
 
 interface SportMeta {
   label: string
@@ -8,17 +9,18 @@ interface SportMeta {
 }
 
 export const SPORT_META: Record<SportType, SportMeta> = {
-  running: { label: 'Running', icon: '🏃', color: '#f97316' },
-  swimming: { label: 'Swimming', icon: '🏊', color: '#0ea5e9' },
-  combat: { label: 'Combat Sports', icon: '🥊', color: '#ef4444' },
-  football: { label: 'Football', icon: '⚽', color: '#22c55e' },
-  cycling: { label: 'Cycling', icon: '🚴', color: '#8b5cf6' },
-  gym: { label: 'Gym / Strength', icon: '💪', color: '#6b7280' },
-  strength: { label: 'Strength Training', icon: '🏋️', color: '#b45309' },
+  // Shared verbatim with `constants/training.ts`. See the note there.
+  running: { label: 'Running', icon: '🏃', color: PALETTE.orange },
+  swimming: { label: 'Swimming', icon: '🏊', color: PALETTE.sky },
+  combat: { label: 'Combat Sports', icon: '🥊', color: PALETTE.red },
+  football: { label: 'Football', icon: '⚽', color: PALETTE.green },
+  cycling: { label: 'Cycling', icon: '🚴', color: PALETTE.violet },
+  gym: { label: 'Gym / Strength', icon: '💪', color: PALETTE.slate },
+  strength: { label: 'Strength Training', icon: '🏋️', color: PALETTE.bronze },
 }
 
 /** Fallback for a sport string that isn't in the palette (older/web-written docs). */
-const UNKNOWN_SPORT = { color: '#6B7280', icon: '🏅', label: 'Training' }
+const UNKNOWN_SPORT = { color: PALETTE.slate, icon: '🏅', label: 'Training' }
 
 /**
  * How a sport is drawn anywhere in the app: accent colour, emoji, display name.

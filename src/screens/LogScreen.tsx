@@ -42,6 +42,7 @@ import { isOffline } from '../store/networkStore'
 import { toast } from '../store/toastStore'
 import { worstSeverity } from '../constants/conflictColors'
 import { COLORS } from '../constants/theme'
+import { PALETTE } from '../theme/tokens'
 import { SPORT_OPTIONS, type SportOption } from '../constants/training'
 import {
   computeEstimates,
@@ -82,10 +83,10 @@ function resolveSessionDate(plannerDay: Date | null, at: Date = new Date()): Dat
 }
 
 /* --- RPE zones -------------------------------------------------------- */
-const ZONE_GREEN = '#22c55e'
-const ZONE_AMBER = '#f59e0b'
-const ZONE_RED = '#ef4444'
-const ZONE_ORANGE = '#f97316'
+const ZONE_GREEN = COLORS.teal
+const ZONE_AMBER = COLORS.warning
+const ZONE_RED = COLORS.danger
+const ZONE_ORANGE = PALETTE.orange
 
 interface RpeZone {
   label: string
@@ -564,8 +565,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }} edges={['top']}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
+      <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -696,7 +697,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 </View>
               </View>
               {durationNum > DURATION_MAX ? (
-                <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.danger }}>
+                <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.dangerText }}>
                   Keep it under {DURATION_MAX} minutes.
                 </Text>
               ) : null}
@@ -771,7 +772,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 >
                   <Text
                     style={{
-                      color: COLORS.white,
+                      color: COLORS.onAccent,
                       fontSize: 12,
                       fontWeight: '800',
                       letterSpacing: 0.5,
@@ -813,15 +814,15 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: '#FFF7ED',
+                  backgroundColor: COLORS.warningSoft,
                   borderWidth: 1,
-                  borderColor: '#FED7AA',
+                  borderColor: COLORS.warningBorder,
                   borderRadius: 16,
                   paddingVertical: 14,
                 }}
               >
                 <Text style={{ fontSize: 22, marginRight: 8 }}>🔥</Text>
-                <Text style={{ fontSize: 24, fontWeight: '800', color: '#EA580C' }}>
+                <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.warningDeep }}>
                   Est. {estimates.estimatedCalories} kcal
                 </Text>
               </Animated.View>
@@ -1057,7 +1058,7 @@ function SportCard({
           borderRadius: 16,
           borderWidth: 2,
           borderColor: selected ? option.accent : COLORS.border,
-          backgroundColor: selected ? option.accent : COLORS.white,
+          backgroundColor: selected ? option.accent : COLORS.surfaceAlt,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 8,
@@ -1070,7 +1071,7 @@ function SportCard({
             fontSize: 13,
             fontWeight: '700',
             textAlign: 'center',
-            color: selected ? COLORS.white : COLORS.ink,
+            color: selected ? COLORS.onAccent : COLORS.ink,
           }}
           numberOfLines={2}
         >
@@ -1127,7 +1128,7 @@ function ModeToggle({
               style={{
                 fontSize: 15,
                 fontWeight: '700',
-                color: active ? COLORS.white : COLORS.muted,
+                color: active ? COLORS.onAccent : COLORS.muted,
               }}
             >
               {opt.label}
@@ -1148,7 +1149,7 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
       style={{
         flex: 1,
         marginHorizontal: 4,
-        backgroundColor: COLORS.white,
+        backgroundColor: COLORS.surface,
         borderRadius: 16,
         borderWidth: 1,
         borderColor: COLORS.border,

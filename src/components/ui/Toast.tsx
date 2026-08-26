@@ -116,7 +116,7 @@ export default function Toast({ item, onDismiss }: ToastProps) {
           {
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: COLORS.white,
+            backgroundColor: COLORS.surface,
             borderRadius: RADIUS.card,
             borderWidth: 1,
             borderColor: COLORS.border,

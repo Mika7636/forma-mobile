@@ -36,10 +36,10 @@ export default function ConflictDetailSheet({
 
   return (
     <Modal visible={conflicts != null} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(17,24,39,0.5)' }} />
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: COLORS.scrim }} />
       <View
         style={{
-          backgroundColor: COLORS.white,
+          backgroundColor: COLORS.surface,
           borderTopLeftRadius: 22,
           borderTopRightRadius: 22,
           paddingHorizontal: 20,
@@ -144,7 +144,7 @@ function ConflictCard({
             alignItems: 'center',
             flexWrap: 'wrap',
             marginTop: 10,
-            backgroundColor: COLORS.white,
+            backgroundColor: COLORS.surface,
             borderRadius: 10,
             paddingVertical: 8,
             paddingHorizontal: 10,

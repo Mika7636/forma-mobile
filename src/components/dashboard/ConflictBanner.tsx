@@ -1,11 +1,11 @@
 import { Pressable, Text, View } from 'react-native'
-import { LinearGradient } from 'expo-linear-gradient'
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated'
 import { haptics } from '../../utils/haptics'
 import { severityStyle } from '../../constants/conflictColors'
 import { detectedAtDate } from '../../utils/conflictInfo'
 import { formatTimeAgo } from '../../utils/formatting'
 import type { Conflict } from '../../types/conflict'
+import { COLORS } from '../../constants/theme'
 
 interface ConflictBannerProps {
   conflict: Conflict
@@ -42,22 +42,31 @@ export default function ConflictBanner({
       entering={FadeInDown.springify().damping(15).stiffness(140)}
       exiting={FadeOutUp.duration(220)}
       accessibilityRole="alert"
+      // A tinted surface with a coloured left rail, rather than the solid
+      // orange slab this used to be.
+      //
+      // A saturated fill is how you make something urgent on a white page. On a
+      // dark dashboard it is simply the brightest object on screen, and a
+      // *warning* that outshines the Form Score has its priorities backwards —
+      // it also put white text on amber at 2.1:1. The rail carries the severity
+      // colour at full strength where it costs nothing; the surface behind the
+      // text stays a deep wash.
       style={{
         borderRadius: 18,
         overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOpacity: 0.2,
+        backgroundColor: style.softBg,
+        borderWidth: 1,
+        borderColor: style.softBorder,
+        borderLeftWidth: 4,
+        borderLeftColor: style.solid,
+        shadowColor: COLORS.shadow,
+        shadowOpacity: 0.4,
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 6 },
         elevation: 6,
       }}
     >
-      <LinearGradient
-        colors={style.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ flexDirection: 'row', alignItems: 'center', padding: 14 }}
-      >
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14 }}>
         {/* Body — tapping it opens the full explanation. */}
         <Pressable
           onPress={() => onPress?.(conflict)}
@@ -70,7 +79,9 @@ export default function ConflictBanner({
               width: 42,
               height: 42,
               borderRadius: 21,
-              backgroundColor: 'rgba(0,0,0,0.18)',
+              backgroundColor: COLORS.surfaceAlt,
+              borderWidth: 1,
+              borderColor: style.softBorder,
               alignItems: 'center',
               justifyContent: 'center',
               marginRight: 12,
@@ -80,16 +91,16 @@ export default function ConflictBanner({
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>{style.title}</Text>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: style.deep }}>{style.title}</Text>
             <Text
-              style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: 'rgba(255,255,255,0.92)' }}
+              style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: COLORS.ink }}
               numberOfLines={3}
             >
               {conflict.message}
             </Text>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.7)' }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.muted }}>
                 {formatTimeAgo(detectedAtDate(conflict).toISOString())}
               </Text>
               {extraCount > 0 ? (
@@ -98,7 +109,7 @@ export default function ConflictBanner({
                     style={{
                       fontSize: 11,
                       fontWeight: '800',
-                      color: '#FFFFFF',
+                      color: style.deep,
                       textDecorationLine: 'underline',
                     }}
                   >
@@ -106,7 +117,7 @@ export default function ConflictBanner({
                   </Text>
                 </Pressable>
               ) : (
-                <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.6)', marginLeft: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.subtle, marginLeft: 10 }}>
                   Tap for details
                 </Text>
               )}
@@ -121,15 +132,17 @@ export default function ConflictBanner({
           accessibilityLabel="Dismiss conflict"
           style={{
             marginLeft: 10,
-            backgroundColor: 'rgba(255,255,255,0.22)',
+            backgroundColor: COLORS.surfaceAlt,
+            borderWidth: 1,
+            borderColor: style.solid,
             borderRadius: 999,
             paddingHorizontal: 14,
             paddingVertical: 8,
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>Dismiss</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: style.deep }}>Dismiss</Text>
         </Pressable>
-      </LinearGradient>
+      </View>
     </Animated.View>
   )
 }

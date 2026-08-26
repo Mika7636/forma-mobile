@@ -302,7 +302,7 @@ function Row({
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: COLORS.border, true: COLORS.teal }}
-        thumbColor={COLORS.white}
+        thumbColor={COLORS.ink}
         ios_backgroundColor={COLORS.border}
       />
     </View>

@@ -85,15 +85,22 @@ function DayCell({
   const { isToday, inMonth, sessions, conflicts } = day
   const count = sessions.length
 
-  // Today outranks selection: the filled teal circle is the one fixed landmark
-  // on the grid, so a selected today keeps it and gains nothing else.
-  const circleBg = isToday ? COLORS.teal : selected ? COLORS.tealSoft : 'transparent'
+  // Today outranks selection: it is the one fixed landmark on the grid, so a
+  // selected today keeps its marker and gains nothing else.
+  //
+  // A *ring*, not a filled disc. A solid accent circle was right on a white
+  // grid; on dark it is a bright dot competing with the coloured session dots
+  // directly beneath it, which are the actual data on this screen. An outline
+  // marks the day just as unambiguously and stays quieter than the content.
+  const circleBg = !isToday && selected ? COLORS.tealSoft : 'transparent'
+  const ringColor = isToday ? COLORS.teal : 'transparent'
   const numberColor = isToday
-    ? COLORS.white
+    ? COLORS.tealDeep
     : !inMonth
-      ? COLORS.borderStrong
+      ? // Out-of-month days: present, dateable, clearly not part of this month.
+        COLORS.subtle
       : selected
-        ? COLORS.tealDark
+        ? COLORS.tealDeep
         : COLORS.ink
 
   const label = day.date.toLocaleDateString(undefined, {
@@ -121,6 +128,11 @@ function DayCell({
         // baseline whatever the row height works out to. The floor keeps a
         // 6-row month legible on a short screen.
         minHeight: CIRCLE + DOT + 16,
+        // The whole cell recedes when it belongs to a neighbouring month —
+        // number, dots and conflict marks together. Dimming only the number
+        // left the dots at full strength, so an adjacent month's sessions read
+        // as this month's.
+        opacity: inMonth ? 1 : 0.45,
       }}
     >
       <View
@@ -135,6 +147,8 @@ function DayCell({
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: circleBg,
+          borderWidth: isToday ? 1.5 : 0,
+          borderColor: ringColor,
         }}
       >
         <Text

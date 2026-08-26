@@ -179,7 +179,7 @@ export default function OnboardingScreen() {
       <SafeAreaView
         style={{
           flex: 1,
-          backgroundColor: COLORS.white,
+          backgroundColor: COLORS.surface,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -234,9 +234,9 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }}>
       {/* White page — dark status-bar content is what stays legible. */}
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -387,7 +387,7 @@ function SportsStep({
                 borderRadius: 16,
                 borderWidth: 2,
                 borderColor: isSelected ? sport.accent : COLORS.border,
-                backgroundColor: isSelected ? sport.accent : COLORS.white,
+                backgroundColor: isSelected ? sport.accent : COLORS.surfaceAlt,
                 paddingVertical: 22,
                 paddingHorizontal: 14,
                 alignItems: 'center',
@@ -395,7 +395,7 @@ function SportsStep({
             >
               {isSelected ? (
                 <View style={{ position: 'absolute', top: 8, right: 10 }}>
-                  <Text style={{ fontSize: 15, color: COLORS.white }}>✓</Text>
+                  <Text style={{ fontSize: 15, color: COLORS.onAccent }}>✓</Text>
                 </View>
               ) : null}
               <Text style={{ fontSize: 34 }}>{sport.icon}</Text>
@@ -404,7 +404,7 @@ function SportsStep({
                   marginTop: 10,
                   fontSize: 15,
                   fontWeight: '700',
-                  color: isSelected ? COLORS.white : COLORS.ink,
+                  color: isSelected ? COLORS.onAccent : COLORS.ink,
                   textAlign: 'center',
                 }}
               >
@@ -583,7 +583,7 @@ function MetricsStep({
                   style={{
                     fontSize: 15,
                     fontWeight: '700',
-                    color: active ? COLORS.white : COLORS.muted,
+                    color: active ? COLORS.onAccent : COLORS.muted,
                   }}
                 >
                   {u}
@@ -638,7 +638,7 @@ function ExperienceStep({
                 borderRadius: 16,
                 borderWidth: 2,
                 borderColor: active ? COLORS.teal : COLORS.border,
-                backgroundColor: active ? COLORS.tealSoft : COLORS.white,
+                backgroundColor: active ? COLORS.tealSoft : COLORS.surfaceAlt,
                 padding: 18,
                 marginBottom: 14,
                 flexDirection: 'row',
@@ -676,7 +676,7 @@ function ExperienceStep({
       {error ? (
         <Text
           style={{
-            color: COLORS.danger,
+            color: COLORS.dangerText,
             fontSize: 14,
             fontWeight: '600',
             textAlign: 'center',

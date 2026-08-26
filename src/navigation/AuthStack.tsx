@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import LoginScreen from '../screens/LoginScreen'
 import RegisterScreen from '../screens/RegisterScreen'
 import type { AuthStackParamList } from './types'
+import { COLORS } from '../constants/theme'
 
 const Stack = createNativeStackNavigator<AuthStackParamList>()
 
@@ -13,7 +14,7 @@ export default function AuthStack() {
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
-        contentStyle: { backgroundColor: '#FFFFFF' },
+        contentStyle: { backgroundColor: COLORS.pageBg },
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />

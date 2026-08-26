@@ -57,6 +57,42 @@ export async function getUserProfile(uid: string): Promise<User | null> {
 }
 
 /**
+ * The outcome of a profile read, with "there is no profile" kept strictly
+ * separate from "we could not find out".
+ *
+ * The onboarding gate turns `missing` into the setup wizard, so `missing` has
+ * to mean the *server* said the document does not exist — nothing weaker.
+ */
+export type ProfileRead =
+  | { status: 'found'; profile: User }
+  /** Authoritative: the backend confirmed there is no /users/{uid}. */
+  | { status: 'missing' }
+  /** Offline and the document isn't cached. We know nothing; ask again later. */
+  | { status: 'unknown' }
+
+/**
+ * Reads /users/{uid} and reports which of the three states above holds.
+ *
+ * ## The `fromCache` check is the whole point
+ *
+ * With offline persistence on, `getDoc` never rejects just because the network
+ * is down — it resolves out of the local cache and sets
+ * `snapshot.metadata.fromCache`. A document that was never cached therefore
+ * comes back as a perfectly ordinary "does not exist" snapshot, which is
+ * indistinguishable from a genuinely new account unless you look at that flag.
+ *
+ * Reading a cached miss as `missing` would take an offline user with a
+ * cold cache and route them into onboarding — the exact bug this function was
+ * written to close, reintroduced by the fix for it. So: a non-existent document
+ * is only authoritative when the snapshot came from the server.
+ */
+export async function readUserProfile(uid: string): Promise<ProfileRead> {
+  const snapshot = await getDoc(userDoc(uid))
+  if (snapshot.exists()) return { status: 'found', profile: snapshot.data() as User }
+  return { status: snapshot.metadata.fromCache ? 'unknown' : 'missing' }
+}
+
+/**
  * Patches a profile with a partial update. Uses `setDoc(..., { merge: true })`
  * rather than `updateDoc` so it creates-or-merges: `updateDoc` REJECTS with
  * "No document to update" when /users/{uid} doesn't exist yet, which silently

@@ -18,11 +18,11 @@ interface MetricGridProps {
   baseDelay?: number
 }
 
-const TREND_UP = '#16a34a'
-const TREND_DOWN = '#dc2626'
+const TREND_UP = COLORS.teal
+const TREND_DOWN = COLORS.danger
 const BUDGET_OK = COLORS.teal
-const BUDGET_NEAR = '#f59e0b'
-const BUDGET_OVER = '#dc2626'
+const BUDGET_NEAR = COLORS.warning
+const BUDGET_OVER = COLORS.danger
 
 /** Progress-bar colour: teal under budget, amber from 80%, red once over. */
 function budgetColor(ratio: number): string {
@@ -165,12 +165,12 @@ function MetricCard({
         // keeps a lone trailing card from stretching oddly on wide screens.
         flexBasis: '47%',
         flexGrow: 1,
-        backgroundColor: COLORS.white,
+        backgroundColor: COLORS.surface,
         borderRadius: 16,
         padding: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
-        shadowColor: '#000',
+        shadowColor: COLORS.shadow,
         shadowOpacity: 0.05,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
