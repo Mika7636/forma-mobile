@@ -11,10 +11,13 @@ import { Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated'
-import { COLORS, RADIUS, SPACING, TYPE } from '../../constants/theme'
 import { useNetworkStore } from '../../store/networkStore'
+import { RADIUS, SPACING, TYPE } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 
 export default function OfflineBanner() {
+  const { colors } = useTheme()
+
   const status = useNetworkStore((s) => s.status)
   const reconnecting = useNetworkStore((s) => s.reconnecting)
   const subscribe = useNetworkStore((s) => s.subscribe)
@@ -33,25 +36,27 @@ export default function OfflineBanner() {
   // its accent fill — where the type has to go dark, not light.
   const look = offline
     ? {
-        bg: COLORS.surfaceAlt,
-        fg: COLORS.ink,
-        dot: COLORS.warning,
+        bg: colors.surfaceAlt,
+        fg: colors.text,
+        dot: colors.warn,
         text: 'Offline — changes will sync when you’re back online',
       }
     : {
-        bg: COLORS.teal,
-        fg: COLORS.onAccent,
-        dot: COLORS.onAccent,
+        bg: colors.accent,
+        fg: colors.onAccent,
+        dot: colors.onAccent,
         text: 'Back online — syncing…',
       }
 
   return (
     <>
-      {/* The bar extends under the status bar. Every screen is `light` now, so
-          this is no longer correcting anything — it is here so the banner keeps
-          stating its own requirement rather than inheriting one, since the
-          reconnecting variant fills with the accent and would need light icons
-          regardless of what the screen underneath asked for. */}
+      {/* The bar extends under the status bar, and both variants fill it with a
+          saturated colour of their own — the danger red offline, the accent
+          reconnecting. Both are dark enough for light icons in either theme, so
+          this states its requirement outright rather than going through
+          <ThemedStatusBar>: what is behind the icons here is the banner, not
+          the page. Unmounting restores whatever the screen underneath asked
+          for. */}
       <StatusBar style="light" />
 
       <Animated.View

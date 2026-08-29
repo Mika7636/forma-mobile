@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
-import { COLORS, RADIUS, SPACING, TYPE, WEIGHT } from '../../constants/theme'
-
+import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 interface ErrorBoundaryProps {
   children: ReactNode
   /** Shown as the heading, e.g. "Live tracking hit a problem". */
@@ -20,12 +20,6 @@ interface ErrorBoundaryProps {
   onReset?: () => void
   /** Tag used in the console log, so crashes are attributable in logcat. */
   name?: string
-  /** Dark surfaces (the live tracker) need light text. */
-  /**
-   * @deprecated No longer selects anything — the app has a single dark theme.
-   * Retained so existing call sites keep compiling.
-   */
-  theme?: 'light' | 'dark'
 }
 
 interface ErrorBoundaryState {
@@ -70,114 +64,142 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     const { error } = this.state
     if (!error) return this.props.children
 
-    const {
-      title = 'Something went wrong',
-      message = 'This screen ran into an unexpected problem. Your saved data is safe.',
-      retryLabel = 'Try again',
-      secondaryLabel,
-      onSecondary,
-      theme = 'light',
-    } = this.props
-
-    // There used to be a light and a dark rendering of this card, because
-    // LogScreen's live-tracking flow was dark while every other screen was
-    // light. The app is one dark theme now, so the fork is gone and both
-    // callers get the same card. `theme` is kept on the props purely so the
-    // existing call sites keep compiling; it no longer selects anything.
-    void theme
-
     return (
+      <ErrorFallback
+        error={error}
+        title={this.props.title}
+        message={this.props.message}
+        retryLabel={this.props.retryLabel}
+        secondaryLabel={this.props.secondaryLabel}
+        onSecondary={this.props.onSecondary}
+        onRetry={this.handleReset}
+      />
+    )
+  }
+}
+
+/**
+ * The fallback card.
+ *
+ * Split out of the boundary because a boundary has to be a class — there is no
+ * hook form of `componentDidCatch` — and a class cannot call `useTheme`. This
+ * is the seam: the class catches, this function paints, and because it is a
+ * function it re-renders when the user switches theme like everything else.
+ *
+ * It relies on a `<ThemeProvider>` being mounted *above* the boundary. That
+ * holds by construction: the outermost boundary in `App.tsx` is inside the
+ * provider, and every other one is inside a screen.
+ */
+function ErrorFallback({
+  error,
+  title = 'Something went wrong',
+  message = 'This screen ran into an unexpected problem. Your saved data is safe.',
+  retryLabel = 'Try again',
+  secondaryLabel,
+  onSecondary,
+  onRetry,
+}: {
+  error: Error
+  title?: string
+  message?: string
+  retryLabel?: string
+  secondaryLabel?: string
+  onSecondary?: () => void
+  onRetry: () => void
+}) {
+  const { colors } = useTheme()
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.bg,
+        justifyContent: 'center',
+        padding: SPACING.lg,
+      }}
+    >
       <View
         style={{
-          flex: 1,
-          backgroundColor: COLORS.pageBg,
-          justifyContent: 'center',
+          backgroundColor: colors.surface,
+          borderRadius: RADIUS.card,
           padding: SPACING.lg,
+          borderWidth: 1,
+          borderColor: colors.border,
         }}
       >
-        <View
+        <Text style={{ fontSize: 32, textAlign: 'center' }}>⚠️</Text>
+        <Text
           style={{
-            backgroundColor: COLORS.surface,
-            borderRadius: RADIUS.card,
-            padding: SPACING.lg,
-            borderWidth: 1,
-            borderColor: COLORS.border,
+            marginTop: SPACING.md,
+            fontSize: TYPE.title,
+            fontWeight: WEIGHT.heavy,
+            color: colors.text,
+            textAlign: 'center',
           }}
         >
-          <Text style={{ fontSize: 32, textAlign: 'center' }}>⚠️</Text>
+          {title}
+        </Text>
+        <Text
+          style={{
+            marginTop: SPACING.sm,
+            fontSize: TYPE.body,
+            color: colors.textMuted,
+            textAlign: 'center',
+            lineHeight: 20,
+          }}
+        >
+          {message}
+        </Text>
+
+        {/* The message itself, in small print. Genuinely useful when a user
+            screenshots this for a bug report. */}
+        <ScrollView style={{ maxHeight: 90, marginTop: SPACING.md }}>
           <Text
             style={{
-              marginTop: SPACING.md,
-              fontSize: TYPE.title,
-              fontWeight: WEIGHT.heavy,
-              color: COLORS.ink,
+              fontSize: TYPE.caption,
+              color: colors.textSubtle,
               textAlign: 'center',
             }}
           >
-            {title}
+            {error.message || String(error)}
           </Text>
-          <Text
+        </ScrollView>
+
+        <Pressable
+          onPress={onRetry}
+          style={{
+            marginTop: SPACING.lg,
+            height: 50,
+            borderRadius: RADIUS.md,
+            backgroundColor: colors.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: colors.onAccent, fontSize: TYPE.subtitle, fontWeight: WEIGHT.heavy }}>
+            {retryLabel}
+          </Text>
+        </Pressable>
+
+        {secondaryLabel && onSecondary ? (
+          <Pressable
+            onPress={onSecondary}
             style={{
               marginTop: SPACING.sm,
-              fontSize: TYPE.body,
-              color: COLORS.muted,
-              textAlign: 'center',
-              lineHeight: 20,
-            }}
-          >
-            {message}
-          </Text>
-
-          {/* The message itself, in small print. Genuinely useful when a user
-              screenshots this for a bug report. */}
-          <ScrollView style={{ maxHeight: 90, marginTop: SPACING.md }}>
-            <Text
-              style={{
-                fontSize: TYPE.caption,
-                color: COLORS.subtle,
-                textAlign: 'center',
-              }}
-            >
-              {error.message || String(error)}
-            </Text>
-          </ScrollView>
-
-          <Pressable
-            onPress={this.handleReset}
-            style={{
-              marginTop: SPACING.lg,
-              height: 50,
+              height: 46,
               borderRadius: RADIUS.md,
-              backgroundColor: COLORS.teal,
+              borderWidth: 1.5,
+              borderColor: colors.accent,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: COLORS.onAccent, fontSize: TYPE.subtitle, fontWeight: WEIGHT.heavy }}>
-              {retryLabel}
+            <Text style={{ color: colors.accentText, fontSize: TYPE.body, fontWeight: WEIGHT.bold }}>
+              {secondaryLabel}
             </Text>
           </Pressable>
-
-          {secondaryLabel && onSecondary ? (
-            <Pressable
-              onPress={onSecondary}
-              style={{
-                marginTop: SPACING.sm,
-                height: 46,
-                borderRadius: RADIUS.md,
-                borderWidth: 1.5,
-                borderColor: COLORS.teal,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ color: COLORS.teal, fontSize: TYPE.body, fontWeight: WEIGHT.bold }}>
-                {secondaryLabel}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
+        ) : null}
       </View>
-    )
-  }
+    </View>
+  )
 }

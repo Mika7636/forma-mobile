@@ -8,8 +8,9 @@
 // dead end.
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
-import { COLORS, MOTION, RADIUS, SPACING, TYPE } from '../../constants/theme'
 import PrimaryButton from './PrimaryButton'
+import { MOTION, RADIUS, SPACING, TYPE } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 
 export interface EmptyStateProgress {
   /** How far along the user is, e.g. sessions logged so far. */
@@ -47,6 +48,8 @@ export default function EmptyState({
   tone = 'card',
   style,
 }: EmptyStateProps) {
+  const { colors } = useTheme()
+
   const quiet = tone === 'quiet'
   const discSize = quiet ? 56 : 84
 
@@ -62,10 +65,10 @@ export default function EmptyState({
         quiet
           ? null
           : {
-              backgroundColor: COLORS.surface,
+              backgroundColor: colors.surface,
               borderRadius: RADIUS.xl,
               borderWidth: 1,
-              borderColor: COLORS.border,
+              borderColor: colors.border,
             },
         style,
       ]}
@@ -75,7 +78,7 @@ export default function EmptyState({
           width: discSize,
           height: discSize,
           borderRadius: RADIUS.pill,
-          backgroundColor: COLORS.tealSoft,
+          backgroundColor: colors.accentSoft,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -88,7 +91,7 @@ export default function EmptyState({
           marginTop: quiet ? SPACING.md : 18,
           fontSize: quiet ? TYPE.subtitle : TYPE.heading,
           fontWeight: '800',
-          color: COLORS.ink,
+          color: colors.text,
           textAlign: 'center',
         }}
       >
@@ -100,7 +103,7 @@ export default function EmptyState({
           marginTop: SPACING.sm,
           fontSize: quiet ? TYPE.small : TYPE.body,
           lineHeight: quiet ? 18 : 20,
-          color: COLORS.muted,
+          color: colors.textMuted,
           textAlign: 'center',
           maxWidth: 280,
         }}
@@ -114,7 +117,7 @@ export default function EmptyState({
             style={{
               fontSize: TYPE.small,
               fontWeight: '700',
-              color: COLORS.body,
+              color: colors.textBody,
               textAlign: 'center',
               marginBottom: SPACING.sm,
             }}
@@ -125,7 +128,7 @@ export default function EmptyState({
             style={{
               height: 8,
               borderRadius: RADIUS.pill,
-              backgroundColor: COLORS.border,
+              backgroundColor: colors.border,
               overflow: 'hidden',
             }}
           >
@@ -134,7 +137,7 @@ export default function EmptyState({
                 width: `${Math.max(0, Math.min(progress.current / progress.target, 1)) * 100}%`,
                 height: '100%',
                 borderRadius: RADIUS.pill,
-                backgroundColor: COLORS.teal,
+                backgroundColor: colors.accent,
               }}
             />
           </View>

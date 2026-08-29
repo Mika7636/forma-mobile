@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Alert, AppState, Platform, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../ui/ThemedStatusBar'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import { haptics } from '../../utils/haptics'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
@@ -18,8 +18,6 @@ import {
   updateLiveNotification,
 } from '../../services/liveNotification'
 import { openAppSettings, openLocationSettings } from '../../utils/systemSettings'
-import { COLORS } from '../../constants/theme'
-import { COLOR } from '../../theme/tokens'
 import { estimateCalories } from '../../algorithms/calories'
 import { calculateLoadScore } from '../../algorithms/sRPE'
 import { detectConflicts } from '../../algorithms/conflictDetector'
@@ -64,6 +62,7 @@ import {
 import type { Conflict } from '../../types/conflict'
 import type { RoutePoint, Session, SessionSplit, SportType } from '../../types/session'
 import type { MapRegion } from '../../utils/maps'
+import { useTheme } from '../../theme/ThemeProvider'
 
 /** Data handed back to LogScreen when the user saves a live-tracked session. */
 export interface LiveResult {
@@ -149,8 +148,6 @@ const MAP_FILL_STYLE = { flex: 1 } as const
 
 const TIMER_FONT = Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' })
 
-const ZONE_AMBER = COLOR.warn
-const ZONE_RED = COLOR.danger
 
 /**
  * The pre-flight blockers, as alerts.
@@ -204,6 +201,8 @@ export default function LiveTracker({
   onExit,
   onComplete,
 }: LiveTrackerProps) {
+  const { colors } = useTheme()
+
   // A recovered workout skips straight to the summary: the location feed is
   // gone, but the distance and time it collected are intact and worth saving.
   const [phase, setPhase] = useState<Phase>(resumeFrom ? 'summary' : 'ready')
@@ -927,8 +926,8 @@ export default function LiveTracker({
   /* Render                                                             */
   /* ================================================================= */
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top', 'bottom']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
+      <ThemedStatusBar />
 
       {phase === 'ready' ? (
         <ReadyView
@@ -1030,15 +1029,17 @@ function BackgroundPermissionView({
   onOpenSettings: () => void
   onSkip: () => void
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center' }}>
       <View
         style={{
-          backgroundColor: COLOR.surfaceAlt,
+          backgroundColor: colors.surfaceAlt,
           borderRadius: 20,
           padding: 24,
           borderWidth: 1,
-          borderColor: COLOR.border,
+          borderColor: colors.border,
         }}
       >
         <Text style={{ fontSize: 40, textAlign: 'center' }}>🔒</Text>
@@ -1047,7 +1048,7 @@ function BackgroundPermissionView({
             marginTop: 10,
             fontSize: 20,
             fontWeight: '800',
-            color: COLORS.onAccent,
+            color: colors.onAccent,
             textAlign: 'center',
           }}
         >
@@ -1057,7 +1058,7 @@ function BackgroundPermissionView({
           style={{
             marginTop: 10,
             fontSize: 15,
-            color: COLORS.subtle,
+            color: colors.textSubtle,
             textAlign: 'center',
             lineHeight: 21,
           }}
@@ -1069,7 +1070,7 @@ function BackgroundPermissionView({
           style={{
             marginTop: 12,
             fontSize: 14,
-            color: COLORS.subtle,
+            color: colors.textSubtle,
             textAlign: 'center',
             lineHeight: 20,
           }}
@@ -1092,7 +1093,7 @@ function BackgroundPermissionView({
           hitSlop={8}
           style={{ marginTop: 16, alignSelf: 'center', paddingVertical: 6 }}
         >
-          <Text style={{ color: COLORS.subtle, fontSize: 14, fontWeight: '700' }}>
+          <Text style={{ color: colors.textSubtle, fontSize: 14, fontWeight: '700' }}>
             Not now — keep the screen on
           </Text>
         </Pressable>
@@ -1128,17 +1129,19 @@ function ReadyView({
   onStart: () => void
   onExit: () => void
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1, paddingHorizontal: 24 }}>
       <Pressable onPress={onExit} style={{ paddingVertical: 12, alignSelf: 'flex-start' }}>
-        <Text style={{ color: COLORS.subtle, fontSize: 16, fontWeight: '600' }}>✕ Cancel</Text>
+        <Text style={{ color: colors.textSubtle, fontSize: 16, fontWeight: '600' }}>✕ Cancel</Text>
       </Pressable>
 
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 15, color: COLORS.subtle, letterSpacing: 1, fontWeight: '700' }}>
+        <Text style={{ fontSize: 15, color: colors.textSubtle, letterSpacing: 1, fontWeight: '700' }}>
           LIVE TRACKING
         </Text>
-        <Text style={{ marginTop: 6, fontSize: 28, fontWeight: '800', color: COLORS.onAccent }}>
+        <Text style={{ marginTop: 6, fontSize: 28, fontWeight: '800', color: colors.onAccent }}>
           {sportLabel}
         </Text>
 
@@ -1150,7 +1153,7 @@ function ReadyView({
           style={{
             marginTop: 14,
             fontSize: 15,
-            color: COLORS.subtle,
+            color: colors.textSubtle,
             textAlign: 'center',
             lineHeight: 22,
             maxWidth: 300,
@@ -1173,6 +1176,8 @@ function ReadyView({
 }
 
 function StartButton({ onPress, label }: { onPress: () => void; label: string }) {
+  const { colors } = useTheme()
+
   const [pressed, setPressed] = useState(false)
   return (
     <Pressable
@@ -1187,11 +1192,11 @@ function StartButton({ onPress, label }: { onPress: () => void; label: string })
         borderRadius: 999,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: COLORS.teal,
+        backgroundColor: colors.accent,
         opacity: pressed ? 0.9 : 1,
       }}
     >
-      <Text style={{ color: COLORS.onAccent, fontSize: 22, fontWeight: '800', letterSpacing: 0.5 }}>
+      <Text style={{ color: colors.onAccent, fontSize: 22, fontWeight: '800', letterSpacing: 0.5 }}>
         {label}
       </Text>
     </Pressable>
@@ -1202,6 +1207,8 @@ function StartButton({ onPress, label }: { onPress: () => void; label: string })
 /* Phase: COUNTDOWN                                                    */
 /* ------------------------------------------------------------------ */
 function CountdownView({ count }: { count: number }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
       <Animated.Text
@@ -1210,7 +1217,7 @@ function CountdownView({ count }: { count: number }) {
         style={{
           fontSize: count === 0 ? 96 : 160,
           fontWeight: '900',
-          color: COLORS.teal,
+          color: colors.accent,
           fontFamily: TIMER_FONT,
         }}
       >
@@ -1268,16 +1275,18 @@ function TrackingView({
   onResume: () => void
   onStop: () => void
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1, paddingHorizontal: 20 }}>
       {/* Timer */}
       <View style={{ alignItems: 'center', marginTop: 12 }}>
-        <Text style={{ color: COLORS.subtle, fontSize: 13, fontWeight: '700', letterSpacing: 1 }}>
+        <Text style={{ color: colors.textSubtle, fontSize: 13, fontWeight: '700', letterSpacing: 1 }}>
           {paused ? 'PAUSED' : 'ELAPSED'}
         </Text>
         <Text
           style={{
-            color: COLORS.onAccent,
+            color: colors.onAccent,
             fontSize: 56,
             fontWeight: '800',
             fontFamily: TIMER_FONT,
@@ -1290,10 +1299,10 @@ function TrackingView({
 
       {/* Primary metric: distance */}
       <View style={{ alignItems: 'center', marginTop: 10 }}>
-        <Text style={{ color: COLORS.teal, fontSize: 64, fontWeight: '900', fontFamily: TIMER_FONT }}>
+        <Text style={{ color: colors.accent, fontSize: 64, fontWeight: '900', fontFamily: TIMER_FONT }}>
           {distanceKm.toFixed(2)}
         </Text>
-        <Text style={{ color: COLORS.subtle, fontSize: 16, fontWeight: '700', marginTop: -4 }}>
+        <Text style={{ color: colors.textSubtle, fontSize: 16, fontWeight: '700', marginTop: -4 }}>
           km
         </Text>
       </View>
@@ -1316,7 +1325,7 @@ function TrackingView({
               <Pressable onPress={onRetryGps} hitSlop={10} style={{ marginLeft: 10 }}>
                 <Text
                   style={{
-                    color: COLORS.subtle,
+                    color: colors.textSubtle,
                     fontSize: 12,
                     fontWeight: '700',
                     textDecorationLine: 'underline',
@@ -1337,7 +1346,7 @@ function TrackingView({
               entering={FadeIn.duration(200)}
               style={{
                 marginTop: 6,
-                color: COLORS.subtle,
+                color: colors.textSubtle,
                 fontSize: 12,
                 fontWeight: '600',
                 textAlign: 'center',
@@ -1350,7 +1359,7 @@ function TrackingView({
             // when the screen does. Say it plainly rather than letting them find
             // out at the end of an hour.
             <Text
-              style={{ marginTop: 6, color: ZONE_AMBER, fontSize: 12, fontWeight: '600' }}
+              style={{ marginTop: 6, color: colors.warn, fontSize: 12, fontWeight: '600' }}
             >
               Keep the screen on — background tracking is off
             </Text>
@@ -1394,12 +1403,12 @@ function TrackingView({
       {/* Controls */}
       <View style={{ flexDirection: 'row', paddingBottom: 12 }}>
         {paused ? (
-          <ControlButton label="Resume" color={COLORS.teal} onPress={onResume} />
+          <ControlButton label="Resume" color={colors.accent} onPress={onResume} />
         ) : (
-          <ControlButton label="Pause" color={ZONE_AMBER} onPress={onPause} />
+          <ControlButton label="Pause" color={colors.warn} onPress={onPause} />
         )}
         <View style={{ width: 12 }} />
-        <ControlButton label="Stop" color={ZONE_RED} onPress={onStop} />
+        <ControlButton label="Stop" color={colors.danger} onPress={onStop} />
       </View>
     </View>
   )
@@ -1417,12 +1426,14 @@ function Metric({
   /** Optional smaller line beneath the figure, e.g. the session average. */
   sub?: string
 }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={{
         flex: 1,
         marginHorizontal: 4,
-        backgroundColor: COLOR.surfaceAlt,
+        backgroundColor: colors.surfaceAlt,
         borderRadius: 16,
         paddingVertical: 14,
         alignItems: 'center',
@@ -1431,19 +1442,19 @@ function Metric({
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: COLORS.subtle, fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>
+      <Text style={{ color: colors.textSubtle, fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>
         {label}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 4 }}>
-        <Text style={{ color: COLORS.onAccent, fontSize: 30, fontWeight: '800', fontFamily: TIMER_FONT }}>
+        <Text style={{ color: colors.onAccent, fontSize: 30, fontWeight: '800', fontFamily: TIMER_FONT }}>
           {value}
         </Text>
-        <Text style={{ color: COLORS.subtle, fontSize: 13, fontWeight: '600', marginLeft: 4, marginBottom: 4 }}>
+        <Text style={{ color: colors.textSubtle, fontSize: 13, fontWeight: '600', marginLeft: 4, marginBottom: 4 }}>
           {unit}
         </Text>
       </View>
       {sub ? (
-        <Text style={{ color: COLORS.subtle, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+        <Text style={{ color: colors.textSubtle, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
           {sub}
         </Text>
       ) : null}
@@ -1460,6 +1471,8 @@ function ControlButton({
   color: string
   onPress: () => void
 }) {
+  const { colors } = useTheme()
+
   const [pressed, setPressed] = useState(false)
   return (
     <Pressable
@@ -1479,7 +1492,7 @@ function ControlButton({
         opacity: pressed ? 0.85 : 1,
       }}
     >
-      <Text style={{ color: COLORS.onAccent, fontSize: 18, fontWeight: '800' }}>{label}</Text>
+      <Text style={{ color: colors.onAccent, fontSize: 18, fontWeight: '800' }}>{label}</Text>
     </Pressable>
   )
 }

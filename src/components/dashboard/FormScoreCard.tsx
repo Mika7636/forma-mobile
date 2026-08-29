@@ -12,79 +12,29 @@ import Animated, {
 import CountUp from './CountUp'
 import FormInfoModal from './FormInfoModal'
 import { getFormStatus } from '../../algorithms/formScore'
-import { COLORS } from '../../constants/theme'
-import { TINT } from '../../theme/tokens'
-
-interface HeroStyle {
-  /** Two-stop gradient across the card's tinted surface. Deep, not saturated. */
-  gradient: readonly [string, string]
-  /** The hue as type: the score itself, and the status pill's label. */
-  ink: string
-  /** Hairline around the card, and the pill's border. */
-  border: string
-  /** Emoji shown in the status pill. */
-  emoji: string
-  /** Animated sheen overlay — the Peaked state only. */
-  shimmer?: boolean
-}
-
+import { useTheme } from '../../theme/ThemeProvider'
+import type { FormTone } from '../../theme/tokens'
 /**
- * How each form state looks.
+ * The emoji for each form state.
  *
- * Keyed by the colour name `getFormStatus()` returns, so the thresholds live in
- * the algorithm and this file only decides how each state *looks*.
- *
- * ## Tinted surfaces, not saturated fills
- *
- * This card used to be a bold gradient block — `#15803d → #22c55e` for a healthy
- * form — with white text on it. That was designed against a white page, where a
- * saturated card is the natural way to make a hero stand out. On the dark theme
- * it inverts: the card became the single brightest object on the screen, glaring
- * out of a dark dashboard, and its white-on-green numerals sat at about 2.6:1.
- *
- * So each state is now a *deep* wash of its hue, with the hue returning as the
- * numerals — the score is the brightest thing on the card, which is what a
- * dashboard hero is actually for. See `tokens.tint`.
+ * All that is left of what used to be a full per-state style table with a
+ * `scheme === 'light'` branch in the middle of it. The two themes paint this
+ * card differently enough that the branch looked unavoidable — but the
+ * difference is entirely in *values*, so it moved into `Palette.hero` where the
+ * rest of the theme's differences live, and this component went back to having
+ * one styling path. See the commentary on `hero` in `theme/tokens`.
  */
-const HERO_STYLES: Record<string, HeroStyle> = {
-  red: {
-    gradient: [TINT.red.bg, COLORS.surface],
-    ink: TINT.red.text,
-    border: TINT.red.border,
-    emoji: '🥵',
-  },
-  orange: {
-    gradient: [TINT.orange.bg, COLORS.surface],
-    ink: TINT.orange.text,
-    border: TINT.orange.border,
-    emoji: '🔥',
-  },
-  yellow: {
-    gradient: [TINT.amber.bg, COLORS.surface],
-    ink: TINT.amber.text,
-    border: TINT.amber.border,
-    emoji: '📈',
-  },
-  lightgreen: {
-    gradient: [TINT.teal.bg, COLORS.surface],
-    ink: TINT.teal.text,
-    border: TINT.teal.border,
-    emoji: '⚖️',
-  },
-  green: {
-    gradient: [TINT.green.bg, COLORS.surface],
-    ink: TINT.green.text,
-    border: TINT.green.border,
-    emoji: '⚡',
-  },
-  brightgreen: {
-    gradient: [TINT.green.bg, COLORS.surface],
-    ink: TINT.green.text,
-    border: TINT.green.border,
-    emoji: '🚀',
-    shimmer: true,
-  },
+const HERO_EMOJI: Record<FormTone, string> = {
+  red: '🥵',
+  orange: '🔥',
+  yellow: '📈',
+  lightgreen: '⚖️',
+  green: '⚡',
+  brightgreen: '🚀',
 }
+
+/** The Peaked state alone gets the sweeping sheen. */
+const SHIMMER_TONE: FormTone = 'brightgreen'
 
 interface FormScoreCardProps {
   form: number
@@ -97,8 +47,12 @@ interface FormScoreCardProps {
  * current Form (CTL − ATL), with fitness/fatigue readouts alongside.
  */
 export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
+  const { colors } = useTheme()
+
   const { status, message, color } = getFormStatus(form)
-  const style = HERO_STYLES[color] ?? HERO_STYLES.green
+  const style = colors.hero[color] ?? colors.hero.green
+  const emoji = HERO_EMOJI[color] ?? HERO_EMOJI.green
+  const shimmer = color === SHIMMER_TONE
   const rounded = Math.round(form)
   const [infoOpen, setInfoOpen] = useState(false)
 
@@ -112,12 +66,12 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
   // Peaked only: a light band sweeping across the card, on a slow loop.
   const sheen = useSharedValue(-1)
   useEffect(() => {
-    if (!style.shimmer) return
+    if (!shimmer) return
     sheen.value = withDelay(
       600,
       withRepeat(withTiming(1, { duration: 1800, easing: Easing.linear }), -1, false),
     )
-  }, [style.shimmer, sheen])
+  }, [shimmer, sheen])
   const sheenStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: sheen.value * 420 }, { rotate: '18deg' }],
   }))
@@ -133,7 +87,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
           // for Android's elevation ordering rather than for visible depth.
           borderWidth: 1,
           borderColor: style.border,
-          shadowColor: COLORS.shadow,
+          shadowColor: colors.shadow,
           shadowOpacity: 0.45,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 8 },
@@ -143,12 +97,12 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
       ]}
     >
       <LinearGradient
-        colors={style.gradient}
+        colors={[style.gradient[0], style.gradient[1]]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ padding: 22 }}
       >
-        {style.shimmer ? (
+        {shimmer ? (
           <Animated.View
             pointerEvents="none"
             style={[
@@ -158,7 +112,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 bottom: -40,
                 width: 70,
                 left: -70,
-                backgroundColor: 'rgba(74,222,128,0.10)',
+                backgroundColor: colors.heroSheen,
               },
               sheenStyle,
             ]}
@@ -182,7 +136,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 fontSize: 11,
                 fontWeight: '800',
                 letterSpacing: 1.6,
-                color: COLORS.muted,
+                color: colors.textMuted,
               }}
             >
               FORM SCORE
@@ -211,7 +165,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 flexDirection: 'row',
                 alignItems: 'center',
                 alignSelf: 'flex-start',
-                backgroundColor: COLORS.surfaceAlt,
+                backgroundColor: colors.surfaceAlt,
                 borderWidth: 1,
                 borderColor: style.border,
                 borderRadius: 999,
@@ -223,7 +177,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
               <Text style={{ fontSize: 13, fontWeight: '800', color: style.ink }}>
                 {status}
               </Text>
-              <Text style={{ fontSize: 14, marginLeft: 6 }}>{style.emoji}</Text>
+              <Text style={{ fontSize: 14, marginLeft: 6 }}>{emoji}</Text>
             </View>
 
             <Text
@@ -231,7 +185,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 marginTop: 10,
                 fontSize: 13,
                 fontWeight: '600',
-                color: COLORS.body,
+                color: colors.textBody,
                 lineHeight: 18,
               }}
             >
@@ -241,8 +195,8 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
 
           {/* Right: stacked fitness / fatigue mini-cards. */}
           <View style={{ marginLeft: 14, justifyContent: 'center' }}>
-            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tone={TINT.sky} />
-            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tone={TINT.red} />
+            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tone={colors.tint.sky} />
+            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tone={colors.tint.red} />
           </View>
         </View>
       </LinearGradient>
@@ -271,6 +225,8 @@ function MiniStat({
   value: number
   tone: { bg: string; border: string; text: string }
 }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={{
@@ -289,7 +245,7 @@ function MiniStat({
           fontSize: 10,
           fontWeight: '800',
           letterSpacing: 1.1,
-          color: COLORS.muted,
+          color: colors.textMuted,
         }}
       >
         {label}
@@ -298,7 +254,7 @@ function MiniStat({
         value={value}
         style={{ fontSize: 26, fontWeight: '800', color: tone.text, marginTop: 1 }}
       />
-      <Text style={{ fontSize: 10, fontWeight: '600', color: COLORS.subtle }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textSubtle }}>
         {sublabel}
       </Text>
     </View>

@@ -11,12 +11,12 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../ui/ThemedStatusBar'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import CountUp from '../dashboard/CountUp'
 import HeroRouteMap, { TITLE_OVERLAP } from '../session/HeroRouteMap'
 import RpeScale from './RpeScale'
-import { COLOR, RADIUS_T, SPACE, TINT, rpeColor } from '../../theme/tokens'
+import { RADIUS, SPACING, rpeColor } from '../../theme/tokens'
 import { haptics } from '../../utils/haptics'
 import { calculateSpeed, formatPaceValue } from '../../utils/geo'
 import {
@@ -31,6 +31,7 @@ import { calculateLoadScore } from '../../algorithms/sRPE'
 import { SPORT_OPTIONS } from '../../constants/training'
 import type { Conflict } from '../../types/conflict'
 import type { RoutePoint, SportType } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
 
 /* ------------------------------------------------------------------ */
 /* Default title                                                       */
@@ -130,6 +131,8 @@ const entrance = (index: number) => FadeInDown.delay(index * STEP_MS).duration(3
  * on the page.
  */
 export default function WorkoutSummary(props: WorkoutSummaryProps) {
+  const { colors } = useTheme()
+
   const {
     sport,
     sportLabel,
@@ -194,14 +197,14 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLOR.bg }} edges={['bottom']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['bottom']}>
+      <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ paddingBottom: SPACE.xl }}
+          contentContainerStyle={{ paddingBottom: SPACING.xl }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -215,11 +218,11 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
               // Shared with the hero's scrim, which guarantees an opaque band at
               // least this tall. See TITLE_OVERLAP.
               marginTop: -TITLE_OVERLAP,
-              paddingHorizontal: SPACE.lg,
+              paddingHorizontal: SPACING.lg,
             }}
           >
             <TitleField value={title} onChange={onTitleChange} />
-            <Text style={{ marginTop: SPACE.xs, fontSize: 13, color: COLOR.textMuted }}>
+            <Text style={{ marginTop: SPACING.xs, fontSize: 13, color: colors.textMuted }}>
               {sportLabel} · {formatStartedAt(startedAt)}
             </Text>
           </Animated.View>
@@ -229,8 +232,8 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             entering={entrance(1)}
             style={{
               flexDirection: 'row',
-              paddingHorizontal: SPACE.lg,
-              marginTop: SPACE.lg,
+              paddingHorizontal: SPACING.lg,
+              marginTop: SPACING.lg,
             }}
           >
             {hasGps ? (
@@ -262,9 +265,9 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             style={{
               flexDirection: 'row',
               flexWrap: 'wrap',
-              paddingHorizontal: SPACE.lg,
-              marginTop: SPACE.lg,
-              gap: SPACE.md,
+              paddingHorizontal: SPACING.lg,
+              marginTop: SPACING.lg,
+              gap: SPACING.md,
             }}
           >
             <SecondaryStat label="Elapsed Time" value={formatDuration(elapsedMs)} />
@@ -283,7 +286,7 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
 
           {/* 5 · Splits. */}
           {splits.length > 0 && distanceKm >= 1 ? (
-            <Animated.View entering={entrance(3)} style={{ marginTop: SPACE.lg }}>
+            <Animated.View entering={entrance(3)} style={{ marginTop: SPACING.lg }}>
               <Splits
                 splits={splits}
                 open={splitsOpen}
@@ -308,18 +311,18 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
           </Animated.View>
 
           {/* 7 · Notes. */}
-          <Animated.View entering={entrance(5)} style={{ paddingHorizontal: SPACE.lg, marginTop: SPACE.lg }}>
+          <Animated.View entering={entrance(5)} style={{ paddingHorizontal: SPACING.lg, marginTop: SPACING.lg }}>
             <SectionLabel>Notes</SectionLabel>
             <View
               style={{
-                marginTop: SPACE.sm,
-                backgroundColor: COLOR.surface,
-                borderRadius: RADIUS_T.md,
+                marginTop: SPACING.sm,
+                backgroundColor: colors.surface,
+                borderRadius: RADIUS.card,
                 borderWidth: 1,
-                borderColor: COLOR.border,
-                paddingHorizontal: SPACE.base,
-                paddingTop: SPACE.md,
-                paddingBottom: SPACE.sm,
+                borderColor: colors.border,
+                paddingHorizontal: SPACING.base,
+                paddingTop: SPACING.md,
+                paddingBottom: SPACING.sm,
               }}
             >
               <TextInput
@@ -328,23 +331,23 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
                 multiline
                 maxLength={NOTES_MAX}
                 placeholder="How did it go? Sleep, soreness, conditions..."
-                placeholderTextColor={COLOR.textMuted}
+                placeholderTextColor={colors.textMuted}
                 style={{
                   minHeight: 80,
                   maxHeight: 160,
                   fontSize: 15,
                   lineHeight: 21,
-                  color: COLOR.text,
+                  color: colors.text,
                   textAlignVertical: 'top',
                   padding: 0,
                 }}
               />
               <Text
                 style={{
-                  marginTop: SPACE.sm,
+                  marginTop: SPACING.sm,
                   alignSelf: 'flex-end',
                   fontSize: 11,
-                  color: notes.length >= NOTES_MAX ? COLOR.warn : COLOR.textMuted,
+                  color: notes.length >= NOTES_MAX ? colors.warn : colors.textMuted,
                 }}
               >
                 {notes.length}/{NOTES_MAX}
@@ -357,21 +360,21 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             athlete must be able to save from anywhere on the page. */}
         <View
           style={{
-            paddingHorizontal: SPACE.lg,
-            paddingTop: SPACE.md,
-            paddingBottom: SPACE.md,
-            backgroundColor: COLOR.bg,
+            paddingHorizontal: SPACING.lg,
+            paddingTop: SPACING.md,
+            paddingBottom: SPACING.md,
+            backgroundColor: colors.bg,
             borderTopWidth: 1,
-            borderTopColor: COLOR.border,
+            borderTopColor: colors.border,
           }}
         >
           <Pressable
             onPress={handleDiscard}
             disabled={saving || saved}
             hitSlop={8}
-            style={{ alignSelf: 'center', paddingVertical: SPACE.sm }}
+            style={{ alignSelf: 'center', paddingVertical: SPACING.sm }}
           >
-            <Text style={{ color: COLOR.danger, fontSize: 14, fontWeight: '700' }}>Discard</Text>
+            <Text style={{ color: colors.danger, fontSize: 14, fontWeight: '700' }}>Discard</Text>
           </Pressable>
 
           <SaveButton
@@ -387,10 +390,10 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
           {rpe == null ? (
             <Text
               style={{
-                marginTop: SPACE.sm,
+                marginTop: SPACING.sm,
                 textAlign: 'center',
                 fontSize: 12,
-                color: COLOR.textMuted,
+                color: colors.textMuted,
               }}
             >
               Select an effort rating to save
@@ -418,13 +421,15 @@ function formatStartedAt(startedAt: number): string {
 }
 
 function TitleField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <TextInput
         value={value}
         onChangeText={onChange}
         placeholder="Name this workout"
-        placeholderTextColor={COLOR.textMuted}
+        placeholderTextColor={colors.textMuted}
         maxLength={80}
         // Borderless on purpose: this reads as a heading you happen to be able to
         // edit, not as a form field. The pencil is the only affordance it needs.
@@ -432,11 +437,11 @@ function TitleField({ value, onChange }: { value: string; onChange: (v: string) 
           flex: 1,
           fontSize: 26,
           fontWeight: '700',
-          color: COLOR.text,
+          color: colors.text,
           padding: 0,
         }}
       />
-      <Text style={{ fontSize: 14, color: COLOR.textMuted, marginLeft: SPACE.sm }}>✏️</Text>
+      <Text style={{ fontSize: 14, color: colors.textMuted, marginLeft: SPACING.sm }}>✏️</Text>
     </View>
   )
 }
@@ -452,16 +457,18 @@ function PrimaryStat({
   unit?: string
   centred?: boolean
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1, alignItems: centred ? 'center' : 'flex-start' }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-        <Text style={{ fontSize: 30, fontWeight: '700', color: COLOR.text }}>{value}</Text>
+        <Text style={{ fontSize: 30, fontWeight: '700', color: colors.text }}>{value}</Text>
         {unit ? (
           <Text
             style={{
               fontSize: 13,
               fontWeight: '600',
-              color: COLOR.textMuted,
+              color: colors.textMuted,
               marginLeft: 3,
             }}
           >
@@ -471,12 +478,12 @@ function PrimaryStat({
       </View>
       <Text
         style={{
-          marginTop: SPACE.xs,
+          marginTop: SPACING.xs,
           fontSize: 11,
           fontWeight: '600',
           letterSpacing: 1,
           textTransform: 'uppercase',
-          color: COLOR.textMuted,
+          color: colors.textMuted,
         }}
       >
         {label}
@@ -486,16 +493,18 @@ function PrimaryStat({
 }
 
 function SecondaryStat({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={{
         // Two per row, accounting for the 12pt gap between them.
         width: '47.5%',
         flexGrow: 1,
-        backgroundColor: COLOR.surfaceAlt,
-        borderRadius: RADIUS_T.md,
-        paddingVertical: SPACE.base,
-        paddingHorizontal: SPACE.base,
+        backgroundColor: colors.surfaceAlt,
+        borderRadius: RADIUS.card,
+        paddingVertical: SPACING.base,
+        paddingHorizontal: SPACING.base,
       }}
     >
       <Text
@@ -504,15 +513,15 @@ function SecondaryStat({ label, value, unit }: { label: string; value: string; u
           fontWeight: '600',
           letterSpacing: 1,
           textTransform: 'uppercase',
-          color: COLOR.textMuted,
+          color: colors.textMuted,
         }}
       >
         {label}
       </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: SPACE.xs }}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: COLOR.text }}>{value}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: SPACING.xs }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{value}</Text>
         {unit ? (
-          <Text style={{ fontSize: 12, color: COLOR.textMuted, marginLeft: 3 }}>{unit}</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 3 }}>{unit}</Text>
         ) : null}
       </View>
     </View>
@@ -520,6 +529,8 @@ function SecondaryStat({ label, value, unit }: { label: string; value: string; u
 }
 
 function SectionLabel({ children }: { children: string }) {
+  const { colors } = useTheme()
+
   return (
     <Text
       style={{
@@ -527,7 +538,7 @@ function SectionLabel({ children }: { children: string }) {
         fontWeight: '700',
         letterSpacing: 1,
         textTransform: 'uppercase',
-        color: COLOR.textMuted,
+        color: colors.textMuted,
       }}
     >
       {children}
@@ -546,6 +557,8 @@ function Splits({
   open: boolean
   onToggle: () => void
 }) {
+  const { colors } = useTheme()
+
   // Bars are scaled against the SLOWEST split, so the fastest is the longest bar
   // and the eye reads "longer = better" consistently down the column. Scaling by
   // pace directly would invert that and make the best kilometre the stub.
@@ -553,20 +566,20 @@ function Splits({
   const fastest = Math.min(...splits.map((s) => s.paceSecPerKm))
 
   return (
-    <View style={{ paddingHorizontal: SPACE.lg }}>
+    <View style={{ paddingHorizontal: SPACING.lg }}>
       <Pressable
         onPress={onToggle}
         hitSlop={8}
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
       >
         <SectionLabel>Splits</SectionLabel>
-        <Text style={{ fontSize: 12, fontWeight: '700', color: COLOR.textMuted }}>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted }}>
           {open ? 'Hide ▲' : `${splits.length} km ▼`}
         </Text>
       </Pressable>
 
       {open ? (
-        <View style={{ marginTop: SPACE.md, gap: SPACE.sm }}>
+        <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
           {splits.map((split) => {
             const isFastest = split.paceSecPerKm === fastest
             // Floor at 12% so the slowest kilometre is still a bar, not a sliver.
@@ -578,7 +591,7 @@ function Splits({
                     width: 28,
                     fontSize: 13,
                     fontWeight: '700',
-                    color: COLOR.textMuted,
+                    color: colors.textMuted,
                   }}
                 >
                   {split.km}
@@ -588,7 +601,7 @@ function Splits({
                     flex: 1,
                     height: 22,
                     borderRadius: 6,
-                    backgroundColor: COLOR.surfaceAlt,
+                    backgroundColor: colors.surfaceAlt,
                     overflow: 'hidden',
                   }}
                 >
@@ -597,7 +610,7 @@ function Splits({
                       width: `${ratio * 100}%`,
                       height: '100%',
                       borderRadius: 6,
-                      backgroundColor: isFastest ? COLOR.accent : COLOR.border,
+                      backgroundColor: isFastest ? colors.accent : colors.border,
                     }}
                   />
                 </View>
@@ -607,7 +620,7 @@ function Splits({
                     textAlign: 'right',
                     fontSize: 13,
                     fontWeight: '700',
-                    color: isFastest ? COLOR.accent : COLOR.text,
+                    color: isFastest ? colors.accent : colors.text,
                   }}
                 >
                   {formatSplitPace(split.paceSecPerKm)}
@@ -616,7 +629,7 @@ function Splits({
             )
           })}
           {splits.some((s) => s.partial) ? (
-            <Text style={{ fontSize: 11, color: COLOR.textMuted, marginTop: SPACE.xs }}>
+            <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: SPACING.xs }}>
               Final split is a partial kilometre, extrapolated to a full-km pace.
             </Text>
           ) : null}
@@ -654,6 +667,8 @@ function TrainingLoadBlock({
   currentForm: number
   conflicts: Conflict[]
 }) {
+  const { colors } = useTheme()
+
   const formAfter = Math.round(currentForm + load * FORM_DELTA_PER_LOAD)
   const formNow = Math.round(currentForm)
   const worst = conflicts.find((c) => c.severity === 'danger') ?? conflicts[0]
@@ -661,26 +676,26 @@ function TrainingLoadBlock({
   return (
     <View
       style={{
-        marginTop: SPACE.lg,
-        marginHorizontal: SPACE.lg,
-        backgroundColor: COLOR.surface,
-        borderRadius: RADIUS_T.md,
+        marginTop: SPACING.lg,
+        marginHorizontal: SPACING.lg,
+        backgroundColor: colors.surface,
+        borderRadius: RADIUS.card,
         // The accent rail is what marks this out as FORMA's block rather than
         // another stat card — it is the one thing on this screen no other
         // tracking app asks for.
         borderLeftWidth: 3,
-        borderLeftColor: COLOR.accent,
-        padding: SPACE.base,
+        borderLeftColor: colors.accent,
+        padding: SPACING.base,
       }}
     >
-      <Text style={{ fontSize: 17, fontWeight: '800', color: COLOR.text }}>
+      <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>
         How hard was that session?
       </Text>
       <Text
         style={{
-          marginTop: SPACE.xs,
+          marginTop: SPACING.xs,
           fontSize: 13,
-          color: COLOR.textMuted,
+          color: colors.textMuted,
           lineHeight: 19,
         }}
       >
@@ -688,7 +703,7 @@ function TrainingLoadBlock({
         the session has settled.
       </Text>
 
-      <View style={{ marginTop: SPACE.base }}>
+      <View style={{ marginTop: SPACING.base }}>
         <RpeScale value={rpe} onChange={onRpeChange} />
       </View>
 
@@ -698,15 +713,15 @@ function TrainingLoadBlock({
       {rpe != null ? (
         <View
           style={{
-            marginTop: SPACE.base,
-            paddingTop: SPACE.base,
+            marginTop: SPACING.base,
+            paddingTop: SPACING.base,
             borderTopWidth: 1,
-            borderTopColor: COLOR.border,
-            gap: SPACE.sm,
+            borderTopColor: colors.border,
+            gap: SPACING.sm,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-            <Text style={{ fontSize: 13, color: COLOR.textMuted }}>Training load</Text>
+            <Text style={{ fontSize: 13, color: colors.textMuted }}>Training load</Text>
             <CountUp
               value={load}
               duration={420}
@@ -714,21 +729,21 @@ function TrainingLoadBlock({
               style={{
                 fontSize: 22,
                 fontWeight: '800',
-                color: rpeColor(rpe),
-                marginLeft: SPACE.sm,
+                color: rpeColor(rpe, colors),
+                marginLeft: SPACING.sm,
               }}
             />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: COLOR.textMuted, marginLeft: 4 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textMuted, marginLeft: 4 }}>
               AU
             </Text>
-            <Text style={{ fontSize: 11, color: COLOR.textMuted, marginLeft: SPACE.sm }}>
+            <Text style={{ fontSize: 11, color: colors.textMuted, marginLeft: SPACING.sm }}>
               {durationMinutes} min × {rpe}
             </Text>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ fontSize: 13, color: COLOR.textMuted }}>Form after saving</Text>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: COLOR.text, marginLeft: SPACE.sm }}>
+            <Text style={{ fontSize: 13, color: colors.textMuted }}>Form after saving</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginLeft: SPACING.sm }}>
               {formNow > 0 ? `+${formNow}` : formNow}
             </Text>
             <Text
@@ -736,7 +751,7 @@ function TrainingLoadBlock({
                 marginHorizontal: 6,
                 fontSize: 14,
                 fontWeight: '800',
-                color: formAfter < formNow ? COLOR.warn : COLOR.accent,
+                color: formAfter < formNow ? colors.warn : colors.accent,
               }}
             >
               {formAfter < formNow ? '↘' : '↗'}
@@ -745,7 +760,7 @@ function TrainingLoadBlock({
               style={{
                 fontSize: 14,
                 fontWeight: '700',
-                color: formAfter < formNow ? COLOR.warn : COLOR.accent,
+                color: formAfter < formNow ? colors.warn : colors.accent,
               }}
             >
               {formAfter > 0 ? `+${formAfter}` : formAfter}
@@ -760,25 +775,25 @@ function TrainingLoadBlock({
       {worst ? (
         <View
           style={{
-            marginTop: SPACE.base,
+            marginTop: SPACING.base,
             flexDirection: 'row',
-            backgroundColor: TINT.amber.bg,
+            backgroundColor: colors.tint.amber.bg,
             borderWidth: 1,
-            borderColor: TINT.amber.border,
-            borderRadius: RADIUS_T.sm,
-            padding: SPACE.md,
+            borderColor: colors.tint.amber.border,
+            borderRadius: RADIUS.md,
+            padding: SPACING.md,
           }}
         >
-          <Text style={{ fontSize: 15, marginRight: SPACE.sm }}>⚠️</Text>
+          <Text style={{ fontSize: 15, marginRight: SPACING.sm }}>⚠️</Text>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: COLOR.warn, letterSpacing: 0.4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.warn, letterSpacing: 0.4 }}>
               {worst.severity === 'danger' ? 'HIGH INJURY RISK' : 'TRAINING CONFLICT'}
             </Text>
-            <Text style={{ marginTop: 3, fontSize: 13, color: COLOR.text, lineHeight: 18 }}>
+            <Text style={{ marginTop: 3, fontSize: 13, color: colors.text, lineHeight: 18 }}>
               {worst.message}
             </Text>
             {conflicts.length > 1 ? (
-              <Text style={{ marginTop: 4, fontSize: 11, color: COLOR.textMuted }}>
+              <Text style={{ marginTop: 4, fontSize: 11, color: colors.textMuted }}>
                 +{conflicts.length - 1} more flagged after saving
               </Text>
             ) : null}
@@ -802,6 +817,8 @@ function SaveButton({
   saved: boolean
   onPress: () => void
 }) {
+  const { colors } = useTheme()
+
   const [pressed, setPressed] = useState(false)
   const active = enabled || saving || saved
 
@@ -813,22 +830,22 @@ function SaveButton({
       onPressOut={() => setPressed(false)}
       style={{
         height: 56,
-        borderRadius: RADIUS_T.lg,
+        borderRadius: RADIUS.xl,
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
         // Muted rather than hidden while unrated: the athlete can see what they
         // are working towards, and the helper text below says what is missing.
-        backgroundColor: active ? COLOR.accent : COLOR.surfaceAlt,
+        backgroundColor: active ? colors.accent : colors.surfaceAlt,
         opacity: pressed && enabled ? 0.85 : 1,
       }}
     >
-      {saving ? <ActivityIndicator color={COLOR.bg} style={{ marginRight: SPACE.sm }} /> : null}
+      {saving ? <ActivityIndicator color={colors.bg} style={{ marginRight: SPACING.sm }} /> : null}
       <Text
         style={{
           fontSize: 17,
           fontWeight: '700',
-          color: active ? COLOR.bg : COLOR.textMuted,
+          color: active ? colors.bg : colors.textMuted,
         }}
       >
         {saved ? '✓  Saved' : saving ? 'Saving…' : 'Save Session'}

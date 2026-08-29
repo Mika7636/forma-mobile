@@ -17,22 +17,16 @@
  * ready screen), so the colour language is identical on both sides of Start.
  */
 import { Text, View } from 'react-native'
-import { COLOR, TINT } from '../../theme/tokens'
 import type { GpsQuality } from '../../store/liveTrackingStore'
+import { useTheme } from '../../theme/ThemeProvider'
+import type { Palette } from '../../theme/tokens'
 
-const DOT_GREEN = COLOR.accent
-const DOT_AMBER = COLOR.warn
-const DOT_RED = COLOR.danger
-const DOT_GREY = COLOR.textMuted
 
 // The chip's *type* colours. Deliberately a tint lighter than the dot beside
 // them: the dot is the signal and the words are the caption, and a saturated
 // accent at 12pt on a dark ground vibrates. These are the accent, warn and
 // danger hues lifted toward the page's text colour until they read as calm
 // labels rather than as alerts — all above 7:1 on `surfaceAlt`.
-const LIGHT_ACCENT = TINT.green.text
-const LIGHT_WARN = TINT.amber.text
-const LIGHT_DANGER = TINT.red.text
 
 interface Appearance {
   dot: string
@@ -41,19 +35,23 @@ interface Appearance {
   text: string
 }
 
-const TRACKING: Record<GpsQuality, Appearance> = {
-  acquiring: { dot: DOT_GREY, label: 'GPS searching', text: COLOR.textMuted },
-  good: { dot: DOT_GREEN, label: 'GPS good', text: LIGHT_ACCENT },
-  weak: { dot: DOT_AMBER, label: 'GPS weak', text: LIGHT_WARN },
-  lost: { dot: DOT_RED, label: 'GPS lost', text: LIGHT_DANGER },
+function tracking(colors: Palette): Record<GpsQuality, Appearance> {
+  return {
+    acquiring: { dot: colors.textMuted, label: 'GPS searching', text: colors.textMuted },
+    good: { dot: colors.accent, label: 'GPS good', text: colors.tint.green.text },
+    weak: { dot: colors.warn, label: 'GPS weak', text: colors.tint.amber.text },
+    lost: { dot: colors.danger, label: 'GPS lost', text: colors.tint.red.text },
+  }
 }
 
 /** Pre-start wording: the question there is "can I go yet?", not "is it right?". */
-const WARMUP: Record<GpsQuality, Appearance> = {
-  acquiring: { dot: DOT_GREY, label: 'Finding GPS…', text: COLOR.textMuted },
-  good: { dot: DOT_GREEN, label: 'GPS ready', text: LIGHT_ACCENT },
-  weak: { dot: DOT_AMBER, label: 'GPS weak', text: LIGHT_WARN },
-  lost: { dot: DOT_RED, label: 'No GPS signal', text: LIGHT_DANGER },
+function warmup(colors: Palette): Record<GpsQuality, Appearance> {
+  return {
+    acquiring: { dot: colors.textMuted, label: 'Finding GPS…', text: colors.textMuted },
+    good: { dot: colors.accent, label: 'GPS ready', text: colors.tint.green.text },
+    weak: { dot: colors.warn, label: 'GPS weak', text: colors.tint.amber.text },
+    lost: { dot: colors.danger, label: 'No GPS signal', text: colors.tint.red.text },
+  }
 }
 
 export default function GpsChip({
@@ -64,7 +62,9 @@ export default function GpsChip({
   /** `warmup` uses the pre-start wording; the colours are identical. */
   variant?: 'tracking' | 'warmup'
 }) {
-  const { dot, label, text } = (variant === 'warmup' ? WARMUP : TRACKING)[quality]
+  const { colors } = useTheme()
+
+  const { dot, label, text } = (variant === 'warmup' ? warmup(colors) : tracking(colors))[quality]
   return (
     <View
       // No entering/exiting animation on purpose: this thing changes state every
@@ -77,7 +77,7 @@ export default function GpsChip({
         paddingVertical: 4,
         paddingHorizontal: 10,
         borderRadius: 999,
-        backgroundColor: COLOR.surfaceAlt,
+        backgroundColor: colors.surfaceAlt,
       }}
     >
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot }} />

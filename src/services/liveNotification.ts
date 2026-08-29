@@ -97,7 +97,7 @@ import {
 } from 'expo-notifications/build/NotificationChannelManager.types'
 import type { NotificationResponse } from 'expo-notifications/build/Notifications.types'
 import { formatPaceValue, rollingPaceSecPerKm } from '../utils/geo'
-import { COLOR } from '../theme/tokens'
+import { NOTIFICATION_ACCENT, NOTIFICATION_WARN } from '../theme/tokens'
 import {
   LIVE_LOCATION_TASK,
   PACE_MAX_SEC_PER_KM,
@@ -173,8 +173,12 @@ export const TRACKING_ACTION = {
 /** Routing payload read by the response listener; see `useNotificationObserver`. */
 export const LIVE_NOTIFICATION_SCREEN = 'live-tracker'
 
-const COLOR_ACTIVE = COLOR.accent
-const COLOR_PAUSED = COLOR.warn
+// Fixed rather than themed. This colour is applied by the Android notification
+// shade, which runs its own light/dark state that has nothing to do with the one
+// the user picked inside FORMA — and this module is evaluated headlessly, with
+// no React tree and so no palette, when the OS wakes the app to deliver fixes.
+const COLOR_ACTIVE = NOTIFICATION_ACCENT
+const COLOR_PAUSED = NOTIFICATION_WARN
 
 /**
  * Minimum gap between re-presents.

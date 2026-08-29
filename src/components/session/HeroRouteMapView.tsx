@@ -2,9 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { Platform, View } from 'react-native'
 import MapView, { Marker, Polyline, type LatLng } from 'react-native-maps'
 import Animated, { FadeIn } from 'react-native-reanimated'
-import { COLOR } from '../../theme/tokens'
-import { DARK_MAP_STYLE } from './darkMapStyle'
 import { frameRoute, MIN_ZOOM_LEVEL } from './routeRegion'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface HeroRouteMapViewProps {
   /** Already validated and thinned upstream. Always at least one point. */
@@ -62,6 +61,8 @@ const EDGE_PADDING = { top: 56, right: 48, bottom: 96, left: 48 }
  * guarded routine, which runs when the second of the two arrives.
  */
 export default function HeroRouteMapView({ coordinates, height }: HeroRouteMapViewProps) {
+  const { colors, scheme } = useTheme()
+
   const mapRef = useRef<MapView | null>(null)
   const [tilesReady, setTilesReady] = useState(false)
 
@@ -142,8 +143,12 @@ export default function HeroRouteMapView({ coordinates, height }: HeroRouteMapVi
         }}
         // Android: our own night styling. iOS ignores customMapStyle and takes
         // its cue from the view's interface style instead.
-        customMapStyle={Platform.OS === 'android' ? (DARK_MAP_STYLE as unknown as never) : undefined}
-        userInterfaceStyle="dark"
+        // Android takes an explicit style array; iOS ignores `customMapStyle`
+        // entirely and follows `userInterfaceStyle`, so both have to be driven
+        // from the same resolved scheme or the map ends up the only light thing
+        // on a dark screen.
+        customMapStyle={Platform.OS === 'android' ? (colors.mapStyle as unknown as never) : undefined}
+        userInterfaceStyle={scheme}
         scrollEnabled={false}
         zoomEnabled={false}
         rotateEnabled={false}
@@ -159,7 +164,7 @@ export default function HeroRouteMapView({ coordinates, height }: HeroRouteMapVi
         {framing.kind === 'route' ? (
           <Polyline
             coordinates={coordinates}
-            strokeColor={COLOR.accent}
+            strokeColor={colors.accent}
             strokeWidth={5}
             lineCap="round"
             lineJoin="round"
@@ -171,7 +176,7 @@ export default function HeroRouteMapView({ coordinates, height }: HeroRouteMapVi
             and the line between them, which is what made this map read as
             "start marker only". A small flat dot sits on the coordinate itself. */}
         <Marker coordinate={coordinates[0]} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
-          <EndpointDot color={COLOR.accent} />
+          <EndpointDot color={colors.accent} />
         </Marker>
         {/* Only when there is somewhere else to mark. Stacking a red dot exactly
             on top of the green one is how a stationary session read as a bug. */}
@@ -181,7 +186,7 @@ export default function HeroRouteMapView({ coordinates, height }: HeroRouteMapVi
             anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
           >
-            <EndpointDot color={COLOR.danger} />
+            <EndpointDot color={colors.danger} />
           </Marker>
         ) : null}
       </MapView>
@@ -198,7 +203,7 @@ export default function HeroRouteMapView({ coordinates, height }: HeroRouteMapVi
             left: 0,
             right: 0,
             height,
-            backgroundColor: COLOR.surface,
+            backgroundColor: colors.surface,
           }}
         />
       )}
@@ -208,6 +213,8 @@ export default function HeroRouteMapView({ coordinates, height }: HeroRouteMapVi
 
 /** A flat endpoint dot with a ring, so it stays legible over any map colour. */
 function EndpointDot({ color }: { color: string }) {
+  const { colors, scheme } = useTheme()
+
   return (
     <View
       style={{
@@ -216,7 +223,7 @@ function EndpointDot({ color }: { color: string }) {
         borderRadius: 8,
         backgroundColor: color,
         borderWidth: 3,
-        borderColor: COLOR.bg,
+        borderColor: colors.bg,
       }}
     />
   )

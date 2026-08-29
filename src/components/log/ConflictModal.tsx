@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
-import { COLORS } from '../../constants/theme'
 import { severityStyle, worstSeverity } from '../../constants/conflictColors'
 import { involvedSessions } from '../../utils/conflictInfo'
 import type { Conflict } from '../../types/conflict'
 import type { Session } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface ConflictModalProps {
   visible: boolean
@@ -35,7 +35,9 @@ export default function ConflictModal({
   onKeep,
   onUndo,
 }: ConflictModalProps) {
-  const overall = severityStyle(worstSeverity(conflicts))
+  const { colors } = useTheme()
+
+  const overall = severityStyle(worstSeverity(conflicts), colors)
 
   // Warn the athlete physically the moment the sheet appears.
   useEffect(() => {
@@ -46,17 +48,17 @@ export default function ConflictModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onKeep}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: COLORS.scrim }}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.scrim }}>
         <View
           style={{
-            backgroundColor: COLORS.surface,
+            backgroundColor: colors.surface,
             borderTopLeftRadius: 24,
             borderTopRightRadius: 24,
             paddingTop: 14,
             paddingBottom: 24,
             paddingHorizontal: 20,
             maxHeight: '86%',
-            shadowColor: COLORS.shadow,
+            shadowColor: colors.shadow,
             shadowOpacity: 0.25,
             shadowRadius: 24,
             shadowOffset: { width: 0, height: -6 },
@@ -69,7 +71,7 @@ export default function ConflictModal({
               width: 44,
               height: 5,
               borderRadius: 999,
-              backgroundColor: COLORS.border,
+              backgroundColor: colors.border,
               marginBottom: 14,
             }}
           />
@@ -84,7 +86,7 @@ export default function ConflictModal({
           >
             {overall.icon} {overall.title === 'High Injury Risk' ? 'High Injury Risk' : 'Training Conflict Detected'}
           </Text>
-          <Text style={{ marginTop: 4, fontSize: 13, color: COLORS.muted, textAlign: 'center' }}>
+          <Text style={{ marginTop: 4, fontSize: 13, color: colors.textMuted, textAlign: 'center' }}>
             Your call — here&apos;s what we noticed.
           </Text>
 
@@ -114,10 +116,10 @@ export default function ConflictModal({
                 borderRadius: 12,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: COLORS.teal,
+                backgroundColor: colors.accent,
               }}
             >
-              <Text style={{ color: COLORS.onAccent, fontSize: 16, fontWeight: '700' }}>
+              <Text style={{ color: colors.onAccent, fontSize: 16, fontWeight: '700' }}>
                 Keep session
               </Text>
             </Pressable>
@@ -135,14 +137,14 @@ export default function ConflictModal({
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderWidth: 1.5,
-                borderColor: COLORS.danger,
-                backgroundColor: COLORS.surface,
+                borderColor: colors.danger,
+                backgroundColor: colors.surface,
               }}
             >
               {undoing ? (
-                <ActivityIndicator color={COLORS.dangerText} />
+                <ActivityIndicator color={colors.dangerText} />
               ) : (
-                <Text style={{ color: COLORS.dangerText, fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: colors.dangerText, fontSize: 16, fontWeight: '700' }}>
                   Undo
                 </Text>
               )}
@@ -155,7 +157,9 @@ export default function ConflictModal({
 }
 
 function ConflictRow({ conflict, sessions }: { conflict: Conflict; sessions: Session[] }) {
-  const style = severityStyle(conflict.severity)
+  const { colors } = useTheme()
+
+  const style = severityStyle(conflict.severity, colors)
   const pair = involvedSessions(conflict, sessions)
 
   return (
@@ -172,18 +176,18 @@ function ConflictRow({ conflict, sessions }: { conflict: Conflict; sessions: Ses
     >
       <View style={{ flexDirection: 'row' }}>
         <Text style={{ fontSize: 18, marginRight: 10 }}>{style.icon}</Text>
-        <Text style={{ flex: 1, fontSize: 14, lineHeight: 20, color: COLORS.body }}>
+        <Text style={{ flex: 1, fontSize: 14, lineHeight: 20, color: colors.textBody }}>
           {conflict.message}
         </Text>
       </View>
 
       {pair.from && pair.to ? (
-        <Text style={{ marginTop: 10, marginLeft: 28, fontSize: 13, color: COLORS.muted }}>
-          <Text style={{ fontWeight: '700', color: COLORS.body }}>
+        <Text style={{ marginTop: 10, marginLeft: 28, fontSize: 13, color: colors.textMuted }}>
+          <Text style={{ fontWeight: '700', color: colors.textBody }}>
             {pair.from.icon} {pair.from.sportLabel}
           </Text>{' '}
           ({pair.from.when}, RPE {pair.from.rpe}) →{' '}
-          <Text style={{ fontWeight: '700', color: COLORS.body }}>
+          <Text style={{ fontWeight: '700', color: colors.textBody }}>
             {pair.to.icon} {pair.to.sportLabel}
           </Text>{' '}
           ({pair.to.when}, RPE {pair.to.rpe})

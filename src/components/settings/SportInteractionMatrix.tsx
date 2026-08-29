@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
-import { COLORS } from '../../constants/theme'
-import { INTERACTION_LEVELS } from '../../constants/conflictColors'
+import { interactionLevels } from '../../constants/conflictColors'
 import { SPORT_META } from '../../utils/sportMeta'
 import type { SportType } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
+import { onColor } from '../../theme/tokens'
 
 interface SportInteractionMatrixProps {
   /** The user's active sports; only pairs among these are shown. */
@@ -31,6 +32,9 @@ export default function SportInteractionMatrix({
   interactions,
   onChange,
 }: SportInteractionMatrixProps) {
+  const { colors } = useTheme()
+  const levels = useMemo(() => interactionLevels(colors), [colors])
+
   const pairs = useMemo(() => {
     const out: [SportType, SportType][] = []
     for (let i = 0; i < sports.length; i++) {
@@ -41,13 +45,13 @@ export default function SportInteractionMatrix({
 
   return (
     <View>
-      <Text style={{ fontSize: 13, color: COLORS.muted, marginBottom: 14, lineHeight: 18 }}>
+      <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 14, lineHeight: 18 }}>
         Tell FORMA which of your sports stress the same muscles or nervous system. Higher settings
         mean more warnings.
       </Text>
 
       {pairs.length === 0 ? (
-        <Text style={{ fontSize: 13, color: COLORS.subtle }}>
+        <Text style={{ fontSize: 13, color: colors.textSubtle }}>
           Add at least two active sports to customise interactions.
         </Text>
       ) : (
@@ -55,17 +59,17 @@ export default function SportInteractionMatrix({
           const level = interactions[pairKey(a, b)] ?? 0
           const metaA = SPORT_META[a]
           const metaB = SPORT_META[b]
-          const activeLevel = INTERACTION_LEVELS.find((l) => l.value === level)
+          const activeLevel = levels.find((l) => l.value === level)
           return (
             <View key={pairKey(a, b)} style={{ marginBottom: 16 }}>
               <Text
-                style={{ fontSize: 14, fontWeight: '700', color: COLORS.body, marginBottom: 7 }}
+                style={{ fontSize: 14, fontWeight: '700', color: colors.textBody, marginBottom: 7 }}
               >
                 {metaA?.icon} {metaA?.label ?? a}{'  ↔  '}{metaB?.icon} {metaB?.label ?? b}
               </Text>
 
               <View style={{ flexDirection: 'row' }}>
-                {INTERACTION_LEVELS.map((lvl) => {
+                {levels.map((lvl) => {
                   const on = level === lvl.value
                   return (
                     <Pressable
@@ -83,8 +87,8 @@ export default function SportInteractionMatrix({
                         marginRight: lvl.value < 3 ? 6 : 0,
                         borderRadius: 10,
                         borderWidth: 1.5,
-                        borderColor: on ? lvl.color : COLORS.border,
-                        backgroundColor: on ? lvl.color : COLORS.surfaceAlt,
+                        borderColor: on ? lvl.color : colors.border,
+                        backgroundColor: on ? lvl.color : colors.surfaceAlt,
                         paddingVertical: 9,
                         alignItems: 'center',
                       }}
@@ -93,7 +97,7 @@ export default function SportInteractionMatrix({
                         style={{
                           fontSize: 12,
                           fontWeight: '700',
-                          color: on ? COLORS.onAccent : COLORS.muted,
+                          color: on ? onColor(lvl.color) : colors.textMuted,
                         }}
                       >
                         {lvl.label}
@@ -104,7 +108,7 @@ export default function SportInteractionMatrix({
               </View>
 
               {activeLevel ? (
-                <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.subtle }}>
+                <Text style={{ marginTop: 6, fontSize: 12, color: colors.textSubtle }}>
                   {activeLevel.hint}
                 </Text>
               ) : null}

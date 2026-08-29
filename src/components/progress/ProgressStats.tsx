@@ -1,12 +1,10 @@
 import { type ReactNode } from 'react'
 import { Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
-import { COLORS } from '../../constants/theme'
 import { formatThousands } from '../../utils/formatting'
 import type { ProgressStatsData } from '../../utils/progressMetrics'
+import { useTheme } from '../../theme/ThemeProvider'
 
-const TREND_UP = COLORS.teal
-const TREND_DOWN = COLORS.danger
 
 interface ProgressStatsProps {
   stats: ProgressStatsData
@@ -20,8 +18,10 @@ interface ProgressStatsProps {
  * MetricGrid styling so the two screens feel like one product.
  */
 export default function ProgressStats({ stats, baseDelay = 40 }: ProgressStatsProps) {
+  const { colors } = useTheme()
+
   const form = stats.avgForm
-  const formColor = form > 5 ? TREND_UP : form < -10 ? TREND_DOWN : COLORS.ink
+  const formColor = form > 5 ? colors.accentText : form < -10 ? colors.dangerText : colors.text
   const trendUp = stats.ctlTrend >= 0
 
   return (
@@ -59,7 +59,7 @@ export default function ProgressStats({ stats, baseDelay = 40 }: ProgressStatsPr
         label="current fitness (CTL)"
         value={String(stats.currentCTL)}
         trend={
-          <Text style={{ fontSize: 13, fontWeight: '800', color: trendUp ? TREND_UP : TREND_DOWN }}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: trendUp ? colors.accentText : colors.dangerText }}>
             {trendUp ? '↑' : '↓'} {Math.abs(stats.ctlTrend)}
           </Text>
         }
@@ -73,7 +73,7 @@ function StatCard({
   value,
   label,
   delay,
-  valueColor = COLORS.ink,
+  valueColor,
   small = false,
   trend,
 }: {
@@ -86,18 +86,20 @@ function StatCard({
   small?: boolean
   trend?: ReactNode
 }) {
+  const { colors } = useTheme()
+
   return (
     <Animated.View
       entering={FadeInDown.delay(delay).duration(320)}
       style={{
         flexBasis: '30%',
         flexGrow: 1,
-        backgroundColor: COLORS.surface,
+        backgroundColor: colors.surface,
         borderRadius: 16,
         padding: 14,
         borderWidth: 1,
-        borderColor: COLORS.border,
-        shadowColor: COLORS.shadow,
+        borderColor: colors.border,
+        shadowColor: colors.shadow,
         shadowOpacity: 0.05,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
@@ -114,7 +116,7 @@ function StatCard({
         </Text>
       </View>
       {trend ? <View style={{ marginTop: 2 }}>{trend}</View> : null}
-      <Text style={{ marginTop: 3, fontSize: 11, color: COLORS.subtle }} numberOfLines={1}>
+      <Text style={{ marginTop: 3, fontSize: 11, color: colors.textSubtle }} numberOfLines={1}>
         {label}
       </Text>
     </Animated.View>

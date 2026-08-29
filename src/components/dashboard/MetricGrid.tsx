@@ -2,8 +2,9 @@ import { type ReactNode } from 'react'
 import { Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import CountUp from './CountUp'
-import { COLORS } from '../../constants/theme'
 import { formatDistance, formatThousands } from '../../utils/formatting'
+import { useTheme } from '../../theme/ThemeProvider'
+import type { Palette } from '../../theme/tokens'
 
 interface MetricGridProps {
   weeklyLoad: number
@@ -18,17 +19,12 @@ interface MetricGridProps {
   baseDelay?: number
 }
 
-const TREND_UP = COLORS.teal
-const TREND_DOWN = COLORS.danger
-const BUDGET_OK = COLORS.teal
-const BUDGET_NEAR = COLORS.warning
-const BUDGET_OVER = COLORS.danger
 
-/** Progress-bar colour: teal under budget, amber from 80%, red once over. */
-function budgetColor(ratio: number): string {
-  if (ratio > 1) return BUDGET_OVER
-  if (ratio >= 0.8) return BUDGET_NEAR
-  return BUDGET_OK
+/** Progress-bar colour: accent under budget, amber from 80%, red once over. */
+function budgetColor(ratio: number, colors: Palette): string {
+  if (ratio > 1) return colors.dangerText
+  if (ratio >= 0.8) return colors.warnText
+  return colors.accentText
 }
 
 /**
@@ -46,13 +42,16 @@ export default function MetricGrid({
   streak,
   baseDelay = 60,
 }: MetricGridProps) {
+  const { colors } = useTheme()
+
   // No prior week logged → there's nothing to compare against, so show the bare
   // number rather than a misleading "up 100%" against an empty baseline.
   const hasBaseline = previousWeeklyLoad > 0
   const loadDelta = weeklyLoad - previousWeeklyLoad
 
   const budgetRatio = budgetHours > 0 ? weeklyHours / budgetHours : 0
-  const barColor = budgetColor(budgetRatio)
+  const styles = makeStyles(colors)
+  const barColor = budgetColor(budgetRatio, colors)
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
@@ -66,12 +65,12 @@ export default function MetricGrid({
               style={{
                 fontSize: 12,
                 fontWeight: '800',
-                color: loadDelta >= 0 ? TREND_UP : TREND_DOWN,
+                color: loadDelta >= 0 ? colors.accentText : colors.dangerText,
               }}
             >
               {loadDelta >= 0 ? '↑' : '↓'} {formatThousands(Math.abs(loadDelta))}
             </Text>
-            <Text style={{ fontSize: 11, color: COLORS.subtle, marginLeft: 4 }}>
+            <Text style={{ fontSize: 11, color: colors.textSubtle, marginLeft: 4 }}>
               vs last week
             </Text>
           </View>
@@ -89,7 +88,7 @@ export default function MetricGrid({
           style={{
             height: 6,
             borderRadius: 3,
-            backgroundColor: COLORS.border,
+            backgroundColor: colors.border,
             overflow: 'hidden',
             marginTop: 8,
           }}
@@ -157,6 +156,8 @@ function MetricCard({
   delay: number
   children: ReactNode
 }) {
+  const { colors } = useTheme()
+
   return (
     <Animated.View
       entering={FadeInDown.delay(delay).duration(340)}
@@ -165,12 +166,12 @@ function MetricCard({
         // keeps a lone trailing card from stretching oddly on wide screens.
         flexBasis: '47%',
         flexGrow: 1,
-        backgroundColor: COLORS.surface,
+        backgroundColor: colors.surface,
         borderRadius: 16,
         padding: 16,
         borderWidth: 1,
-        borderColor: COLORS.border,
-        shadowColor: COLORS.shadow,
+        borderColor: colors.border,
+        shadowColor: colors.shadow,
         shadowOpacity: 0.05,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
@@ -178,7 +179,7 @@ function MetricCard({
       }}
     >
       {children}
-      <Text style={{ marginTop: 3, fontSize: 12, color: COLORS.subtle }} numberOfLines={1}>
+      <Text style={{ marginTop: 3, fontSize: 12, color: colors.textSubtle }} numberOfLines={1}>
         {label}
       </Text>
     </Animated.View>
@@ -195,10 +196,20 @@ function ValueRow({ icon, children }: { icon?: string; children: ReactNode }) {
   )
 }
 
-const styles = {
-  bigNumber: {
-    fontSize: 26,
-    fontWeight: '800' as const,
-    color: COLORS.ink,
-  },
+/**
+ * Built from the palette rather than declared at module scope.
+ *
+ * A `const styles = { bigNumber: { color: … } }` next to the component would
+ * capture whichever palette was active when this module was first imported and
+ * then never change — the exact way a single screen ends up keeping its old
+ * colour after a theme switch.
+ */
+function makeStyles(colors: Palette) {
+  return {
+    bigNumber: {
+      fontSize: 26,
+      fontWeight: '800' as const,
+      color: colors.text,
+    },
+  }
 }

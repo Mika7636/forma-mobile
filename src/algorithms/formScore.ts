@@ -1,6 +1,9 @@
+import type { FormTone } from '../theme/tokens'
+
 export interface FormStatus {
   status: string
-  color: string
+  /** Which of the hero's six fills this state uses. See `Palette.hero`. */
+  color: FormTone
   message: string
 }
 

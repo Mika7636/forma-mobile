@@ -56,12 +56,18 @@ export interface WeeklyPoint {
   calories: number
 }
 
-/** Aggregated load for a single sport over the range. */
+/**
+ * Aggregated load for a single sport over the range.
+ *
+ * Carries no colour: this is a pure data module with no palette in scope, and a
+ * hue baked in here would be frozen at whichever theme was active when the
+ * metrics were computed. The chart resolves it with `sportVisual(sport, colors)`
+ * at render time instead.
+ */
 export interface SportPoint {
   sport: SportType
   label: string
   icon: string
-  color: string
   load: number
   sessions: number
   calories: number
@@ -260,7 +266,6 @@ export function computeProgress(
       sport,
       label: SPORT_META[sport].label,
       icon: SPORT_META[sport].icon,
-      color: SPORT_META[sport].color,
       load: acc.load,
       sessions: acc.sessions,
       calories: Math.round(acc.calories),

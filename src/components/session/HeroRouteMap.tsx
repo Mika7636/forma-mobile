@@ -2,10 +2,11 @@ import { memo, useMemo, type ComponentType } from 'react'
 import { Text, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import type { LatLng } from 'react-native-maps'
-import { COLOR, RADIUS_T, SPACE } from '../../theme/tokens'
 import { decimateRoute, isValidCoordinate } from '../../utils/geo'
 import { MAPS_AVAILABLE } from '../../utils/maps'
 import type { RoutePoint } from '../../types/session'
+import { RADIUS, SPACING } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 
 /** Ceiling on points handed to the native Polyline; a phone can't resolve more. */
 const MAX_RENDERED_POINTS = 300
@@ -67,6 +68,8 @@ function getMapImpl(): MapImpl | null {
  * 3. **No map available on this build** — the same panel, different copy.
  */
 function HeroRouteMap({ coordinates, sportIcon, height = HERO_HEIGHT }: HeroRouteMapProps) {
+  const { colors } = useTheme()
+
   // Stripped to bare LatLng before it crosses the bridge. `RoutePoint` carries a
   // timestamp and sometimes an altitude, and there is no reason to re-serialise
   // either of those for every point on every render of a Polyline.
@@ -112,10 +115,10 @@ function HeroRouteMap({ coordinates, sportIcon, height = HERO_HEIGHT }: HeroRout
     <View
       style={{
         height,
-        borderBottomLeftRadius: RADIUS_T.lg,
-        borderBottomRightRadius: RADIUS_T.lg,
+        borderBottomLeftRadius: RADIUS.xl,
+        borderBottomRightRadius: RADIUS.xl,
         overflow: 'hidden',
-        backgroundColor: COLOR.surface,
+        backgroundColor: colors.surface,
       }}
     >
       <Impl coordinates={points} height={height} />
@@ -135,13 +138,7 @@ function HeroRouteMap({ coordinates, sportIcon, height = HERO_HEIGHT }: HeroRout
           overlap) is the page ground exactly. */}
       <LinearGradient
         pointerEvents="none"
-        colors={[
-          'transparent',
-          'rgba(11,18,32,0.50)',
-          'rgba(11,18,32,0.92)',
-          COLOR.bg,
-          COLOR.bg,
-        ]}
+        colors={['transparent', colors.bgFade[0], colors.bgFade[1], colors.bg, colors.bg]}
         locations={[0, 0.3, 0.6, 0.78, 1]}
         style={{
           position: 'absolute',
@@ -166,34 +163,36 @@ function IndoorHero({
   title: string
   subtitle: string
 }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={{
         height,
-        borderBottomLeftRadius: RADIUS_T.lg,
-        borderBottomRightRadius: RADIUS_T.lg,
-        backgroundColor: COLOR.surface,
+        borderBottomLeftRadius: RADIUS.xl,
+        borderBottomRightRadius: RADIUS.xl,
+        backgroundColor: colors.surface,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: SPACING.xl,
       }}
     >
       <Text style={{ fontSize: 56 }}>{icon}</Text>
       <Text
         style={{
-          marginTop: SPACE.md,
+          marginTop: SPACING.md,
           fontSize: 18,
           fontWeight: '700',
-          color: COLOR.text,
+          color: colors.text,
         }}
       >
         {title}
       </Text>
       <Text
         style={{
-          marginTop: SPACE.xs,
+          marginTop: SPACING.xs,
           fontSize: 13,
-          color: COLOR.textMuted,
+          color: colors.textMuted,
           textAlign: 'center',
           lineHeight: 19,
         }}

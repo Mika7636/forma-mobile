@@ -17,8 +17,8 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated'
-import { CARD, COLORS, RADIUS, SPACING } from '../../constants/theme'
-
+import { RADIUS, SPACING, cardStyle } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 interface SkeletonProps {
   width?: DimensionValue
   height: number
@@ -39,6 +39,8 @@ const SWEEP_DURATION = 1150
  * because it lasts a single frame.
  */
 function SkeletonBase({ width = '100%', height, radius = RADIUS.sm, style }: SkeletonProps) {
+  const { colors } = useTheme()
+
   const [measured, setMeasured] = useState(0)
   const progress = useSharedValue(0)
 
@@ -62,7 +64,7 @@ function SkeletonBase({ width = '100%', height, radius = RADIUS.sm, style }: Ske
           width,
           height,
           borderRadius: radius,
-          backgroundColor: COLORS.skeleton,
+          backgroundColor: colors.skeleton,
           overflow: 'hidden',
         },
         style,
@@ -71,7 +73,7 @@ function SkeletonBase({ width = '100%', height, radius = RADIUS.sm, style }: Ske
       {measured > 0 ? (
         <Animated.View style={[{ width: measured, height: '100%' }, sweepStyle]}>
           <LinearGradient
-            colors={['transparent', COLORS.skeletonHighlight, 'transparent']}
+            colors={['transparent', colors.skeletonHighlight, 'transparent']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={{ flex: 1 }}
@@ -87,8 +89,8 @@ function SkeletonBase({ width = '100%', height, radius = RADIUS.sm, style }: Ske
 export const Skeleton = memo(SkeletonBase)
 
 /**
- * A skeleton wrapped in the app's standard white card, so a placeholder card
- * has the same radius, border, padding and shadow as the real one it replaces.
+ * A skeleton wrapped in the app's standard card, so a placeholder card has the
+ * same radius, border, padding and shadow as the real one it replaces.
  */
 export function SkeletonCard({
   children,
@@ -97,7 +99,8 @@ export function SkeletonCard({
   children: React.ReactNode
   style?: StyleProp<ViewStyle>
 }) {
-  return <View style={[CARD, style]}>{children}</View>
+  const { colors } = useTheme()
+  return <View style={[cardStyle(colors), style]}>{children}</View>
 }
 
 /** Two or three stacked lines — the common "title + subtitle" placeholder. */

@@ -3,9 +3,9 @@ import { Text, View } from 'react-native'
 import Svg, { G, Line, Path, Text as SvgText } from 'react-native-svg'
 import ChartCard from './ChartCard'
 import { formatCompact, niceScale, roundedTopBar } from './chartUtils'
-import { COLORS } from '../../constants/theme'
 import { formatThousands } from '../../utils/formatting'
 import type { WeeklyPoint } from '../../utils/progressMetrics'
+import { useTheme } from '../../theme/ThemeProvider'
 
 const PLOT_H = 176
 const PAD_L = 34
@@ -36,6 +36,8 @@ export default function WeeklyLoadChart({ weekly, delay = 0 }: WeeklyLoadChartPr
 }
 
 function WeeklyPlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }) {
+  const { colors } = useTheme()
+
   const [active, setActive] = useState<number | null>(null)
 
   const n = weekly.length
@@ -61,7 +63,7 @@ function WeeklyPlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number })
   if (n === 0) {
     return (
       <View style={{ height: PLOT_H, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 13, color: COLORS.subtle }}>No data in this range</Text>
+        <Text style={{ fontSize: 13, color: colors.textSubtle }}>No data in this range</Text>
       </View>
     )
   }
@@ -75,8 +77,8 @@ function WeeklyPlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number })
           const y = geom.yBase - ((t - geom.scale.min) / (geom.scale.max - geom.scale.min || 1)) * plotH
           return (
             <G key={t}>
-              <Line x1={PAD_L} y1={y} x2={width - PAD_R} y2={y} stroke={COLORS.border} strokeWidth={1} />
-              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={COLORS.muted} textAnchor="end">
+              <Line x1={PAD_L} y1={y} x2={width - PAD_R} y2={y} stroke={colors.border} strokeWidth={1} />
+              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={colors.textMuted} textAnchor="end">
                 {formatCompact(t)}
               </SvgText>
             </G>
@@ -87,12 +89,12 @@ function WeeklyPlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number })
           <G key={b.w.weekStartISO}>
             <Path
               d={roundedTopBar(b.x, b.top, b.barW, geom.yBase, 4)}
-              fill={COLORS.teal}
+              fill={colors.accent}
               opacity={active == null || active === i ? 1 : 0.4}
               onPress={() => setActive(active === i ? null : i)}
             />
             {i % labelStep === 0 ? (
-              <SvgText x={b.cx} y={PLOT_H - 6} fontSize={9} fill={COLORS.muted} textAnchor="middle">
+              <SvgText x={b.cx} y={PLOT_H - 6} fontSize={9} fill={colors.textMuted} textAnchor="middle">
                 {b.w.weekLabel}
               </SvgText>
             ) : null}
@@ -106,6 +108,8 @@ function WeeklyPlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number })
 }
 
 function Tooltip({ point, cx, width }: { point: WeeklyPoint; cx: number; width: number }) {
+  const { colors } = useTheme()
+
   const BUBBLE_W = 150
   const left = Math.max(4, Math.min(width - BUBBLE_W - 4, cx - BUBBLE_W / 2))
   return (
@@ -117,24 +121,24 @@ function Tooltip({ point, cx, width }: { point: WeeklyPoint; cx: number; width: 
         left,
         width: BUBBLE_W,
         // A raised dark surface with a hairline, not the near-black slab this
-        // was. `COLORS.ink` used to be #111827 and made a perfectly good
+        // was. `colors.text` used to be #111827 and made a perfectly good
         // tooltip; it is now the *lightest* colour in the palette, so this
         // rendered as a white card with white body copy on it.
-        backgroundColor: COLORS.surfaceAlt,
+        backgroundColor: colors.surfaceAlt,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 10,
       }}
     >
-      <Text style={{ color: COLORS.ink, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
+      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
         {point.weekLabel} · {point.rangeLabel}
       </Text>
-      <Text style={{ color: COLORS.body, fontSize: 11 }}>
-        <Text style={{ color: COLORS.ink, fontWeight: '700' }}>{formatThousands(point.load)}</Text> AU
+      <Text style={{ color: colors.textBody, fontSize: 11 }}>
+        <Text style={{ color: colors.text, fontWeight: '700' }}>{formatThousands(point.load)}</Text> AU
         {'  ·  '}
-        <Text style={{ color: COLORS.ink, fontWeight: '700' }}>{point.sessions}</Text>{' '}
+        <Text style={{ color: colors.text, fontWeight: '700' }}>{point.sessions}</Text>{' '}
         {point.sessions === 1 ? 'session' : 'sessions'}
       </Text>
     </View>

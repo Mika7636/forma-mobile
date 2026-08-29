@@ -12,13 +12,9 @@ import Svg, {
 } from 'react-native-svg'
 import ChartCard from './ChartCard'
 import { formatCompact, niceScale, smoothPath, type Point } from './chartUtils'
-import { COLORS } from '../../constants/theme'
 import { formatThousands } from '../../utils/formatting'
 import type { WeeklyPoint } from '../../utils/progressMetrics'
-import { PALETTE } from '../../theme/tokens'
-
-const LINE = PALETTE.orange
-const FILL_TOP = PALETTE.orange
+import { useTheme } from '../../theme/ThemeProvider'
 
 const PLOT_H = 178
 const PAD_L = 36
@@ -44,6 +40,8 @@ export default function CalorieChart({ weekly, delay = 0 }: CalorieChartProps) {
 }
 
 function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }) {
+  const { colors } = useTheme()
+
   const [active, setActive] = useState<number | null>(null)
 
   const n = weekly.length
@@ -71,7 +69,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
   if (n < 2) {
     return (
       <View style={{ height: PLOT_H, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 13, color: COLORS.subtle }}>Not enough data yet</Text>
+        <Text style={{ fontSize: 13, color: colors.textSubtle }}>Not enough data yet</Text>
       </View>
     )
   }
@@ -96,8 +94,8 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
       <Svg width={width} height={PLOT_H}>
         <Defs>
           <LinearGradient id="calFill" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={FILL_TOP} stopOpacity={0.32} />
-            <Stop offset="1" stopColor={FILL_TOP} stopOpacity={0.02} />
+            <Stop offset="0" stopColor={colors.palette.orange} stopOpacity={0.32} />
+            <Stop offset="1" stopColor={colors.palette.orange} stopOpacity={0.02} />
           </LinearGradient>
         </Defs>
 
@@ -105,8 +103,8 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
           const y = geom.yAt(t)
           return (
             <G key={t}>
-              <Line x1={PAD_L} y1={y} x2={width - PAD_R} y2={y} stroke={COLORS.border} strokeWidth={1} />
-              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={COLORS.muted} textAnchor="end">
+              <Line x1={PAD_L} y1={y} x2={width - PAD_R} y2={y} stroke={colors.border} strokeWidth={1} />
+              <SvgText x={PAD_L - 6} y={y + 3} fontSize={9} fill={colors.textMuted} textAnchor="end">
                 {formatCompact(t)}
               </SvgText>
             </G>
@@ -114,7 +112,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
         })}
 
         <Path d={geom.area} fill="url(#calFill)" />
-        <Path d={smoothPath(geom.pts)} stroke={LINE} strokeWidth={2.5} fill="none" />
+        <Path d={smoothPath(geom.pts)} stroke={colors.palette.orange} strokeWidth={2.5} fill="none" />
 
         {weekly.map((w, i) =>
           i % labelStep === 0 ? (
@@ -123,7 +121,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
               x={geom.xAt(i)}
               y={PLOT_H - 7}
               fontSize={9}
-              fill={COLORS.muted}
+              fill={colors.textMuted}
               textAnchor="middle"
             >
               {w.weekLabel}
@@ -138,15 +136,15 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
               y1={PAD_T}
               x2={geom.xAt(active)}
               y2={PAD_T + plotH}
-              stroke={COLORS.subtle}
+              stroke={colors.textSubtle}
               strokeWidth={1}
             />
             <Circle
               cx={geom.xAt(active)}
               cy={geom.pts[active].y}
               r={4.5}
-              fill={LINE}
-              stroke={COLORS.surface}
+              fill={colors.palette.orange}
+              stroke={colors.surface}
               strokeWidth={1.5}
             />
           </G>
@@ -161,6 +159,8 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
 }
 
 function Tooltip({ point, x, width }: { point: WeeklyPoint; x: number; width: number }) {
+  const { colors } = useTheme()
+
   const BUBBLE_W = 140
   const left = Math.max(4, Math.min(width - BUBBLE_W - 4, x - BUBBLE_W / 2))
   return (
@@ -172,21 +172,21 @@ function Tooltip({ point, x, width }: { point: WeeklyPoint; x: number; width: nu
         left,
         width: BUBBLE_W,
         // A raised dark surface with a hairline, not the near-black slab this
-        // was. `COLORS.ink` used to be #111827 and made a perfectly good
+        // was. `colors.text` used to be #111827 and made a perfectly good
         // tooltip; it is now the *lightest* colour in the palette, so this
         // rendered as a white card with white body copy on it.
-        backgroundColor: COLORS.surfaceAlt,
+        backgroundColor: colors.surfaceAlt,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 10,
       }}
     >
-      <Text style={{ color: COLORS.ink, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
+      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
         {point.weekLabel} · {point.rangeLabel}
       </Text>
-      <Text style={{ color: PALETTE.orange, fontSize: 12, fontWeight: '700' }}>
+      <Text style={{ color: colors.palette.orange, fontSize: 12, fontWeight: '700' }}>
         🔥 {formatThousands(point.calories)} kcal
       </Text>
     </View>

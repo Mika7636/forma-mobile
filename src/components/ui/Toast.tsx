@@ -17,8 +17,9 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated'
-import { COLORS, MOTION, RADIUS, SHADOW, SPACING, TYPE } from '../../constants/theme'
 import type { ToastItem, ToastType } from '../../store/toastStore'
+import { MOTION, RADIUS, SPACING, TYPE, type Palette } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface ToastProps {
   item: ToastItem
@@ -31,18 +32,22 @@ interface ToastLook {
   glyph: string
 }
 
-const LOOK: Record<ToastType, ToastLook> = {
-  success: { accent: COLORS.teal, tint: COLORS.tealSoft, glyph: '✓' },
-  error: { accent: COLORS.danger, tint: COLORS.dangerSoft, glyph: '✕' },
-  warning: { accent: COLORS.warning, tint: COLORS.warningSoft, glyph: '!' },
-  info: { accent: COLORS.info, tint: COLORS.infoSoft, glyph: 'i' },
+function look(colors: Palette): Record<ToastType, ToastLook> {
+  return {
+    success: { accent: colors.accent, tint: colors.accentSoft, glyph: '✓' },
+    error: { accent: colors.danger, tint: colors.dangerSoft, glyph: '✕' },
+    warning: { accent: colors.warn, tint: colors.warnSoft, glyph: '!' },
+    info: { accent: colors.info, tint: colors.infoSoft, glyph: 'i' },
+  }
 }
 
 /** Horizontal travel past which releasing the swipe dismisses instead of snapping back. */
 const SWIPE_THRESHOLD = 88
 
 export default function Toast({ item, onDismiss }: ToastProps) {
-  const look = LOOK[item.type]
+  const { colors } = useTheme()
+
+  const appearance = look(colors)[item.type]
 
   const opacity = useSharedValue(0)
   const translateY = useSharedValue(28)
@@ -116,16 +121,16 @@ export default function Toast({ item, onDismiss }: ToastProps) {
           {
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: COLORS.surface,
+            backgroundColor: colors.surface,
             borderRadius: RADIUS.card,
             borderWidth: 1,
-            borderColor: COLORS.border,
+            borderColor: colors.border,
             paddingVertical: SPACING.md,
             paddingLeft: SPACING.md,
             paddingRight: SPACING.sm,
             gap: SPACING.md,
             overflow: 'hidden',
-            ...SHADOW.floating,
+            ...colors.shadowFloating,
           },
           animatedStyle,
         ]}
@@ -140,7 +145,7 @@ export default function Toast({ item, onDismiss }: ToastProps) {
             top: 0,
             bottom: 0,
             width: 4,
-            backgroundColor: look.accent,
+            backgroundColor: appearance.accent,
           }}
         />
 
@@ -149,23 +154,23 @@ export default function Toast({ item, onDismiss }: ToastProps) {
             width: 28,
             height: 28,
             borderRadius: RADIUS.pill,
-            backgroundColor: look.tint,
+            backgroundColor: appearance.tint,
             alignItems: 'center',
             justifyContent: 'center',
             marginLeft: SPACING.xs,
           }}
         >
-          <Text style={{ fontSize: TYPE.body, fontWeight: '800', color: look.accent }}>
-            {look.glyph}
+          <Text style={{ fontSize: TYPE.body, fontWeight: '800', color: appearance.accent }}>
+            {appearance.glyph}
           </Text>
         </View>
 
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: COLORS.ink }}>
+          <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: colors.text }}>
             {item.message}
           </Text>
           {item.description ? (
-            <Text style={{ marginTop: 2, fontSize: TYPE.small, color: COLORS.muted }}>
+            <Text style={{ marginTop: 2, fontSize: TYPE.small, color: colors.textMuted }}>
               {item.description}
             </Text>
           ) : null}
@@ -183,7 +188,7 @@ export default function Toast({ item, onDismiss }: ToastProps) {
             justifyContent: 'center',
           }}
         >
-          <Text style={{ fontSize: TYPE.subtitle, color: COLORS.subtle, fontWeight: '600' }}>
+          <Text style={{ fontSize: TYPE.subtitle, color: colors.textSubtle, fontWeight: '600' }}>
             ✕
           </Text>
         </Pressable>
@@ -197,7 +202,7 @@ export default function Toast({ item, onDismiss }: ToastProps) {
               right: 0,
               bottom: 0,
               height: 2,
-              backgroundColor: look.accent,
+              backgroundColor: appearance.accent,
               opacity: 0.35,
               // Shrink toward the left edge rather than the centre.
               transform: [{ scaleX: 1 }],

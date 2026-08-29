@@ -2,15 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import * as SplashScreen from 'expo-splash-screen'
 import BrandSplash from '../components/ui/BrandSplash'
-import { COLORS, MIN_TOUCH, RADIUS, SPACING, TYPE, WEIGHT } from '../constants/theme'
 import { useNotificationSync } from '../hooks/useNotificationSync'
 import NotificationPermissionScreen from '../screens/NotificationPermissionScreen'
 import OnboardingScreen from '../screens/OnboardingScreen'
 import { useAuthStore } from '../store/authStore'
 import AppStack from './AppStack'
 import AuthStack from './AuthStack'
+import { MIN_TOUCH, RADIUS, SPACING, TYPE, WEIGHT } from '../theme/tokens'
+import { useTheme } from '../theme/ThemeProvider'
 
 export default function RootNavigator() {
+  const { colors } = useTheme()
+
   const initialize = useAuthStore((s) => s.initialize)
   const loading = useAuthStore((s) => s.loading)
   const user = useAuthStore((s) => s.user)
@@ -36,7 +39,7 @@ export default function RootNavigator() {
 
   // Hand off from the native splash to <BrandSplash> the moment we've laid out
   // a frame containing it. Both draw the same mark at the same size on the same
-  // page ground — `app.json`'s splash backgroundColor and `COLORS.pageBg` are
+  // page ground — `app.json`'s splash backgroundColor and `colors.bg` are
   // the same value — so there's nothing to see at the seam, and because the JS
   // overlay is already on screen, hiding the native one can't expose a blank
   // frame.
@@ -45,11 +48,11 @@ export default function RootNavigator() {
   }, [])
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.pageBg }} onLayout={handleLayout}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }} onLayout={handleLayout}>
       {loading ? (
         // Nothing is decided yet — deliberately render no navigator at all
         // rather than mounting AuthStack and swapping it out a frame later.
-        <View style={{ flex: 1, backgroundColor: COLORS.pageBg }} />
+        <View style={{ flex: 1, backgroundColor: colors.bg }} />
       ) : (
         <RootContent user={user} profile={profile} profileStatus={profileStatus} />
       )}
@@ -146,27 +149,29 @@ function RootContent({
  * overwritten.
  */
 function GateSplash({ stalled = false }: { stalled?: boolean }) {
+  const { colors } = useTheme()
+
   const refreshProfile = useAuthStore((s) => s.refreshProfile)
 
-  if (!stalled) return <View style={{ flex: 1, backgroundColor: COLORS.pageBg }} />
+  if (!stalled) return <View style={{ flex: 1, backgroundColor: colors.bg }} />
 
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: COLORS.pageBg,
+        backgroundColor: colors.bg,
         alignItems: 'center',
         justifyContent: 'center',
         padding: SPACING.xl,
       }}
     >
-      <ActivityIndicator color={COLORS.teal} />
+      <ActivityIndicator color={colors.accent} />
       <Text
         style={{
           marginTop: SPACING.base,
           fontSize: TYPE.subtitle,
           fontWeight: WEIGHT.bold,
-          color: COLORS.ink,
+          color: colors.text,
           textAlign: 'center',
         }}
       >
@@ -176,7 +181,7 @@ function GateSplash({ stalled = false }: { stalled?: boolean }) {
         style={{
           marginTop: SPACING.sm,
           fontSize: TYPE.body,
-          color: COLORS.muted,
+          color: colors.textMuted,
           textAlign: 'center',
           lineHeight: 20,
         }}
@@ -194,10 +199,10 @@ function GateSplash({ stalled = false }: { stalled?: boolean }) {
           paddingHorizontal: SPACING.lg,
           borderRadius: RADIUS.pill,
           borderWidth: 1,
-          borderColor: COLORS.teal,
+          borderColor: colors.accent,
         }}
       >
-        <Text style={{ fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: COLORS.teal }}>
+        <Text style={{ fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: colors.accent }}>
           Try now
         </Text>
       </Pressable>

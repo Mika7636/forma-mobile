@@ -6,8 +6,7 @@ import {
   View,
   type TextInputProps,
 } from 'react-native'
-import { COLORS } from '../../constants/theme'
-
+import { useTheme } from '../../theme/ThemeProvider'
 interface FormInputProps extends TextInputProps {
   label: string
   /** When true, renders as a password field with a show/hide eye toggle. */
@@ -22,6 +21,7 @@ const FormInput = forwardRef<TextInput, FormInputProps>(function FormInput(
   { label, password = false, style, ...props },
   ref,
 ) {
+  const { colors } = useTheme()
   const [focused, setFocused] = useState(false)
   const [hidden, setHidden] = useState(true)
 
@@ -31,7 +31,7 @@ const FormInput = forwardRef<TextInput, FormInputProps>(function FormInput(
         style={{
           fontSize: 13,
           fontWeight: '600',
-          color: COLORS.body,
+          color: colors.textBody,
           marginBottom: 6,
         }}
       >
@@ -41,16 +41,16 @@ const FormInput = forwardRef<TextInput, FormInputProps>(function FormInput(
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: COLORS.fieldBg,
+          backgroundColor: colors.fieldBg,
           borderRadius: 12,
           borderWidth: 1.5,
-          borderColor: focused ? COLORS.teal : COLORS.border,
+          borderColor: focused ? colors.accent : colors.border,
           paddingHorizontal: 14,
         }}
       >
         <TextInput
           ref={ref}
-          placeholderTextColor={COLORS.subtle}
+          placeholderTextColor={colors.textSubtle}
           secureTextEntry={password && hidden}
           onFocus={(e) => {
             setFocused(true)
@@ -65,7 +65,7 @@ const FormInput = forwardRef<TextInput, FormInputProps>(function FormInput(
               flex: 1,
               height: 52,
               fontSize: 16,
-              color: COLORS.ink,
+              color: colors.text,
             },
             style,
           ]}

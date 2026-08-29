@@ -5,7 +5,7 @@
 import { useCallback, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import CalorieChart from '../components/progress/CalorieChart'
 import ConsistencyHeatmap from '../components/progress/ConsistencyHeatmap'
 import DateRangeSelector, { type RangeWeeks } from '../components/progress/DateRangeSelector'
@@ -15,11 +15,12 @@ import ProgressStats from '../components/progress/ProgressStats'
 import SportChart from '../components/progress/SportChart'
 import WeeklyLoadChart from '../components/progress/WeeklyLoadChart'
 import EmptyState from '../components/ui/EmptyState'
-import { COLORS, SPACING, TYPE } from '../constants/theme'
 import { useProgressData } from '../hooks/useProgressData'
 import { PROGRESS_UNLOCK_SESSIONS } from '../utils/calibration'
 import { haptics } from '../utils/haptics'
 import type { ProgressScreenProps } from '../navigation/types'
+import { SPACING, TYPE } from '../theme/tokens'
+import { useTheme } from '../theme/ThemeProvider'
 
 /** "Jun 2 – Aug 8" for the header subtitle. */
 function formatRange(start: Date, end: Date): string {
@@ -31,6 +32,8 @@ function formatRange(start: Date, end: Date): string {
 }
 
 export default function ProgressScreen({ navigation }: ProgressScreenProps) {
+  const { colors } = useTheme()
+
   const [weeks, setWeeks] = useState<RangeWeeks>(8)
   const { data, totalSessions, loading, refresh } = useProgressData(weeks)
   const [refreshing, setRefreshing] = useState(false)
@@ -54,21 +57,21 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <ThemedStatusBar />
       <ScrollView
         contentContainerStyle={{ padding: SPACING.base, paddingBottom: 40, gap: SPACING.base }}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.teal} colors={[COLORS.teal]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} />
         }
       >
         {/* Header */}
         <View>
-          <Text style={{ fontSize: TYPE.display, fontWeight: '800', color: COLORS.ink }}>
+          <Text style={{ fontSize: TYPE.display, fontWeight: '800', color: colors.text }}>
             Progress
           </Text>
-          <Text style={{ marginTop: 2, fontSize: TYPE.body, color: COLORS.muted }}>
+          <Text style={{ marginTop: 2, fontSize: TYPE.body, color: colors.textMuted }}>
             {formatRange(data.rangeStart, data.rangeEnd)} · last {weeks} weeks
           </Text>
         </View>
@@ -104,11 +107,13 @@ function ProgressLockedGuard({
   logged: number
   onLogSession: () => void
 }) {
+  const { colors } = useTheme()
+
   const target = PROGRESS_UNLOCK_SESSIONS
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <ThemedStatusBar />
       <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
         <EmptyState
           emoji="📈"

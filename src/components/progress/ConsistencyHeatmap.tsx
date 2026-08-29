@@ -1,16 +1,15 @@
 import { useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import ChartCard from './ChartCard'
-import { COLORS } from '../../constants/theme'
-import { HEAT_RAMP } from '../../theme/tokens'
 import { formatThousands } from '../../utils/formatting'
 import type { HeatmapDay, HeatmapWeek } from '../../utils/progressMetrics'
+import { useTheme } from '../../theme/ThemeProvider'
 
-// Sequential teal ramp (single hue, light → dark) keyed by the day's intensity
-// band; level 0 is a near-white "rest day" grey, not part of the ramp.
-// Empty -> full. Defined in the design tokens so the ramp's monotonic-lightness
-// property is stated and checkable in one place; see `tokens.heat`.
-const HEAT = HEAT_RAMP
+// The empty -> full ramp lives in the design tokens (`palette.heat`), per
+// theme, because it has to invert between them: on dark an empty day is the
+// darkest cell and on light it is the lightest. It is read from `colors` inside
+// each component rather than captured here — a module-level copy would freeze
+// whichever palette happened to be active when this module was first evaluated.
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 const GAP = 6
@@ -43,6 +42,8 @@ export default function ConsistencyHeatmap({ heatmap, delay = 0 }: ConsistencyHe
 }
 
 function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
+  const { colors } = useTheme()
+
   const [selected, setSelected] = useState<HeatmapDay | null>(null)
 
   const weeks = heatmap.length
@@ -58,7 +59,7 @@ function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
         <View style={{ width: GUTTER }}>
           {DOW.map((d, i) => (
             <View key={i} style={{ height: rowH, justifyContent: 'center' }}>
-              <Text style={{ fontSize: 9, color: COLORS.subtle, fontWeight: '600' }}>{d}</Text>
+              <Text style={{ fontSize: 9, color: colors.textSubtle, fontWeight: '600' }}>{d}</Text>
             </View>
           ))}
         </View>
@@ -79,9 +80,9 @@ function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
                       width: cell,
                       height: cell,
                       borderRadius: 4,
-                      backgroundColor: HEAT[day.level],
+                      backgroundColor: colors.heat[day.level],
                       borderWidth: selected?.dateISO === day.dateISO ? 2 : 0,
-                      borderColor: COLORS.ink,
+                      borderColor: colors.text,
                     }}
                   />
                 ) : (
@@ -97,8 +98,8 @@ function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
       {/* Selected-day detail (fixed height so tapping doesn't reflow the page) */}
       <View style={{ minHeight: 20, marginTop: 12, justifyContent: 'center' }}>
         {selected ? (
-          <Text style={{ fontSize: 13, color: COLORS.body }}>
-            <Text style={{ fontWeight: '800', color: COLORS.ink }}>{selected.fullDate}</Text>
+          <Text style={{ fontSize: 13, color: colors.textBody }}>
+            <Text style={{ fontWeight: '800', color: colors.text }}>{selected.fullDate}</Text>
             {selected.load > 0 ? (
               <>
                 {'  ·  '}
@@ -107,11 +108,11 @@ function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
                 {selected.sessions === 1 ? 'session' : 'sessions'}
               </>
             ) : (
-              <Text style={{ color: COLORS.subtle }}>{'  ·  Rest day'}</Text>
+              <Text style={{ color: colors.textSubtle }}>{'  ·  Rest day'}</Text>
             )}
           </Text>
         ) : (
-          <Text style={{ fontSize: 12, color: COLORS.subtle }}>Tap a day for details</Text>
+          <Text style={{ fontSize: 12, color: colors.textSubtle }}>Tap a day for details</Text>
         )}
       </View>
     </View>
@@ -119,13 +120,15 @@ function Grid({ heatmap, width }: { heatmap: HeatmapWeek[]; width: number }) {
 }
 
 function Scale() {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-      <Text style={{ fontSize: 11, color: COLORS.subtle, marginRight: 2 }}>Less</Text>
-      {HEAT.map((c) => (
+      <Text style={{ fontSize: 11, color: colors.textSubtle, marginRight: 2 }}>Less</Text>
+      {colors.heat.map((c) => (
         <View key={c} style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: c }} />
       ))}
-      <Text style={{ fontSize: 11, color: COLORS.subtle, marginLeft: 2 }}>More</Text>
+      <Text style={{ fontSize: 11, color: colors.textSubtle, marginLeft: 2 }}>More</Text>
     </View>
   )
 }

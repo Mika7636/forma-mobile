@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -41,8 +41,6 @@ import {
 import { isOffline } from '../store/networkStore'
 import { toast } from '../store/toastStore'
 import { worstSeverity } from '../constants/conflictColors'
-import { COLORS } from '../constants/theme'
-import { PALETTE } from '../theme/tokens'
 import { SPORT_OPTIONS, type SportOption } from '../constants/training'
 import {
   computeEstimates,
@@ -63,6 +61,9 @@ import { withPreferenceDefaults } from '../types/notifications'
 import type { Conflict } from '../types/conflict'
 import type { SportType } from '../types/session'
 import type { LogScreenProps } from '../navigation/types'
+import { useTheme } from '../theme/ThemeProvider'
+import { onColor, type Palette } from '../theme/tokens'
+import { sportVisual } from '../utils/sportMeta'
 
 type LogMode = 'quick' | 'live'
 
@@ -83,20 +84,16 @@ function resolveSessionDate(plannerDay: Date | null, at: Date = new Date()): Dat
 }
 
 /* --- RPE zones -------------------------------------------------------- */
-const ZONE_GREEN = COLORS.teal
-const ZONE_AMBER = COLORS.warning
-const ZONE_RED = COLORS.danger
-const ZONE_ORANGE = PALETTE.orange
 
 interface RpeZone {
   label: string
   color: string
 }
 
-function rpeZone(rpe: number): RpeZone {
-  if (rpe <= 3) return { label: 'EASY ZONE', color: ZONE_GREEN }
-  if (rpe <= 7) return { label: 'MODERATE ZONE', color: ZONE_AMBER }
-  return { label: 'MAX EFFORT', color: ZONE_RED }
+function rpeZone(rpe: number, colors: Palette): RpeZone {
+  if (rpe <= 3) return { label: 'EASY ZONE', color: colors.accent }
+  if (rpe <= 7) return { label: 'MODERATE ZONE', color: colors.warn }
+  return { label: 'MAX EFFORT', color: colors.danger }
 }
 
 const RPE_DESCRIPTIONS: Record<number, string> = {
@@ -113,11 +110,11 @@ const RPE_DESCRIPTIONS: Record<number, string> = {
 }
 
 /* --- Training-load severity ------------------------------------------- */
-function loadSeverity(load: number): { color: string; label: string } {
-  if (load > 600) return { color: ZONE_RED, label: 'Very hard session' }
-  if (load >= 400) return { color: ZONE_ORANGE, label: 'Hard session' }
-  if (load >= 200) return { color: ZONE_AMBER, label: 'Moderate session' }
-  return { color: ZONE_GREEN, label: 'Light session' }
+function loadSeverity(load: number, colors: Palette): { color: string; label: string } {
+  if (load > 600) return { color: colors.danger, label: 'Very hard session' }
+  if (load >= 400) return { color: colors.palette.orange, label: 'Hard session' }
+  if (load >= 200) return { color: colors.warn, label: 'Moderate session' }
+  return { color: colors.accent, label: 'Light session' }
 }
 
 const DURATION_MAX = 300
@@ -128,6 +125,8 @@ function tint(hex: string): string {
 }
 
 export default function LogScreen({ route, navigation }: LogScreenProps) {
+  const { colors } = useTheme()
+
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
   // Count-based calibration gate: a user with < 7 sessions gets gentler conflict
@@ -242,7 +241,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const showDistance = isDistanceSport(sport)
   const canSave = sport != null && durationNum >= 1 && durationNum <= DURATION_MAX
 
-  const zone = rpeZone(rpe)
+  const zone = rpeZone(rpe, colors)
 
   const estimates = useMemo(() => {
     if (!sport) return null
@@ -253,7 +252,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   }, [sport, durationNum, rpe, distanceNum, profile])
 
   const load = estimates?.loadScore ?? 0
-  const severity = loadSeverity(load)
+  const severity = loadSeverity(load, colors)
 
   // Pulse the load number whenever it changes.
   const loadScale = useSharedValue(1)
@@ -528,7 +527,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         <ErrorBoundary
           key={liveBoundaryKey}
           name="LiveTracker"
-          theme="dark"
           title="Live tracking hit a problem"
           message="Something went wrong on the tracking screen. If you were mid-workout, you can recover what was recorded and save it."
           retryLabel="Start over"
@@ -565,8 +563,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -579,10 +577,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
           >
             {/* Header */}
             <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
-              <Text style={{ fontSize: 30, fontWeight: '800', color: COLORS.ink }}>
+              <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text }}>
                 Log Session
               </Text>
-              <Text style={{ marginTop: 4, fontSize: 15, color: COLORS.muted }}>
+              <Text style={{ marginTop: 4, fontSize: 15, color: colors.textMuted }}>
                 Record a workout to track your training load
               </Text>
 
@@ -592,14 +590,14 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                     marginTop: 14,
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: COLORS.tealSoft,
+                    backgroundColor: colors.accentSoft,
                     borderRadius: 12,
                     paddingVertical: 10,
                     paddingHorizontal: 14,
                   }}
                 >
                   <Text style={{ fontSize: 16, marginRight: 8 }}>🗓️</Text>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.tealDark }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.accentPressed }}>
                     Logging for {bannerLabel}
                   </Text>
                 </View>
@@ -615,7 +613,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 style={{
                   paddingHorizontal: 20,
                   fontSize: 14,
-                  color: COLORS.muted,
+                  color: colors.textMuted,
                 }}
               >
                 No sports yet — add some in your profile to start logging.
@@ -669,20 +667,20 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                     marginRight: 14,
                   }}
                 >
-                  <Text style={{ fontSize: 44, fontWeight: '800', color: COLORS.ink }}>
+                  <Text style={{ fontSize: 44, fontWeight: '800', color: colors.text }}>
                     {durationNum || 0}
                   </Text>
-                  <Text style={{ fontSize: 12, color: COLORS.subtle, marginTop: -4 }}>
+                  <Text style={{ fontSize: 12, color: colors.textSubtle, marginTop: -4 }}>
                     min
                   </Text>
                 </View>
                 <View
                   style={{
                     flex: 1,
-                    backgroundColor: COLORS.fieldBg,
+                    backgroundColor: colors.fieldBg,
                     borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: COLORS.border,
+                    borderColor: colors.border,
                     paddingHorizontal: 14,
                   }}
                 >
@@ -691,13 +689,13 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                     onChangeText={(t) => setDuration(t.replace(/[^0-9]/g, '').slice(0, 3))}
                     keyboardType="number-pad"
                     placeholder="e.g. 45"
-                    placeholderTextColor={COLORS.subtle}
-                    style={{ height: 56, fontSize: 20, color: COLORS.ink }}
+                    placeholderTextColor={colors.textSubtle}
+                    style={{ height: 56, fontSize: 20, color: colors.text }}
                   />
                 </View>
               </View>
               {durationNum > DURATION_MAX ? (
-                <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.dangerText }}>
+                <Text style={{ marginTop: 6, fontSize: 12, color: colors.dangerText }}>
                   Keep it under {DURATION_MAX} minutes.
                 </Text>
               ) : null}
@@ -713,10 +711,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 <SectionLabel style={{ marginTop: 20 }}>Distance (km)</SectionLabel>
                 <View
                   style={{
-                    backgroundColor: COLORS.fieldBg,
+                    backgroundColor: colors.fieldBg,
                     borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: COLORS.border,
+                    borderColor: colors.border,
                     paddingHorizontal: 14,
                   }}
                 >
@@ -734,8 +732,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                     }}
                     keyboardType="decimal-pad"
                     placeholder="e.g. 5.0"
-                    placeholderTextColor={COLORS.subtle}
-                    style={{ height: 56, fontSize: 20, color: COLORS.ink }}
+                    placeholderTextColor={colors.textSubtle}
+                    style={{ height: 56, fontSize: 20, color: colors.text }}
                   />
                 </View>
               </Animated.View>
@@ -772,7 +770,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 >
                   <Text
                     style={{
-                      color: COLORS.onAccent,
+                      color: colors.onAccent,
                       fontSize: 12,
                       fontWeight: '800',
                       letterSpacing: 0.5,
@@ -794,11 +792,11 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 value={rpe}
                 onValueChange={handleRpeChange}
                 minimumTrackTintColor={zone.color}
-                maximumTrackTintColor={COLORS.border}
+                maximumTrackTintColor={colors.border}
                 thumbTintColor={zone.color}
               />
 
-              <Text style={{ fontSize: 14, color: COLORS.body, marginTop: 2 }}>
+              <Text style={{ fontSize: 14, color: colors.textBody, marginTop: 2 }}>
                 {RPE_DESCRIPTIONS[rpe]}
               </Text>
             </View>
@@ -814,15 +812,15 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: COLORS.warningSoft,
+                  backgroundColor: colors.warnSoft,
                   borderWidth: 1,
-                  borderColor: COLORS.warningBorder,
+                  borderColor: colors.warnBorder,
                   borderRadius: 16,
                   paddingVertical: 14,
                 }}
               >
                 <Text style={{ fontSize: 22, marginRight: 8 }}>🔥</Text>
-                <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.warningDeep }}>
+                <Text style={{ fontSize: 24, fontWeight: '800', color: colors.warnText }}>
                   Est. {estimates.estimatedCalories} kcal
                 </Text>
               </Animated.View>
@@ -835,8 +833,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 marginHorizontal: 16,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: COLORS.border,
-                backgroundColor: COLORS.fieldBg,
+                borderColor: colors.border,
+                backgroundColor: colors.fieldBg,
                 padding: 18,
               }}
             >
@@ -845,7 +843,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   fontSize: 12,
                   fontWeight: '800',
                   letterSpacing: 1,
-                  color: COLORS.muted,
+                  color: colors.textMuted,
                 }}
               >
                 TRAINING LOAD
@@ -856,14 +854,14 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   loadAnimStyle,
                 ]}
               >
-                <Text style={{ fontSize: 52, fontWeight: '800', color: COLORS.teal }}>
+                <Text style={{ fontSize: 52, fontWeight: '800', color: colors.accent }}>
                   {load}
                 </Text>
                 <Text
                   style={{
                     fontSize: 18,
                     fontWeight: '700',
-                    color: COLORS.teal,
+                    color: colors.accent,
                     marginBottom: 9,
                     marginLeft: 6,
                   }}
@@ -872,7 +870,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 </Text>
               </Animated.View>
 
-              <Text style={{ fontSize: 13, color: COLORS.muted }}>
+              <Text style={{ fontSize: 13, color: colors.textMuted }}>
                 {durationNum || 0} min × RPE {rpe} = {load} AU
               </Text>
 
@@ -886,7 +884,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                     marginRight: 8,
                   }}
                 />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.body }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textBody }}>
                   {severity.label}
                 </Text>
               </View>
@@ -923,10 +921,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               <SectionLabel style={{ marginTop: 24 }}>Notes (optional)</SectionLabel>
               <View
                 style={{
-                  backgroundColor: COLORS.fieldBg,
+                  backgroundColor: colors.fieldBg,
                   borderRadius: 12,
                   borderWidth: 1.5,
-                  borderColor: COLORS.border,
+                  borderColor: colors.border,
                   paddingHorizontal: 14,
                   paddingVertical: 4,
                 }}
@@ -936,12 +934,12 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   onChangeText={setNotes}
                   multiline
                   placeholder="How did it feel? Any observations..."
-                  placeholderTextColor={COLORS.subtle}
+                  placeholderTextColor={colors.textSubtle}
                   style={{
                     minHeight: 60,
                     maxHeight: 100,
                     fontSize: 16,
-                    color: COLORS.ink,
+                    color: colors.text,
                     paddingTop: 10,
                     textAlignVertical: 'top',
                   }}
@@ -963,10 +961,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   paddingVertical: 8,
                 }}
               >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.muted }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMuted }}>
                   Advanced
                 </Text>
-                <Text style={{ fontSize: 14, color: COLORS.subtle }}>
+                <Text style={{ fontSize: 14, color: colors.textSubtle }}>
                   {advancedOpen ? '▲' : '▼'}
                 </Text>
               </Pressable>
@@ -981,10 +979,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   </SectionLabel>
                   <View
                     style={{
-                      backgroundColor: COLORS.fieldBg,
+                      backgroundColor: colors.fieldBg,
                       borderRadius: 12,
                       borderWidth: 1.5,
-                      borderColor: COLORS.border,
+                      borderColor: colors.border,
                       paddingHorizontal: 14,
                     }}
                   >
@@ -993,11 +991,11 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                       onChangeText={(t) => setAvgBpm(t.replace(/[^0-9]/g, '').slice(0, 3))}
                       keyboardType="number-pad"
                       placeholder="e.g. 152"
-                      placeholderTextColor={COLORS.subtle}
-                      style={{ height: 52, fontSize: 16, color: COLORS.ink }}
+                      placeholderTextColor={colors.textSubtle}
+                      style={{ height: 52, fontSize: 16, color: colors.text }}
                     />
                   </View>
-                  <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.subtle }}>
+                  <Text style={{ marginTop: 6, fontSize: 12, color: colors.textSubtle }}>
                     Optional — for users with a wearable.
                   </Text>
                 </Animated.View>
@@ -1042,6 +1040,9 @@ function SportCard({
   selected: boolean
   onPress: () => void
 }) {
+  const { colors } = useTheme()
+  const accent = sportVisual(option.value, colors).color
+
   const scale = useSharedValue(1)
   useEffect(() => {
     scale.value = withTiming(selected ? 1.05 : 1, { duration: 100 })
@@ -1057,8 +1058,8 @@ function SportCard({
           height: 104,
           borderRadius: 16,
           borderWidth: 2,
-          borderColor: selected ? option.accent : COLORS.border,
-          backgroundColor: selected ? option.accent : COLORS.surfaceAlt,
+          borderColor: selected ? accent : colors.border,
+          backgroundColor: selected ? accent : colors.surfaceAlt,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 8,
@@ -1071,7 +1072,7 @@ function SportCard({
             fontSize: 13,
             fontWeight: '700',
             textAlign: 'center',
-            color: selected ? COLORS.onAccent : COLORS.ink,
+            color: selected ? onColor(accent) : colors.text,
           }}
           numberOfLines={2}
         >
@@ -1092,6 +1093,8 @@ function ModeToggle({
   mode: LogMode
   onSelect: (mode: LogMode) => void
 }) {
+  const { colors } = useTheme()
+
   const options: { value: LogMode; label: string; icon: string }[] = [
     { value: 'quick', label: 'Quick Log', icon: '✏️' },
     { value: 'live', label: 'Track Live', icon: '📍' },
@@ -1100,10 +1103,10 @@ function ModeToggle({
     <View
       style={{
         flexDirection: 'row',
-        backgroundColor: COLORS.fieldBg,
+        backgroundColor: colors.fieldBg,
         borderRadius: 12,
         borderWidth: 1.5,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         padding: 4,
       }}
     >
@@ -1120,7 +1123,7 @@ function ModeToggle({
               justifyContent: 'center',
               paddingVertical: 12,
               borderRadius: 9,
-              backgroundColor: active ? COLORS.teal : 'transparent',
+              backgroundColor: active ? colors.accent : 'transparent',
             }}
           >
             <Text style={{ fontSize: 15, marginRight: 6 }}>{opt.icon}</Text>
@@ -1128,7 +1131,7 @@ function ModeToggle({
               style={{
                 fontSize: 15,
                 fontWeight: '700',
-                color: active ? COLORS.onAccent : COLORS.muted,
+                color: active ? colors.onAccent : colors.textMuted,
               }}
             >
               {opt.label}
@@ -1144,15 +1147,17 @@ function ModeToggle({
 /* Estimated-stat mini card                                            */
 /* ------------------------------------------------------------------ */
 function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={{
         flex: 1,
         marginHorizontal: 4,
-        backgroundColor: COLORS.surface,
+        backgroundColor: colors.surface,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         paddingVertical: 12,
         paddingHorizontal: 10,
         alignItems: 'center',
@@ -1163,7 +1168,7 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
         style={{
           marginTop: 4,
           fontSize: 11,
-          color: COLORS.subtle,
+          color: colors.textSubtle,
           textAlign: 'center',
         }}
         numberOfLines={1}
@@ -1175,7 +1180,7 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
           marginTop: 2,
           fontSize: 13,
           fontWeight: '700',
-          color: COLORS.ink,
+          color: colors.text,
           textAlign: 'center',
         }}
         numberOfLines={2}
@@ -1196,13 +1201,15 @@ function SectionLabel({
   children: ReactNode
   style?: object
 }) {
+  const { colors } = useTheme()
+
   return (
     <Text
       style={[
         {
           fontSize: 13,
           fontWeight: '700',
-          color: COLORS.body,
+          color: colors.textBody,
           marginBottom: 10,
         },
         style,

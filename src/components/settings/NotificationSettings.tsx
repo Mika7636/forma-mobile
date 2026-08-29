@@ -11,13 +11,13 @@ import { Alert, Linking, Pressable, Switch, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { haptics } from '../../utils/haptics'
 import Animated, { FadeInDown } from 'react-native-reanimated'
-import { COLORS } from '../../constants/theme'
 import {
   getPermissionState,
   requestPermissions,
   sendTestNotification,
 } from '../../services/notificationService'
 import type { NotificationPreferences } from '../../types/notifications'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface NotificationSettingsProps {
   value: NotificationPreferences
@@ -43,6 +43,8 @@ export default function NotificationSettings({
   onChange,
   onToast,
 }: NotificationSettingsProps) {
+  const { colors } = useTheme()
+
   const [picker, setPicker] = useState<'daily' | 'weekly' | null>(null)
   const [testing, setTesting] = useState(false)
 
@@ -225,12 +227,12 @@ export default function NotificationSettings({
           alignItems: 'center',
           justifyContent: 'center',
           borderWidth: 1.5,
-          borderColor: COLORS.teal,
-          backgroundColor: COLORS.tealSoft,
+          borderColor: colors.accent,
+          backgroundColor: colors.accentSoft,
           opacity: testing ? 0.6 : 1,
         }}
       >
-        <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.tealDark }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.accentPressed }}>
           🔔 Send Test Notification
         </Text>
       </Pressable>
@@ -239,7 +241,7 @@ export default function NotificationSettings({
           marginTop: 8,
           fontSize: 12,
           lineHeight: 17,
-          color: COLORS.subtle,
+          color: colors.textSubtle,
           textAlign: 'center',
         }}
       >
@@ -276,6 +278,8 @@ function Row({
   onValueChange: (v: boolean) => void
   emphasis?: boolean
 }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={{
@@ -289,21 +293,21 @@ function Row({
           style={{
             fontSize: emphasis ? 16 : 15,
             fontWeight: emphasis ? '800' : '700',
-            color: COLORS.ink,
+            color: colors.text,
           }}
         >
           {title}
         </Text>
-        <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: COLORS.muted }}>
+        <Text style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: colors.textMuted }}>
           {subtitle}
         </Text>
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: COLORS.border, true: COLORS.teal }}
-        thumbColor={COLORS.ink}
-        ios_backgroundColor={COLORS.border}
+        trackColor={{ false: colors.border, true: colors.accent }}
+        thumbColor={colors.text}
+        ios_backgroundColor={colors.border}
       />
     </View>
   )
@@ -318,6 +322,8 @@ function TimeRow({
   time: string
   onPress: () => void
 }) {
+  const { colors } = useTheme()
+
   return (
     <Pressable
       onPress={onPress}
@@ -327,21 +333,23 @@ function TimeRow({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: COLORS.fieldBg,
+        backgroundColor: colors.fieldBg,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         paddingHorizontal: 14,
         paddingVertical: 12,
         marginBottom: 4,
       }}
     >
-      <Text style={{ fontSize: 14, color: COLORS.body }}>{label}</Text>
-      <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.teal }}>{time}</Text>
+      <Text style={{ fontSize: 14, color: colors.textBody }}>{label}</Text>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: colors.accent }}>{time}</Text>
     </Pressable>
   )
 }
 
 function Divider() {
-  return <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 2 }} />
+  const { colors } = useTheme()
+
+  return <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 2 }} />
 }

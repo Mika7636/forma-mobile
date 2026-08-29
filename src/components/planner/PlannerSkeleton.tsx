@@ -1,6 +1,6 @@
 import { View } from 'react-native'
 import { Skeleton } from '../ui/Skeleton'
-import { SPACING } from '../../constants/theme'
+import { SPACING } from '../../theme/tokens'
 import { WEEKDAY_INITIALS } from '../../hooks/useMonthPlan'
 
 /**

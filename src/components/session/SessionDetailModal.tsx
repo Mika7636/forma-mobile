@@ -22,7 +22,6 @@ import RouteMap from './RouteMap'
 import PrimaryButton from '../ui/PrimaryButton'
 import ToastContainer from '../ui/ToastContainer'
 import { toast } from '../../store/toastStore'
-import { COLORS } from '../../constants/theme'
 import { SPORT_OPTIONS } from '../../constants/training'
 import { hrZoneColor } from '../../algorithms/heartRate'
 import {
@@ -34,11 +33,11 @@ import {
 import { useAuthStore } from '../../store/authStore'
 import { useSessionHistory } from '../../hooks/useSessionHistory'
 import { CALIBRATION_SESSION_TARGET } from '../../utils/calibration'
-import { SPORT_META } from '../../utils/sportMeta'
+import { sportVisual } from '../../utils/sportMeta'
 import { formatDistanceKm } from '../../utils/formatting'
 import type { Session, SportType } from '../../types/session'
-import { COLOR } from '../../theme/tokens'
-
+import { useTheme } from '../../theme/ThemeProvider'
+import { onColor, type Palette } from '../../theme/tokens'
 const SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.9)
 const DISMISS_THRESHOLD = 120
 
@@ -52,10 +51,10 @@ interface SessionDetailModalProps {
   onUpdated?: (session: Session) => void
 }
 
-function rpeColor(rpe: number): string {
-  if (rpe <= 3) return COLOR.accent
-  if (rpe <= 7) return COLOR.warn
-  return COLOR.danger
+function rpeColor(rpe: number, colors: Palette): string {
+  if (rpe <= 3) return colors.accent
+  if (rpe <= 7) return colors.warn
+  return colors.danger
 }
 
 /**
@@ -71,6 +70,8 @@ export default function SessionDetailModal({
   onDeleted,
   onUpdated,
 }: SessionDetailModalProps) {
+  const { colors } = useTheme()
+
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
   const { sessions } = useSessionHistory()
@@ -212,7 +213,7 @@ export default function SessionDetailModal({
 
   const handleDelete = () => {
     if (!user || !current) return
-    const meta = SPORT_META[current.sport]
+    const meta = sportVisual(current.sport, colors)
     const dateLabel = new Date(current.date).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -249,7 +250,7 @@ export default function SessionDetailModal({
     return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} />
   }
 
-  const meta = SPORT_META[data.sport] ?? { label: data.sport, icon: '🏅', color: COLORS.muted }
+  const meta = sportVisual(data.sport, colors)
   const d = new Date(data.date)
   const dateLine = `${d.toLocaleDateString(undefined, {
     weekday: 'long',
@@ -268,7 +269,7 @@ export default function SessionDetailModal({
       {/* Dim backdrop — tap to dismiss. */}
       <Pressable
         onPress={onClose}
-        style={{ flex: 1, backgroundColor: COLORS.scrim }}
+        style={{ flex: 1, backgroundColor: colors.scrim }}
       />
 
       <Animated.View
@@ -278,7 +279,7 @@ export default function SessionDetailModal({
           right: 0,
           bottom: 0,
           height: SHEET_HEIGHT,
-          backgroundColor: COLORS.surface,
+          backgroundColor: colors.surface,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           transform: [{ translateY }],
@@ -293,7 +294,7 @@ export default function SessionDetailModal({
               width: 44,
               height: 5,
               borderRadius: 999,
-              backgroundColor: COLORS.border,
+              backgroundColor: colors.border,
             }}
           />
           <Pressable
@@ -301,7 +302,7 @@ export default function SessionDetailModal({
             hitSlop={12}
             style={{ position: 'absolute', top: 10, right: 16, padding: 4 }}
           >
-            <Text style={{ fontSize: 22, color: COLORS.subtle, fontWeight: '600' }}>✕</Text>
+            <Text style={{ fontSize: 22, color: colors.textSubtle, fontWeight: '600' }}>✕</Text>
           </Pressable>
         </View>
 
@@ -330,11 +331,11 @@ export default function SessionDetailModal({
                 <Text style={{ fontSize: 30 }}>{meta.icon}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.ink }}>
+                <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>
                   {meta.label}
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                  <Text style={{ fontSize: 14, color: COLORS.muted }}>{dateLine}</Text>
+                  <Text style={{ fontSize: 14, color: colors.textMuted }}>{dateLine}</Text>
                   {data.trackingMode === 'live' ? (
                     <Text style={{ fontSize: 12, marginLeft: 6 }} accessibilityLabel="GPS tracked">
                       📍
@@ -432,6 +433,8 @@ function ViewMode({
   onDelete: () => void
   deleting: boolean
 }) {
+  const { colors } = useTheme()
+
   const zone = session.estimatedHRZone
   return (
     <View>
@@ -456,7 +459,7 @@ function ViewMode({
           icon="💪"
           label="RPE"
           value={`${session.rpe} / 10`}
-          badge={{ text: `Z${zone?.zone ?? '—'}`, color: rpeColor(session.rpe) }}
+          badge={{ text: `Z${zone?.zone ?? '—'}`, color: rpeColor(session.rpe, colors) }}
         />
         <StatTile icon="⚡" label="Training Load" value={`${session.loadScore} AU`} />
         {session.estimatedCalories != null ? (
@@ -468,7 +471,7 @@ function ViewMode({
             label="HR Zone"
             value={`Zone ${zone.zone} — ${zone.name}`}
             sub={zone.hrRange}
-            badgeBar={hrZoneColor(zone.zone)}
+            badgeBar={hrZoneColor(zone.zone, colors)}
           />
         ) : null}
         {isDistance && paceValue ? (
@@ -487,19 +490,19 @@ function ViewMode({
         <View
           style={{
             marginTop: 16,
-            backgroundColor: COLORS.fieldBg,
+            backgroundColor: colors.fieldBg,
             borderRadius: 16,
             borderWidth: 1,
-            borderColor: COLORS.border,
+            borderColor: colors.border,
             padding: 14,
           }}
         >
           <Text
-            style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1, color: COLORS.muted }}
+            style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1, color: colors.textMuted }}
           >
             NOTES
           </Text>
-          <Text style={{ marginTop: 6, fontSize: 15, color: COLORS.body, lineHeight: 21 }}>
+          <Text style={{ marginTop: 6, fontSize: 15, color: colors.textBody, lineHeight: 21 }}>
             {session.notes}
           </Text>
         </View>
@@ -518,14 +521,14 @@ function ViewMode({
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1.5,
-            borderColor: COLORS.danger,
-            backgroundColor: COLORS.surface,
+            borderColor: colors.danger,
+            backgroundColor: colors.surface,
           }}
         >
           {deleting ? (
-            <ActivityIndicator color={COLORS.dangerText} />
+            <ActivityIndicator color={colors.dangerText} />
           ) : (
-            <Text style={{ color: COLORS.dangerText, fontSize: 16, fontWeight: '700' }}>Delete</Text>
+            <Text style={{ color: colors.dangerText, fontSize: 16, fontWeight: '700' }}>Delete</Text>
           )}
         </Pressable>
       </View>
@@ -548,16 +551,18 @@ function StatTile({
   badge?: { text: string; color: string }
   badgeBar?: string
 }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={{
         width: '48%',
-        backgroundColor: COLORS.surface,
+        backgroundColor: colors.surface,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         borderLeftWidth: badgeBar ? 4 : 1,
-        borderLeftColor: badgeBar ?? COLORS.border,
+        borderLeftColor: badgeBar ?? colors.border,
         paddingVertical: 12,
         paddingHorizontal: 14,
         marginBottom: 12,
@@ -566,13 +571,13 @@ function StatTile({
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={{ fontSize: 14, marginRight: 6 }}>{icon}</Text>
         <Text
-          style={{ fontSize: 11, fontWeight: '700', color: COLORS.muted, letterSpacing: 0.3 }}
+          style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.3 }}
         >
           {label.toUpperCase()}
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-        <Text style={{ fontSize: 17, fontWeight: '800', color: COLORS.ink }} numberOfLines={1}>
+        <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }} numberOfLines={1}>
           {value}
         </Text>
         {badge ? (
@@ -585,14 +590,14 @@ function StatTile({
               paddingVertical: 2,
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.onAccent }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: colors.onAccent }}>
               {badge.text}
             </Text>
           </View>
         ) : null}
       </View>
       {sub ? (
-        <Text style={{ marginTop: 2, fontSize: 12, color: COLORS.subtle }}>{sub}</Text>
+        <Text style={{ marginTop: 2, fontSize: 12, color: colors.textSubtle }}>{sub}</Text>
       ) : null}
     </View>
   )
@@ -650,7 +655,9 @@ function EditMode({
   onSave: () => void
   onCancel: () => void
 }) {
-  const zoneCol = rpeColor(rpe)
+  const { colors } = useTheme()
+
+  const zoneCol = rpeColor(rpe, colors)
   return (
     <Reanimated.View entering={FadeIn.duration(200)} style={{ marginTop: 18 }}>
       {/* Sport selector */}
@@ -663,6 +670,7 @@ function EditMode({
         {profileSports.map((value) => {
           const opt = SPORT_OPTIONS.find((o) => o.value === value)
           const selected = sport === value
+          const accent = sportVisual(value, colors).color
           return (
             <Pressable
               key={value}
@@ -675,8 +683,8 @@ function EditMode({
                 height: 84,
                 borderRadius: 14,
                 borderWidth: 2,
-                borderColor: selected ? opt?.accent ?? COLORS.teal : COLORS.border,
-                backgroundColor: selected ? opt?.accent ?? COLORS.teal : COLORS.surfaceAlt,
+                borderColor: selected ? accent : colors.border,
+                backgroundColor: selected ? accent : colors.surfaceAlt,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginRight: 10,
@@ -689,7 +697,7 @@ function EditMode({
                   fontSize: 12,
                   fontWeight: '700',
                   textAlign: 'center',
-                  color: selected ? COLORS.onAccent : COLORS.ink,
+                  color: selected ? onColor(accent) : colors.text,
                 }}
                 numberOfLines={1}
               >
@@ -708,16 +716,16 @@ function EditMode({
           onOpenDatePicker()
         }}
         style={{
-          backgroundColor: COLORS.fieldBg,
+          backgroundColor: colors.fieldBg,
           borderRadius: 12,
           borderWidth: 1.5,
-          borderColor: COLORS.border,
+          borderColor: colors.border,
           paddingHorizontal: 14,
           height: 52,
           justifyContent: 'center',
         }}
       >
-        <Text style={{ fontSize: 16, color: COLORS.ink }}>
+        <Text style={{ fontSize: 16, color: colors.text }}>
           {date.toLocaleDateString(undefined, {
             weekday: 'long',
             month: 'short',
@@ -731,10 +739,10 @@ function EditMode({
       <FieldLabel style={{ marginTop: 18 }}>Duration (minutes)</FieldLabel>
       <View
         style={{
-          backgroundColor: COLORS.fieldBg,
+          backgroundColor: colors.fieldBg,
           borderRadius: 12,
           borderWidth: 1.5,
-          borderColor: COLORS.border,
+          borderColor: colors.border,
           paddingHorizontal: 14,
         }}
       >
@@ -743,8 +751,8 @@ function EditMode({
           onChangeText={(t) => setDuration(t.replace(/[^0-9]/g, '').slice(0, 3))}
           keyboardType="number-pad"
           placeholder="e.g. 45"
-          placeholderTextColor={COLORS.subtle}
-          style={{ height: 52, fontSize: 18, color: COLORS.ink }}
+          placeholderTextColor={colors.textSubtle}
+          style={{ height: 52, fontSize: 18, color: colors.text }}
         />
       </View>
 
@@ -754,10 +762,10 @@ function EditMode({
           <FieldLabel style={{ marginTop: 18 }}>Distance (km)</FieldLabel>
           <View
             style={{
-              backgroundColor: COLORS.fieldBg,
+              backgroundColor: colors.fieldBg,
               borderRadius: 12,
               borderWidth: 1.5,
-              borderColor: COLORS.border,
+              borderColor: colors.border,
               paddingHorizontal: 14,
             }}
           >
@@ -770,8 +778,8 @@ function EditMode({
               }}
               keyboardType="decimal-pad"
               placeholder="e.g. 5.0"
-              placeholderTextColor={COLORS.subtle}
-              style={{ height: 52, fontSize: 18, color: COLORS.ink }}
+              placeholderTextColor={colors.textSubtle}
+              style={{ height: 52, fontSize: 18, color: colors.text }}
             />
           </View>
         </Reanimated.View>
@@ -806,7 +814,7 @@ function EditMode({
             }
           }}
           minimumTrackTintColor={zoneCol}
-          maximumTrackTintColor={COLORS.border}
+          maximumTrackTintColor={colors.border}
           thumbTintColor={zoneCol}
         />
       </View>
@@ -819,10 +827,10 @@ function EditMode({
             flexDirection: 'row',
             flexWrap: 'wrap',
             justifyContent: 'space-between',
-            backgroundColor: COLORS.fieldBg,
+            backgroundColor: colors.fieldBg,
             borderRadius: 16,
             borderWidth: 1,
-            borderColor: COLORS.border,
+            borderColor: colors.border,
             padding: 12,
           }}
         >
@@ -839,10 +847,10 @@ function EditMode({
       <FieldLabel style={{ marginTop: 18 }}>Notes</FieldLabel>
       <View
         style={{
-          backgroundColor: COLORS.fieldBg,
+          backgroundColor: colors.fieldBg,
           borderRadius: 12,
           borderWidth: 1.5,
-          borderColor: COLORS.border,
+          borderColor: colors.border,
           paddingHorizontal: 14,
           paddingVertical: 4,
         }}
@@ -852,12 +860,12 @@ function EditMode({
           onChangeText={setNotes}
           multiline
           placeholder="How did it feel?"
-          placeholderTextColor={COLORS.subtle}
+          placeholderTextColor={colors.textSubtle}
           style={{
             minHeight: 60,
             maxHeight: 110,
             fontSize: 16,
-            color: COLORS.ink,
+            color: colors.text,
             paddingTop: 10,
             textAlignVertical: 'top',
           }}
@@ -878,18 +886,18 @@ function EditMode({
           marginTop: 8,
         }}
       >
-        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.muted }}>Advanced</Text>
-        <Text style={{ fontSize: 14, color: COLORS.subtle }}>{advancedOpen ? '▲' : '▼'}</Text>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMuted }}>Advanced</Text>
+        <Text style={{ fontSize: 14, color: colors.textSubtle }}>{advancedOpen ? '▲' : '▼'}</Text>
       </Pressable>
       {advancedOpen ? (
         <View>
           <FieldLabel>Average Heart Rate (BPM)</FieldLabel>
           <View
             style={{
-              backgroundColor: COLORS.fieldBg,
+              backgroundColor: colors.fieldBg,
               borderRadius: 12,
               borderWidth: 1.5,
-              borderColor: COLORS.border,
+              borderColor: colors.border,
               paddingHorizontal: 14,
             }}
           >
@@ -898,8 +906,8 @@ function EditMode({
               onChangeText={(t) => setAvgBpm(t.replace(/[^0-9]/g, '').slice(0, 3))}
               keyboardType="number-pad"
               placeholder="e.g. 152"
-              placeholderTextColor={COLORS.subtle}
-              style={{ height: 50, fontSize: 16, color: COLORS.ink }}
+              placeholderTextColor={colors.textSubtle}
+              style={{ height: 50, fontSize: 16, color: colors.text }}
             />
           </View>
         </View>
@@ -918,11 +926,11 @@ function EditMode({
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1.5,
-            borderColor: COLORS.border,
-            backgroundColor: COLORS.surface,
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
           }}
         >
-          <Text style={{ color: COLORS.muted, fontSize: 16, fontWeight: '700' }}>Cancel</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 16, fontWeight: '700' }}>Cancel</Text>
         </Pressable>
       </View>
     </Reanimated.View>
@@ -930,12 +938,14 @@ function EditMode({
 }
 
 function LivePill({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4 }}>
-      <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.5, color: COLORS.subtle }}>
+      <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.5, color: colors.textSubtle }}>
         {label.toUpperCase()}
       </Text>
-      <Text style={{ marginTop: 2, fontSize: 15, fontWeight: '800', color: COLORS.teal }}>
+      <Text style={{ marginTop: 2, fontSize: 15, fontWeight: '800', color: colors.accent }}>
         {value}
       </Text>
     </View>
@@ -943,10 +953,12 @@ function LivePill({ label, value }: { label: string; value: string }) {
 }
 
 function FieldLabel({ children, style }: { children: React.ReactNode; style?: object }) {
+  const { colors } = useTheme()
+
   return (
     <Text
       style={[
-        { fontSize: 13, fontWeight: '700', color: COLORS.body, marginBottom: 8 },
+        { fontSize: 13, fontWeight: '700', color: colors.textBody, marginBottom: 8 },
         style,
       ]}
     >

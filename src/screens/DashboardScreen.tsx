@@ -7,7 +7,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import CalibratingFormCard from '../components/dashboard/CalibratingFormCard'
 import ConflictBanner from '../components/dashboard/ConflictBanner'
@@ -20,7 +20,6 @@ import RecentActivity from '../components/dashboard/RecentActivity'
 import ZoneDistributionChart from '../components/dashboard/ZoneDistributionChart'
 import SessionDetailModal from '../components/session/SessionDetailModal'
 import PressableScale from '../components/ui/PressableScale'
-import { COLORS, RADIUS, SPACING, TYPE } from '../constants/theme'
 import { getCalibrationState } from '../utils/calibration'
 import { haptics } from '../utils/haptics'
 import { useConflicts } from '../hooks/useConflicts'
@@ -32,6 +31,8 @@ import { toast } from '../store/toastStore'
 import type { DashboardScreenProps } from '../navigation/types'
 import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
+import { RADIUS, SPACING, TYPE } from '../theme/tokens'
+import { useTheme } from '../theme/ThemeProvider'
 
 function getGreeting(hour: number): string {
   if (hour < 12) return 'Good morning'
@@ -40,6 +41,8 @@ function getGreeting(hour: number): string {
 }
 
 export default function DashboardScreen({ navigation }: DashboardScreenProps) {
+  const { colors } = useTheme()
+
   const displayName = useAuthStore((s) => s.user?.displayName)
   const createdAt = useAuthStore((s) => s.profile?.createdAt)
   const {
@@ -124,10 +127,10 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const sessionsLabel = `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} this week`
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       {/* The header sits on the light page background, not on the hero gradient,
           so dark status-bar content is what stays legible here. */}
-      <StatusBar style="light" />
+      <ThemedStatusBar />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
@@ -136,21 +139,21 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={COLORS.teal}
-            colors={[COLORS.teal]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: TYPE.heading, fontWeight: '800', color: COLORS.ink }}>
+            <Text style={{ fontSize: TYPE.heading, fontWeight: '800', color: colors.text }}>
               {greeting}, {firstName}
             </Text>
-            <Text style={{ marginTop: 3, fontSize: TYPE.body, color: COLORS.muted }}>
+            <Text style={{ marginTop: 3, fontSize: TYPE.body, color: colors.textMuted }}>
               {todayLabel}
             </Text>
-            <Text style={{ marginTop: 2, fontSize: TYPE.small, fontWeight: '600', color: COLORS.teal }}>
+            <Text style={{ marginTop: 2, fontSize: TYPE.small, fontWeight: '600', color: colors.accent }}>
               {sessionsLabel}
             </Text>
           </View>
@@ -164,17 +167,17 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
               width: 46,
               height: 46,
               borderRadius: RADIUS.pill,
-              backgroundColor: COLORS.teal,
+              backgroundColor: colors.accent,
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: COLORS.teal,
+              shadowColor: colors.accent,
               shadowOpacity: 0.4,
               shadowRadius: 10,
               shadowOffset: { width: 0, height: 5 },
               elevation: 6,
             }}
           >
-            <Text style={{ fontSize: 26, fontWeight: '700', color: COLORS.onAccent, marginTop: -3 }}>
+            <Text style={{ fontSize: 26, fontWeight: '700', color: colors.onAccent, marginTop: -3 }}>
               +
             </Text>
           </PressableScale>
@@ -185,14 +188,14 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           <View
             style={{
               marginTop: SPACING.base,
-              backgroundColor: COLORS.dangerSoft,
+              backgroundColor: colors.dangerSoft,
               borderWidth: 1,
-              borderColor: COLORS.dangerBorder,
+              borderColor: colors.dangerBorder,
               borderRadius: RADIUS.md,
               padding: SPACING.md,
             }}
           >
-            <Text style={{ fontSize: TYPE.small, fontWeight: '600', color: COLORS.dangerDeep }}>
+            <Text style={{ fontSize: TYPE.small, fontWeight: '600', color: colors.dangerText }}>
               Couldn&apos;t load your latest sessions. Pull down to retry.
             </Text>
           </View>

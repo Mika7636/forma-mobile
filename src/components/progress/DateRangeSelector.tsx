@@ -7,8 +7,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated'
 import { haptics } from '../../utils/haptics'
-import { COLORS } from '../../constants/theme'
-
+import { useTheme } from '../../theme/ThemeProvider'
 /** The three selectable windows, in weeks. Default is 8. */
 export const RANGE_OPTIONS = [4, 8, 12] as const
 export type RangeWeeks = (typeof RANGE_OPTIONS)[number]
@@ -27,6 +26,8 @@ const PAD = 4
  * smooth motion; selection fires a light haptic.
  */
 export default function DateRangeSelector({ value, onChange }: DateRangeSelectorProps) {
+  const { colors } = useTheme()
+
   const [trackWidth, setTrackWidth] = useState(0)
   const selectedIndex = RANGE_OPTIONS.indexOf(value)
   const highlightX = useSharedValue(0)
@@ -61,10 +62,10 @@ export default function DateRangeSelector({ value, onChange }: DateRangeSelector
       onLayout={onLayout}
       style={{
         flexDirection: 'row',
-        backgroundColor: COLORS.fieldBg,
+        backgroundColor: colors.fieldBg,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         padding: PAD,
       }}
     >
@@ -78,7 +79,7 @@ export default function DateRangeSelector({ value, onChange }: DateRangeSelector
               height: 36,
               width: segWidth,
               borderRadius: 999,
-              backgroundColor: COLORS.teal,
+              backgroundColor: colors.accent,
             },
             highlightStyle,
           ]}
@@ -99,7 +100,7 @@ export default function DateRangeSelector({ value, onChange }: DateRangeSelector
               style={{
                 fontSize: 14,
                 fontWeight: '700',
-                color: active ? COLORS.onAccent : COLORS.body,
+                color: active ? colors.onAccent : colors.textBody,
               }}
             >
               {weeks} Weeks

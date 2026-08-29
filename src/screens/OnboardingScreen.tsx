@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import Animated, {
   FadeIn,
   SlideInLeft,
@@ -22,7 +22,6 @@ import { haptics } from '../utils/haptics'
 import ProgressBar from '../components/onboarding/ProgressBar'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
-import { COLORS } from '../constants/theme'
 import {
   BUDGET_MAX,
   BUDGET_MIN,
@@ -39,6 +38,9 @@ import { useAuthStore } from '../store/authStore'
 import { useSafeTimeout } from '../hooks/useSafeTimeout'
 import type { SportType } from '../types/session'
 import type { ExperienceLevel, User } from '../types/user'
+import { useTheme } from '../theme/ThemeProvider'
+import { onColor } from '../theme/tokens'
+import { sportVisual } from '../utils/sportMeta'
 
 const TOTAL_STEPS = 5
 const LB_PER_KG = 2.20462
@@ -50,6 +52,8 @@ const ONBOARDING_SPORTS = SPORT_OPTIONS.filter((s) =>
 )
 
 export default function OnboardingScreen() {
+  const { colors } = useTheme()
+
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
   const setProfile = useAuthStore((s) => s.setProfile)
@@ -179,7 +183,7 @@ export default function OnboardingScreen() {
       <SafeAreaView
         style={{
           flex: 1,
-          backgroundColor: COLORS.surface,
+          backgroundColor: colors.surface,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -190,7 +194,7 @@ export default function OnboardingScreen() {
               width: 88,
               height: 88,
               borderRadius: 44,
-              backgroundColor: COLORS.tealSoft,
+              backgroundColor: colors.accentSoft,
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: 20,
@@ -198,17 +202,17 @@ export default function OnboardingScreen() {
           >
             <Text style={{ fontSize: 44 }}>✅</Text>
           </View>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.ink }}>
+          <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>
             You're all set!
           </Text>
-          <Text style={{ marginTop: 8, fontSize: 15, color: COLORS.muted }}>
+          <Text style={{ marginTop: 8, fontSize: 15, color: colors.textMuted }}>
             Building your dashboard…
           </Text>
           <View
             style={{
               marginTop: 24,
               marginHorizontal: 8,
-              backgroundColor: COLORS.tealSoft,
+              backgroundColor: colors.accentSoft,
               borderRadius: 16,
               paddingVertical: 14,
               paddingHorizontal: 18,
@@ -218,7 +222,7 @@ export default function OnboardingScreen() {
             <Text
               style={{
                 fontSize: 14,
-                color: COLORS.tealDark,
+                color: colors.accentPressed,
                 fontWeight: '600',
                 lineHeight: 20,
                 textAlign: 'center',
@@ -234,9 +238,9 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* White page — dark status-bar content is what stays legible. */}
-      <StatusBar style="light" />
+      <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -246,7 +250,7 @@ export default function OnboardingScreen() {
           <View style={{ height: 28, justifyContent: 'center' }}>
             {step > 0 ? (
               <Pressable onPress={goBack} hitSlop={12} style={{ alignSelf: 'flex-start' }}>
-                <Text style={{ fontSize: 16, color: COLORS.teal, fontWeight: '600' }}>
+                <Text style={{ fontSize: 16, color: colors.accent, fontWeight: '600' }}>
                   ‹ Back
                 </Text>
               </Pressable>
@@ -317,6 +321,8 @@ export default function OnboardingScreen() {
 /* Step 1 — Welcome                                                     */
 /* ------------------------------------------------------------------ */
 function WelcomeStep({ name, onNext }: { name: string; onNext: () => void }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <FormaLogo size={52} />
@@ -325,7 +331,7 @@ function WelcomeStep({ name, onNext }: { name: string; onNext: () => void }) {
           marginTop: 32,
           fontSize: 26,
           fontWeight: '800',
-          color: COLORS.ink,
+          color: colors.text,
           textAlign: 'center',
         }}
       >
@@ -335,7 +341,7 @@ function WelcomeStep({ name, onNext }: { name: string; onNext: () => void }) {
         style={{
           marginTop: 12,
           fontSize: 16,
-          color: COLORS.muted,
+          color: colors.textMuted,
           textAlign: 'center',
           lineHeight: 23,
           paddingHorizontal: 8,
@@ -364,6 +370,8 @@ function SportsStep({
   onToggle: (s: SportType) => void
   onNext: () => void
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1 }}>
       <StepHeading title="Which sports do you train?" subtitle="Pick all that apply" />
@@ -377,6 +385,7 @@ function SportsStep({
       >
         {ONBOARDING_SPORTS.map((sport) => {
           const isSelected = selected.includes(sport.value)
+          const accent = sportVisual(sport.value, colors).color
           return (
             <Pressable
               key={sport.value}
@@ -386,8 +395,8 @@ function SportsStep({
                 marginBottom: 14,
                 borderRadius: 16,
                 borderWidth: 2,
-                borderColor: isSelected ? sport.accent : COLORS.border,
-                backgroundColor: isSelected ? sport.accent : COLORS.surfaceAlt,
+                borderColor: isSelected ? accent : colors.border,
+                backgroundColor: isSelected ? accent : colors.surfaceAlt,
                 paddingVertical: 22,
                 paddingHorizontal: 14,
                 alignItems: 'center',
@@ -395,7 +404,7 @@ function SportsStep({
             >
               {isSelected ? (
                 <View style={{ position: 'absolute', top: 8, right: 10 }}>
-                  <Text style={{ fontSize: 15, color: COLORS.onAccent }}>✓</Text>
+                  <Text style={{ fontSize: 15, color: onColor(accent) }}>✓</Text>
                 </View>
               ) : null}
               <Text style={{ fontSize: 34 }}>{sport.icon}</Text>
@@ -404,7 +413,7 @@ function SportsStep({
                   marginTop: 10,
                   fontSize: 15,
                   fontWeight: '700',
-                  color: isSelected ? COLORS.onAccent : COLORS.ink,
+                  color: isSelected ? onColor(accent) : colors.text,
                   textAlign: 'center',
                 }}
               >
@@ -438,6 +447,8 @@ function BudgetStep({
   onChange: (h: number) => void
   onNext: () => void
 }) {
+  const { colors } = useTheme()
+
   const tier = getBudgetTier(hours)
   return (
     <View style={{ flex: 1 }}>
@@ -447,20 +458,20 @@ function BudgetStep({
       />
 
       <View style={{ alignItems: 'center', marginTop: 40 }}>
-        <Text style={{ fontSize: 64, fontWeight: '800', color: COLORS.teal }}>{hours}</Text>
-        <Text style={{ fontSize: 16, color: COLORS.muted, marginTop: -4 }}>
+        <Text style={{ fontSize: 64, fontWeight: '800', color: colors.accent }}>{hours}</Text>
+        <Text style={{ fontSize: 16, color: colors.textMuted, marginTop: -4 }}>
           hours / week
         </Text>
         <View
           style={{
             marginTop: 10,
-            backgroundColor: COLORS.tealSoft,
+            backgroundColor: colors.accentSoft,
             borderRadius: 999,
             paddingHorizontal: 14,
             paddingVertical: 5,
           }}
         >
-          <Text style={{ color: COLORS.tealDark, fontWeight: '700', fontSize: 14 }}>
+          <Text style={{ color: colors.accentPressed, fontWeight: '700', fontSize: 14 }}>
             {tier.label}
           </Text>
         </View>
@@ -473,22 +484,22 @@ function BudgetStep({
         step={1}
         value={hours}
         onValueChange={(v) => onChange(Math.round(v))}
-        minimumTrackTintColor={COLORS.teal}
-        maximumTrackTintColor={COLORS.border}
-        thumbTintColor={COLORS.teal}
+        minimumTrackTintColor={colors.accent}
+        maximumTrackTintColor={colors.border}
+        thumbTintColor={colors.accent}
       />
 
       <View
         style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}
       >
-        <Text style={{ fontSize: 12, color: COLORS.subtle }}>Casual</Text>
-        <Text style={{ fontSize: 12, color: COLORS.subtle }}>Active</Text>
-        <Text style={{ fontSize: 12, color: COLORS.subtle }}>Serious</Text>
-        <Text style={{ fontSize: 12, color: COLORS.subtle }}>Elite</Text>
+        <Text style={{ fontSize: 12, color: colors.textSubtle }}>Casual</Text>
+        <Text style={{ fontSize: 12, color: colors.textSubtle }}>Active</Text>
+        <Text style={{ fontSize: 12, color: colors.textSubtle }}>Serious</Text>
+        <Text style={{ fontSize: 12, color: colors.textSubtle }}>Elite</Text>
       </View>
 
       <Text
-        style={{ marginTop: 20, fontSize: 13, color: COLORS.muted, textAlign: 'center' }}
+        style={{ marginTop: 20, fontSize: 13, color: colors.textMuted, textAlign: 'center' }}
       >
         Casual 2–5h · Active 6–10h · Serious 11–18h · Elite 19h+
       </Text>
@@ -515,6 +526,8 @@ function MetricsStep({
   onToggleUnit: (u: 'kg' | 'lb') => void
   onNext: () => void
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1 }}>
       <StepHeading
@@ -527,7 +540,7 @@ function MetricsStep({
           marginTop: 28,
           fontSize: 13,
           fontWeight: '600',
-          color: COLORS.body,
+          color: colors.textBody,
           marginBottom: 8,
         }}
       >
@@ -537,10 +550,10 @@ function MetricsStep({
         <View
           style={{
             flex: 1,
-            backgroundColor: COLORS.fieldBg,
+            backgroundColor: colors.fieldBg,
             borderRadius: 12,
             borderWidth: 1.5,
-            borderColor: COLORS.border,
+            borderColor: colors.border,
             paddingHorizontal: 14,
           }}
         >
@@ -549,8 +562,8 @@ function MetricsStep({
             onChangeText={(t) => onChangeValue(t.replace(/[^0-9.]/g, ''))}
             keyboardType="numeric"
             placeholder="70"
-            placeholderTextColor={COLORS.subtle}
-            style={{ height: 52, fontSize: 18, color: COLORS.ink }}
+            placeholderTextColor={colors.textSubtle}
+            style={{ height: 52, fontSize: 18, color: colors.text }}
           />
         </View>
 
@@ -559,10 +572,10 @@ function MetricsStep({
           style={{
             flexDirection: 'row',
             marginLeft: 12,
-            backgroundColor: COLORS.fieldBg,
+            backgroundColor: colors.fieldBg,
             borderRadius: 12,
             borderWidth: 1.5,
-            borderColor: COLORS.border,
+            borderColor: colors.border,
             padding: 3,
           }}
         >
@@ -576,14 +589,14 @@ function MetricsStep({
                   paddingHorizontal: 18,
                   paddingVertical: 11,
                   borderRadius: 9,
-                  backgroundColor: active ? COLORS.teal : 'transparent',
+                  backgroundColor: active ? colors.accent : 'transparent',
                 }}
               >
                 <Text
                   style={{
                     fontSize: 15,
                     fontWeight: '700',
-                    color: active ? COLORS.onAccent : COLORS.muted,
+                    color: active ? colors.onAccent : colors.textMuted,
                   }}
                 >
                   {u}
@@ -601,7 +614,7 @@ function MetricsStep({
         hitSlop={8}
         style={{ alignSelf: 'center', marginTop: 16 }}
       >
-        <Text style={{ fontSize: 15, color: COLORS.muted, fontWeight: '600' }}>Skip</Text>
+        <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: '600' }}>Skip</Text>
       </Pressable>
     </View>
   )
@@ -623,6 +636,8 @@ function ExperienceStep({
   saving: boolean
   error: string | null
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flex: 1 }}>
       <StepHeading title="How experienced are you?" />
@@ -637,8 +652,8 @@ function ExperienceStep({
               style={{
                 borderRadius: 16,
                 borderWidth: 2,
-                borderColor: active ? COLORS.teal : COLORS.border,
-                backgroundColor: active ? COLORS.tealSoft : COLORS.surfaceAlt,
+                borderColor: active ? colors.accent : colors.border,
+                backgroundColor: active ? colors.accentSoft : colors.surfaceAlt,
                 padding: 18,
                 marginBottom: 14,
                 flexDirection: 'row',
@@ -651,7 +666,7 @@ function ExperienceStep({
                   style={{
                     fontSize: 17,
                     fontWeight: '800',
-                    color: active ? COLORS.tealDark : COLORS.ink,
+                    color: active ? colors.accentPressed : colors.text,
                     textTransform: 'uppercase',
                     letterSpacing: 0.5,
                   }}
@@ -659,13 +674,13 @@ function ExperienceStep({
                   {opt.label}
                 </Text>
                 <Text
-                  style={{ marginTop: 4, fontSize: 13, color: COLORS.muted, lineHeight: 18 }}
+                  style={{ marginTop: 4, fontSize: 13, color: colors.textMuted, lineHeight: 18 }}
                 >
                   {opt.description}
                 </Text>
               </View>
               {active ? (
-                <Text style={{ fontSize: 20, color: COLORS.teal, marginLeft: 8 }}>✓</Text>
+                <Text style={{ fontSize: 20, color: colors.accent, marginLeft: 8 }}>✓</Text>
               ) : null}
             </Pressable>
           )
@@ -676,7 +691,7 @@ function ExperienceStep({
       {error ? (
         <Text
           style={{
-            color: COLORS.dangerText,
+            color: colors.dangerText,
             fontSize: 14,
             fontWeight: '600',
             textAlign: 'center',
@@ -701,13 +716,15 @@ function ExperienceStep({
 /* Shared step heading                                                */
 /* ------------------------------------------------------------------ */
 function StepHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ marginTop: 12 }}>
-      <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.ink, lineHeight: 30 }}>
+      <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text, lineHeight: 30 }}>
         {title}
       </Text>
       {subtitle ? (
-        <Text style={{ marginTop: 8, fontSize: 15, color: COLORS.muted }}>{subtitle}</Text>
+        <Text style={{ marginTop: 8, fontSize: 15, color: colors.textMuted }}>{subtitle}</Text>
       ) : null}
     </View>
   )

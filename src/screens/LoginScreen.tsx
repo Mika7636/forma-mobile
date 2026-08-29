@@ -9,16 +9,18 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import { haptics } from '../utils/haptics'
 import FormInput from '../components/ui/FormInput'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
-import { COLORS } from '../constants/theme'
 import { useAuthStore } from '../store/authStore'
 import type { LoginScreenProps } from '../navigation/types'
+import { useTheme } from '../theme/ThemeProvider'
 
 export default function LoginScreen({ navigation, route }: LoginScreenProps) {
+  const { colors } = useTheme()
+
   const signIn = useAuthStore((s) => s.signIn)
   const error = useAuthStore((s) => s.error)
   const clearError = useAuthStore((s) => s.clearError)
@@ -61,9 +63,9 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* White page — dark status-bar content is what stays legible. */}
-      <StatusBar style="light" />
+      <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -84,7 +86,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
               style={{
                 marginTop: 12,
                 fontSize: 17,
-                color: COLORS.muted,
+                color: colors.textMuted,
               }}
             >
               Welcome back
@@ -94,7 +96,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           {justRegistered ? (
             <View
               style={{
-                backgroundColor: COLORS.tealSoft,
+                backgroundColor: colors.accentSoft,
                 borderRadius: 12,
                 paddingVertical: 12,
                 paddingHorizontal: 16,
@@ -102,7 +104,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
               }}
             >
               <Text
-                style={{ color: COLORS.tealDark, fontSize: 14, fontWeight: '600' }}
+                style={{ color: colors.accentPressed, fontSize: 14, fontWeight: '600' }}
               >
                 Account created! Please log in.
               </Text>
@@ -141,7 +143,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           {error ? (
             <Text
               style={{
-                color: COLORS.dangerText,
+                color: colors.dangerText,
                 fontSize: 14,
                 marginTop: 2,
                 marginBottom: 8,
@@ -165,7 +167,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
               marginTop: 28,
             }}
           >
-            <Text style={{ color: COLORS.muted, fontSize: 15 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 15 }}>
               Don't have an account?{' '}
             </Text>
             <Pressable
@@ -175,7 +177,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
               }}
               hitSlop={8}
             >
-              <Text style={{ color: COLORS.teal, fontSize: 15, fontWeight: '700' }}>
+              <Text style={{ color: colors.accent, fontSize: 15, fontWeight: '700' }}>
                 Register
               </Text>
             </Pressable>

@@ -6,8 +6,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { useEffect } from 'react'
-import { COLOR, RADIUS_T, SPACE, rpeColor, rpeLabel } from '../../theme/tokens'
+import { RADIUS, SPACING, rpeColor, rpeLabel } from '../../theme/tokens'
 import { haptics } from '../../utils/haptics'
+import { useTheme } from '../../theme/ThemeProvider'
 
 const VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const
 
@@ -47,9 +48,11 @@ export default function RpeScale({
   value: number | null
   onChange: (rpe: number) => void
 }) {
+  const { colors } = useTheme()
+
   return (
     <View>
-      <View style={{ flexDirection: 'row', gap: SPACE.xs }}>
+      <View style={{ flexDirection: 'row', gap: SPACING.xs }}>
         {VALUES.map((n) => (
           <RpePill key={n} value={n} selected={value === n} onPress={() => onChange(n)} />
         ))}
@@ -57,10 +60,10 @@ export default function RpeScale({
 
       <Text
         style={{
-          marginTop: SPACE.md,
+          marginTop: SPACING.md,
           fontSize: 15,
           fontWeight: '700',
-          color: value == null ? COLOR.textMuted : rpeColor(value),
+          color: value == null ? colors.textMuted : rpeColor(value, colors),
         }}
       >
         {value == null ? 'Tap a number to rate your effort' : `${value} · ${rpeLabel(value)}`}
@@ -78,9 +81,11 @@ function RpePill({
   selected: boolean
   onPress: () => void
 }) {
+  const { colors } = useTheme()
+
   const scale = useSharedValue(1)
   const fill = useSharedValue(0)
-  const color = rpeColor(value)
+  const color = rpeColor(value, colors)
 
   useEffect(() => {
     // Spring on the way in, timing on the way out: the selected pill should feel
@@ -96,8 +101,8 @@ function RpePill({
     transform: [{ scale: scale.value }],
     // Unselected pills carry their colour only as a hairline, so the row reads
     // as a ramp without ten saturated blocks shouting at once.
-    backgroundColor: fill.value > 0.5 ? color : COLOR.surfaceAlt,
-    borderColor: fill.value > 0.5 ? color : COLOR.border,
+    backgroundColor: fill.value > 0.5 ? color : colors.surfaceAlt,
+    borderColor: fill.value > 0.5 ? color : colors.border,
   }))
 
   return (
@@ -115,7 +120,7 @@ function RpePill({
         style={[
           {
             height: 44,
-            borderRadius: RADIUS_T.sm,
+            borderRadius: RADIUS.md,
             borderWidth: 1.5,
             alignItems: 'center',
             justifyContent: 'center',
@@ -127,7 +132,7 @@ function RpePill({
           style={{
             fontSize: 15,
             fontWeight: '800',
-            color: selected ? COLOR.bg : color,
+            color: selected ? colors.bg : color,
           }}
         >
           {value}

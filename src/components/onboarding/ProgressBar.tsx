@@ -5,8 +5,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
-import { COLORS } from '../../constants/theme'
-
+import { useTheme } from '../../theme/ThemeProvider'
 interface ProgressBarProps {
   /** Current step, 1-indexed. */
   step: number
@@ -15,6 +14,8 @@ interface ProgressBarProps {
 
 /** Thin teal-filled progress bar with a "Step X of N" caption. */
 export default function ProgressBar({ step, totalSteps }: ProgressBarProps) {
+  const { colors } = useTheme()
+
   const progress = useSharedValue(step / totalSteps)
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function ProgressBar({ step, totalSteps }: ProgressBarProps) {
         style={{
           height: 6,
           borderRadius: 999,
-          backgroundColor: COLORS.border,
+          backgroundColor: colors.border,
           overflow: 'hidden',
         }}
       >
@@ -40,7 +41,7 @@ export default function ProgressBar({ step, totalSteps }: ProgressBarProps) {
             {
               height: '100%',
               borderRadius: 999,
-              backgroundColor: COLORS.teal,
+              backgroundColor: colors.accent,
             },
             fillStyle,
           ]}
@@ -51,7 +52,7 @@ export default function ProgressBar({ step, totalSteps }: ProgressBarProps) {
           marginTop: 8,
           fontSize: 13,
           fontWeight: '600',
-          color: COLORS.muted,
+          color: colors.textMuted,
         }}
       >
         Step {step} of {totalSteps}

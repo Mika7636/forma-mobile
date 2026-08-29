@@ -1,40 +1,37 @@
 import { SPORT_OPTIONS } from '../constants/training'
 import type { SportType } from '../types/session'
-import { PALETTE } from '../theme/tokens'
-
+import type { Palette } from '../theme/tokens'
 interface SportMeta {
   label: string
   icon: string
-  color: string
 }
 
 export const SPORT_META: Record<SportType, SportMeta> = {
-  // Shared verbatim with `constants/training.ts`. See the note there.
-  running: { label: 'Running', icon: '🏃', color: PALETTE.orange },
-  swimming: { label: 'Swimming', icon: '🏊', color: PALETTE.sky },
-  combat: { label: 'Combat Sports', icon: '🥊', color: PALETTE.red },
-  football: { label: 'Football', icon: '⚽', color: PALETTE.green },
-  cycling: { label: 'Cycling', icon: '🚴', color: PALETTE.violet },
-  gym: { label: 'Gym / Strength', icon: '💪', color: PALETTE.slate },
-  strength: { label: 'Strength Training', icon: '🏋️', color: PALETTE.bronze },
+  running: { label: 'Running', icon: '🏃' },
+  swimming: { label: 'Swimming', icon: '🏊' },
+  combat: { label: 'Combat Sports', icon: '🥊' },
+  football: { label: 'Football', icon: '⚽' },
+  cycling: { label: 'Cycling', icon: '🚴' },
+  gym: { label: 'Gym / Strength', icon: '💪' },
+  strength: { label: 'Strength Training', icon: '🏋️' },
 }
 
-/** Fallback for a sport string that isn't in the palette (older/web-written docs). */
-const UNKNOWN_SPORT = { color: PALETTE.slate, icon: '🏅', label: 'Training' }
+/** Fallback for a sport string we don't recognise (older/web-written docs). */
+const UNKNOWN_SPORT = { icon: '🏅', label: 'Training' }
 
 /**
  * How a sport is drawn anywhere in the app: accent colour, emoji, display name.
  *
- * Colours come from {@link SPORT_OPTIONS} — the palette the sport pickers use —
- * so a calendar dot, a planner chip and a picker card all agree on what
- * "running green" means. {@link SPORT_META} is the fallback for anything the
- * picker doesn't list.
+ * The **one** place a sport's colour is resolved, so a calendar dot, a planner
+ * chip and a picker card can never disagree. The colour comes from the active
+ * palette rather than from a constant, because the sport hues differ between
+ * light and dark — see `Palette.sport`.
  */
-export function sportVisual(sport: SportType) {
+export function sportVisual(sport: SportType, colors: Palette) {
   const option = SPORT_OPTIONS.find((o) => o.value === sport)
   const meta = SPORT_META[sport]
   return {
-    color: option?.accent ?? meta?.color ?? UNKNOWN_SPORT.color,
+    color: colors.sport[sport as keyof Palette['sport']] ?? colors.palette.slate,
     icon: option?.icon ?? meta?.icon ?? UNKNOWN_SPORT.icon,
     label: option?.label ?? meta?.label ?? sport ?? UNKNOWN_SPORT.label,
   }

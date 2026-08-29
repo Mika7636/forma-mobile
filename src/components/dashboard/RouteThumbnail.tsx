@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { View } from 'react-native'
 import Svg, { Polyline } from 'react-native-svg'
-import { COLORS } from '../../constants/theme'
 import type { RoutePoint } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface RouteThumbnailProps {
   coordinates: RoutePoint[]
@@ -25,6 +25,8 @@ export default function RouteThumbnail({
   width = 46,
   height = 34,
 }: RouteThumbnailProps) {
+  const { colors } = useTheme()
+
   const points = useMemo(() => {
     if (coordinates.length < 2) return null
 
@@ -70,7 +72,7 @@ export default function RouteThumbnail({
         width,
         height,
         borderRadius: 8,
-        backgroundColor: COLORS.tealSoft,
+        backgroundColor: colors.accentSoft,
         overflow: 'hidden',
       }}
     >
@@ -78,7 +80,7 @@ export default function RouteThumbnail({
         <Polyline
           points={points}
           fill="none"
-          stroke={COLORS.teal}
+          stroke={colors.accent}
           strokeWidth={1.8}
           strokeLinejoin="round"
           strokeLinecap="round"

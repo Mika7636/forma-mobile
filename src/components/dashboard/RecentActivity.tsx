@@ -3,10 +3,10 @@ import Animated, { FadeInDown } from 'react-native-reanimated'
 import RouteThumbnail from './RouteThumbnail'
 import PressableScale from '../ui/PressableScale'
 import { hrZoneColor } from '../../algorithms/heartRate'
-import { COLORS } from '../../constants/theme'
 import { formatTimeAgo } from '../../utils/formatting'
-import { SPORT_META } from '../../utils/sportMeta'
+import { sportVisual } from '../../utils/sportMeta'
 import type { Session } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
 
 /** How many sessions the dashboard surfaces; the rest live on Progress. */
 const MAX_ROWS = 7
@@ -27,11 +27,13 @@ export default function RecentActivity({
   onSelect,
   baseDelay = 0,
 }: RecentActivityProps) {
+  const { colors } = useTheme()
+
   const rows = sessions.slice(0, MAX_ROWS)
 
   return (
     <View>
-      <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.ink, marginBottom: 10 }}>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 10 }}>
         Recent Activity
       </Text>
 
@@ -64,11 +66,9 @@ function SessionRow({
   delay: number
   onPress: () => void
 }) {
-  const meta = SPORT_META[session.sport] ?? {
-    label: session.sport,
-    icon: '🏅',
-    color: COLORS.muted,
-  }
+  const { colors } = useTheme()
+
+  const meta = sportVisual(session.sport, colors)
   const zone = session.estimatedHRZone?.zone
   const isLive = session.trackingMode === 'live'
   const route = session.routeCoordinates
@@ -92,10 +92,10 @@ function SessionRow({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: COLORS.surface,
+          backgroundColor: colors.surface,
           borderRadius: 16,
           borderWidth: 1,
-          borderColor: COLORS.border,
+          borderColor: colors.border,
           padding: 12,
         }}
       >
@@ -118,7 +118,7 @@ function SessionRow({
         {/* Sport + meta line. */}
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.ink }} numberOfLines={1}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }} numberOfLines={1}>
               {meta.label}
             </Text>
             {isLive ? (
@@ -130,7 +130,7 @@ function SessionRow({
               </Text>
             ) : null}
           </View>
-          <Text style={{ marginTop: 2, fontSize: 12, color: COLORS.subtle }} numberOfLines={1}>
+          <Text style={{ marginTop: 2, fontSize: 12, color: colors.textSubtle }} numberOfLines={1}>
             {metaLine}
           </Text>
         </View>
@@ -141,11 +141,11 @@ function SessionRow({
 
         {/* Load / calories / zone. */}
         <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.ink }}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
             {session.loadScore} AU
           </Text>
           {session.estimatedCalories != null ? (
-            <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 1 }}>
+            <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>
               {session.estimatedCalories} kcal
             </Text>
           ) : null}
@@ -153,13 +153,13 @@ function SessionRow({
             <View
               style={{
                 marginTop: 3,
-                backgroundColor: hrZoneColor(zone),
+                backgroundColor: hrZoneColor(zone, colors),
                 borderRadius: 999,
                 paddingHorizontal: 7,
                 paddingVertical: 2,
               }}
             >
-              <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.onAccent }}>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: colors.onAccent }}>
                 Z{zone}
               </Text>
             </View>
@@ -167,7 +167,7 @@ function SessionRow({
         </View>
 
         {/* Tap affordance — opens the session detail modal. */}
-        <Text style={{ fontSize: 22, color: COLORS.subtle, marginLeft: 8, marginTop: -2 }}>
+        <Text style={{ fontSize: 22, color: colors.textSubtle, marginLeft: 8, marginTop: -2 }}>
           ›
         </Text>
       </PressableScale>

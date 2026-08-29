@@ -1,29 +1,33 @@
 import type { SportType } from '../types/session'
 import type { ConflictSensitivity, ExperienceLevel } from '../types/user'
-import { PALETTE } from '../theme/tokens'
-
 export interface SportOption {
   value: SportType
   label: string
   icon: string
-  /** Accent color used for the selected state of the sport card. */
-  accent: string
 }
 
-// Selection-UI accents for the sport cards (onboarding + settings).
+/**
+ * The sports the pickers offer, in display order.
+ *
+ * Deliberately colourless. Each sport's accent lives in the palette
+ * (`colors.sport`) because it has to differ between light and dark — the dark
+ * set is tuned to sit on near-black and is unreadable on white. A colour baked
+ * into this array would be frozen at import time and would be wrong in one of
+ * the two themes.
+ *
+ * Read the accent with `sportVisual(sport, colors)`, which is also the single
+ * place the assignment is defined. This file and `utils/sportMeta.ts` used to
+ * carry two *different* colour lists — running was green in one and orange in
+ * the other — so the same run showed up in two colours depending on the screen.
+ */
 export const SPORT_OPTIONS: SportOption[] = [
-  // Accents come from the categorical palette, and the assignment is shared
-  // verbatim with `utils/sportMeta.ts`. The two files used to disagree —
-  // running was green here and orange there, football amber here and green
-  // there — so the same run showed up in two colours depending on which
-  // screen you were on.
-  { value: 'running', label: 'Running', icon: '🏃', accent: PALETTE.orange },
-  { value: 'swimming', label: 'Swimming', icon: '🏊', accent: PALETTE.sky },
-  { value: 'combat', label: 'Combat Sports', icon: '🥊', accent: PALETTE.red },
-  { value: 'football', label: 'Football', icon: '⚽', accent: PALETTE.green },
-  { value: 'cycling', label: 'Cycling', icon: '🚴', accent: PALETTE.violet },
-  { value: 'gym', label: 'Gym / Strength', icon: '💪', accent: PALETTE.slate },
-  { value: 'strength', label: 'Strength Training', icon: '🏋️', accent: PALETTE.bronze },
+  { value: 'running', label: 'Running', icon: '🏃' },
+  { value: 'swimming', label: 'Swimming', icon: '🏊' },
+  { value: 'combat', label: 'Combat Sports', icon: '🥊' },
+  { value: 'football', label: 'Football', icon: '⚽' },
+  { value: 'cycling', label: 'Cycling', icon: '🚴' },
+  { value: 'gym', label: 'Gym / Strength', icon: '💪' },
+  { value: 'strength', label: 'Strength Training', icon: '🏋️' },
 ]
 
 export interface ExperienceOption {

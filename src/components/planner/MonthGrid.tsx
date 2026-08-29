@@ -5,10 +5,11 @@
 // grid and you can see which days you trained and roughly what you did.
 import { memo } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import { COLORS, RADIUS } from '../../constants/theme'
 import { severityStyle, worstSeverity } from '../../constants/conflictColors'
 import { WEEKDAY_INITIALS, type CalendarDay } from '../../hooks/useMonthPlan'
 import { sportVisual } from '../../utils/sportMeta'
+import { RADIUS } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 
 /** Dots rendered before the row collapses into "N dots + overflow count". */
 const MAX_DOTS = 3
@@ -25,6 +26,8 @@ interface MonthGridProps {
 }
 
 function MonthGrid({ weeks, selectedIso, onDayPress }: MonthGridProps) {
+  const { colors } = useTheme()
+
   return (
     // The grid claims the height its parent gives it and splits it evenly
     // between the rows, so a 5-row month and a 6-row one both fill the screen
@@ -42,7 +45,7 @@ function MonthGrid({ weeks, selectedIso, onDayPress }: MonthGridProps) {
               fontSize: 12,
               fontWeight: '700',
               letterSpacing: 0.5,
-              color: COLORS.subtle,
+              color: colors.textSubtle,
             }}
           >
             {letter}
@@ -82,6 +85,8 @@ function DayCell({
   selected: boolean
   onPress: (day: CalendarDay) => void
 }) {
+  const { colors } = useTheme()
+
   const { isToday, inMonth, sessions, conflicts } = day
   const count = sessions.length
 
@@ -92,16 +97,16 @@ function DayCell({
   // grid; on dark it is a bright dot competing with the coloured session dots
   // directly beneath it, which are the actual data on this screen. An outline
   // marks the day just as unambiguously and stays quieter than the content.
-  const circleBg = !isToday && selected ? COLORS.tealSoft : 'transparent'
-  const ringColor = isToday ? COLORS.teal : 'transparent'
+  const circleBg = !isToday && selected ? colors.accentSoft : 'transparent'
+  const ringColor = isToday ? colors.accent : 'transparent'
   const numberColor = isToday
-    ? COLORS.tealDeep
+    ? colors.accentText
     : !inMonth
       ? // Out-of-month days: present, dateable, clearly not part of this month.
-        COLORS.subtle
+        colors.textSubtle
       : selected
-        ? COLORS.tealDeep
-        : COLORS.ink
+        ? colors.accentText
+        : colors.text
 
   const label = day.date.toLocaleDateString(undefined, {
     weekday: 'long',
@@ -175,7 +180,7 @@ function DayCell({
             width: 6,
             height: 6,
             borderRadius: 3,
-            backgroundColor: severityStyle(worstSeverity(conflicts)).solid,
+            backgroundColor: severityStyle(worstSeverity(conflicts), colors).solid,
             opacity: inMonth ? 1 : 0.4,
           }}
         />
@@ -188,6 +193,8 @@ function DayCell({
 /* Sport dots                                                          */
 /* ------------------------------------------------------------------ */
 function SessionDots({ sessions, dimmed }: { sessions: CalendarDay['sessions']; dimmed: boolean }) {
+  const { colors } = useTheme()
+
   // The row keeps its height even when empty — see the minHeight note above.
   if (sessions.length === 0) return <View style={{ height: DOT, marginTop: 4 }} />
 
@@ -212,7 +219,7 @@ function SessionDots({ sessions, dimmed }: { sessions: CalendarDay['sessions']; 
             height: DOT,
             borderRadius: DOT / 2,
             marginLeft: i === 0 ? 0 : 3,
-            backgroundColor: sportVisual(session.sport).color,
+            backgroundColor: sportVisual(session.sport, colors).color,
           }}
         />
       ))}
@@ -223,7 +230,7 @@ function SessionDots({ sessions, dimmed }: { sessions: CalendarDay['sessions']; 
             fontSize: 9,
             lineHeight: DOT + 2,
             fontWeight: '800',
-            color: COLORS.muted,
+            color: colors.textMuted,
           }}
         >
           +{overflow}

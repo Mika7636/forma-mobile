@@ -175,7 +175,6 @@ export interface SessionEstimates {
   loadScore: number
   estimatedCalories: number
   estimatedHRZone: SessionHRZone
-  hrZoneColor: string
   pace: string | null
 }
 
@@ -195,7 +194,6 @@ export function computeEstimates(
     loadScore: safeDuration > 0 ? safeDuration * rpe : 0,
     estimatedCalories: estimateCalories(sport, safeDuration, rpe, profile?.weightKg),
     estimatedHRZone: { zone: hr.zone, name: hr.name, hrRange: hr.hrRange },
-    hrZoneColor: hr.color,
     pace: isDistanceSport(sport)
       ? calculatePace(sport, safeDuration, distanceKm)
       : null,

@@ -3,8 +3,7 @@ import { useNavigation } from '@react-navigation/native'
 import { useEffect } from 'react'
 import { Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { TYPE } from '../constants/theme'
-import { COLOR } from '../theme/tokens'
+import { TYPE } from '../theme/tokens'
 import DashboardScreen from '../screens/DashboardScreen'
 import LogScreen from '../screens/LogScreen'
 import PlannerScreen from '../screens/PlannerScreen'
@@ -21,6 +20,7 @@ import { useToastStore } from '../store/toastStore'
 import { haptics } from '../utils/haptics'
 import type { AppStackParamList, MainTabsParamList } from './types'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { useTheme } from '../theme/ThemeProvider'
 
 const Tab = createBottomTabNavigator<MainTabsParamList>()
 
@@ -46,6 +46,8 @@ const TAB_ICON: Record<string, TabIconName> = {
 const TAB_BAR_HEIGHT = 58
 
 export default function MainTabs() {
+  const { colors } = useTheme()
+
   const insets = useSafeAreaInsets()
   const setBottomOffset = useToastStore((s) => s.setBottomOffset)
   // MainTabs is a screen of AppStack, so this is the *stack's* navigator — which
@@ -95,23 +97,23 @@ export default function MainTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         animation: 'fade',
-        // Dark bar, app-wide.
+        // The bar is the page ground, not a colour of its own.
         //
-        // It used to be white. That was fine when every screen was FORMA's light
-        // system, but live tracking, the finished-workout summary and the route
-        // maps are all dark now, and a white slab pinned to the bottom of them
-        // read as a piece of a different app — the single most visible seam in
-        // the whole UI. A dark bar sits under both palettes; the light screens
-        // keep their white cards and simply gain a grounded base.
-        tabBarActiveTintColor: COLOR.accent,
-        tabBarInactiveTintColor: COLOR.textMuted,
+        // It was white once, then hardcoded dark when the app went dark. Both
+        // were the same mistake: a bar pinned to the bottom of every screen in a
+        // colour the screens don't share reads as a piece of a different app,
+        // and it is the most visible seam in the whole UI. Taking `bg` and
+        // `border` from the palette makes it the bottom edge of whatever page
+        // is above it, in either theme.
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           height: TAB_BAR_HEIGHT + insets.bottom,
           // Lift the labels clear of the gesture bar / home indicator.
           paddingBottom: insets.bottom,
           paddingTop: 6,
-          backgroundColor: COLOR.bg,
-          borderTopColor: COLOR.border,
+          backgroundColor: colors.bg,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           // Android draws its own shadow from `elevation`; on iOS the hairline
           // border is the whole separation, so no shadow either way.

@@ -54,8 +54,7 @@ import {
   type MovingTimeState,
 } from '../algorithms/movingTime'
 import type { RoutePoint, SportType } from '../types/session'
-import { COLOR } from '../theme/tokens'
-
+import { NOTIFICATION_ACCENT } from '../theme/tokens'
 /* ------------------------------------------------------------------ */
 /* Task identity + storage                                             */
 /* ------------------------------------------------------------------ */
@@ -459,7 +458,8 @@ export function warmupLocationOptions(): Location.LocationOptions {
 const FOREGROUND_SERVICE = {
   notificationTitle: 'FORMA',
   notificationBody: 'Recording location',
-  notificationColor: COLOR.accent,
+  // Drawn by the system shade, not by React — see NOTIFICATION_ACCENT.
+  notificationColor: NOTIFICATION_ACCENT,
   /**
    * Keep recording if the user swipes FORMA out of the recents list. Swiping
    * away the *app* is not the same gesture as ending a *workout*, and losing an

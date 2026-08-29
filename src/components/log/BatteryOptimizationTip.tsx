@@ -25,14 +25,14 @@
 import { useEffect, useState } from 'react'
 import { Platform, Pressable, Text, View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { COLORS } from '../../constants/theme'
 import { haptics } from '../../utils/haptics'
 import { openBatteryOptimizationSettings } from '../../utils/systemSettings'
-import { COLOR } from '../../theme/tokens'
-
+import { useTheme } from '../../theme/ThemeProvider'
 const STORAGE_KEY = 'forma.tip.batteryOptimization.dismissed'
 
 export default function BatteryOptimizationTip() {
+  const { colors } = useTheme()
+
   // Starts hidden and is revealed only once the stored flag has been read.
   // The other order flashes the tip on every mount for users who dismissed it
   // months ago, which is worse than showing it a beat late.
@@ -72,10 +72,10 @@ export default function BatteryOptimizationTip() {
         marginTop: 16,
         flexDirection: 'row',
         alignItems: 'flex-start',
-        backgroundColor: COLOR.surfaceAlt,
+        backgroundColor: colors.surfaceAlt,
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: COLOR.border,
+        borderColor: colors.border,
         paddingVertical: 12,
         paddingLeft: 14,
         paddingRight: 8,
@@ -92,10 +92,10 @@ export default function BatteryOptimizationTip() {
         style={{ flex: 1 }}
         hitSlop={6}
       >
-        <Text style={{ color: COLORS.onAccent, fontSize: 13, fontWeight: '700' }}>
+        <Text style={{ color: colors.onAccent, fontSize: 13, fontWeight: '700' }}>
           🔋 Samsung and some other phones stop background tracking
         </Text>
-        <Text style={{ marginTop: 4, color: COLORS.subtle, fontSize: 12, lineHeight: 17 }}>
+        <Text style={{ marginTop: 4, color: colors.textSubtle, fontSize: 12, lineHeight: 17 }}>
           Tap here to disable battery optimisation for FORMA, so your route keeps
           recording with the screen off.
         </Text>
@@ -109,7 +109,7 @@ export default function BatteryOptimizationTip() {
         hitSlop={10}
         style={{ paddingHorizontal: 6, paddingVertical: 2 }}
       >
-        <Text style={{ color: COLORS.subtle, fontSize: 16, fontWeight: '700' }}>✕</Text>
+        <Text style={{ color: colors.textSubtle, fontSize: 16, fontWeight: '700' }}>✕</Text>
       </Pressable>
     </View>
   )

@@ -1,8 +1,7 @@
 import { Modal, Pressable, Text, View } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 import { haptics } from '../../utils/haptics'
-import { COLORS } from '../../constants/theme'
-
+import { useTheme } from '../../theme/ThemeProvider'
 interface FormInfoModalProps {
   visible: boolean
   onClose: () => void
@@ -14,13 +13,15 @@ interface FormInfoModalProps {
  * "estimated" during the first weeks. Scaffold forked from ConflictModal.
  */
 export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) {
+  const { colors } = useTheme()
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Animated.View
         entering={FadeIn.duration(150)}
         style={{
           flex: 1,
-          backgroundColor: COLORS.scrim,
+          backgroundColor: colors.scrim,
           justifyContent: 'center',
           paddingHorizontal: 24,
         }}
@@ -28,12 +29,12 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
         <Animated.View
           entering={FadeInDown.duration(220)}
           style={{
-            backgroundColor: COLORS.surface,
+            backgroundColor: colors.surface,
             borderRadius: 20,
             paddingTop: 24,
             paddingBottom: 20,
             paddingHorizontal: 22,
-            shadowColor: COLORS.shadow,
+            shadowColor: colors.shadow,
             shadowOpacity: 0.25,
             shadowRadius: 24,
             shadowOffset: { width: 0, height: 12 },
@@ -46,7 +47,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
                 width: 60,
                 height: 60,
                 borderRadius: 30,
-                backgroundColor: COLORS.tealSoft,
+                backgroundColor: colors.accentSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -59,7 +60,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
             style={{
               fontSize: 19,
               fontWeight: '800',
-              color: COLORS.ink,
+              color: colors.text,
               textAlign: 'center',
               marginBottom: 12,
             }}
@@ -71,7 +72,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
             style={{
               fontSize: 15,
               lineHeight: 22,
-              color: COLORS.body,
+              color: colors.textBody,
               textAlign: 'center',
             }}
           >
@@ -93,10 +94,10 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
               marginTop: 20,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: COLORS.teal,
+              backgroundColor: colors.accent,
             }}
           >
-            <Text style={{ color: COLORS.onAccent, fontSize: 16, fontWeight: '700' }}>
+            <Text style={{ color: colors.onAccent, fontSize: 16, fontWeight: '700' }}>
               Got it
             </Text>
           </Pressable>

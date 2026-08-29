@@ -16,12 +16,13 @@ import Animated, {
   SlideOutDown,
 } from 'react-native-reanimated'
 import SessionChip from './SessionChip'
-import { COLORS, RADIUS, SHADOW } from '../../constants/theme'
 import { severityStyle, worstSeverity, type ConflictSeverity } from '../../constants/conflictColors'
 import { haptics } from '../../utils/haptics'
 import type { CalendarDay } from '../../hooks/useMonthPlan'
 import type { Conflict } from '../../types/conflict'
 import type { Session } from '../../types/session'
+import { RADIUS } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface DaySessionsSheetProps {
   /** The day to list; the sheet is open while this is non-null. */
@@ -39,6 +40,8 @@ export default function DaySessionsSheet({
   onSessionDelete,
   onConflictPress,
 }: DaySessionsSheetProps) {
+  const { colors } = useTheme()
+
   // Which chip to tint: a conflict names up to two sessions, and `danger`
   // always wins over a `warning` already recorded for the same one.
   const severityBySession = useMemo(() => {
@@ -55,14 +58,14 @@ export default function DaySessionsSheet({
   if (!day) return null
 
   const conflicts = day.conflicts
-  const daySeverityStyle = severityStyle(worstSeverity(conflicts))
+  const daySeverityStyle = severityStyle(worstSeverity(conflicts), colors)
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <Animated.View
         entering={FadeIn.duration(160)}
         exiting={FadeOut.duration(140)}
-        style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.scrim }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]}
       >
         <Pressable onPress={onClose} style={{ flex: 1 }} accessibilityLabel="Close day" />
       </Animated.View>
@@ -76,13 +79,13 @@ export default function DaySessionsSheet({
           right: 0,
           bottom: 0,
           maxHeight: '72%',
-          backgroundColor: COLORS.surface,
+          backgroundColor: colors.surface,
           borderTopLeftRadius: 22,
           borderTopRightRadius: 22,
           paddingTop: 12,
           paddingHorizontal: 16,
           paddingBottom: 28,
-          ...SHADOW.floating,
+          ...colors.shadowFloating,
         }}
       >
         <View
@@ -91,21 +94,21 @@ export default function DaySessionsSheet({
             width: 44,
             height: 5,
             borderRadius: RADIUS.pill,
-            backgroundColor: COLORS.border,
+            backgroundColor: colors.border,
             marginBottom: 12,
           }}
         />
 
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 19, fontWeight: '800', color: COLORS.ink }}>
+            <Text style={{ fontSize: 19, fontWeight: '800', color: colors.text }}>
               {day.date.toLocaleDateString(undefined, {
                 weekday: 'long',
                 day: 'numeric',
                 month: 'long',
               })}
             </Text>
-            <Text style={{ marginTop: 3, fontSize: 13, color: COLORS.muted }}>
+            <Text style={{ marginTop: 3, fontSize: 13, color: colors.textMuted }}>
               {day.sessions.length} session{day.sessions.length === 1 ? '' : 's'} ·{' '}
               {day.dayHours.toFixed(1)} h · {day.dayLoad} AU
             </Text>

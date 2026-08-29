@@ -1,6 +1,6 @@
 import { View } from 'react-native'
 import { Skeleton, SkeletonCard } from '../ui/Skeleton'
-import { RADIUS, SPACING } from '../../constants/theme'
+import { RADIUS, SPACING } from '../../theme/tokens'
 
 /**
  * First-load placeholder. Mirrors the real dashboard's layout — hero, 2×3 grid,

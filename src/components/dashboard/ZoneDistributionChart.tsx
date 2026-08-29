@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import { Text, View } from 'react-native'
-import { HR_ZONES } from '../../algorithms/heartRate'
-import { COLORS } from '../../constants/theme'
+import { HR_ZONES, hrZoneColor } from '../../algorithms/heartRate'
 import { formatZoneMinutes } from '../../utils/formatting'
 import type { Session } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
+import type { Palette } from '../../theme/tokens'
 
 interface ZoneDistributionChartProps {
   /** Sessions from the last 7 days. */
@@ -24,6 +25,8 @@ interface ZoneTotal {
  * from HR_ZONES so they match the session rows and the log preview.
  */
 export default function ZoneDistributionChart({ weekSessions }: ZoneDistributionChartProps) {
+  const { colors } = useTheme()
+
   const { totals, totalMinutes } = useMemo(() => {
     const minutesByZone = new Map<number, number>()
     for (const session of weekSessions) {
@@ -40,13 +43,13 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
       return {
         zone: z.zone,
         name: z.name,
-        color: z.color,
+        color: hrZoneColor(z.zone, colors),
         minutes,
         percent: total > 0 ? (minutes / total) * 100 : 0,
       }
     })
     return { totals: zoneTotals, totalMinutes: total }
-  }, [weekSessions])
+  }, [weekSessions, colors])
 
   const insight = useMemo(() => {
     if (totalMinutes === 0) return null
@@ -58,8 +61,8 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
   }, [totals, totalMinutes])
 
   return (
-    <View style={card}>
-      <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.ink }}>
+    <View style={cardFor(colors)}>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
         Training Zones This Week
       </Text>
 
@@ -72,19 +75,19 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
             borderRadius: 12,
             borderWidth: 1,
             borderStyle: 'dashed',
-            borderColor: COLORS.border,
-            backgroundColor: COLORS.fieldBg,
+            borderColor: colors.border,
+            backgroundColor: colors.fieldBg,
           }}
         >
           <Text style={{ fontSize: 22 }}>💓</Text>
-          <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '700', color: COLORS.body }}>
+          <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '700', color: colors.textBody }}>
             No sessions this week
           </Text>
           <Text
             style={{
               marginTop: 2,
               fontSize: 12,
-              color: COLORS.subtle,
+              color: colors.textSubtle,
               textAlign: 'center',
               paddingHorizontal: 24,
             }}
@@ -107,7 +110,7 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
               marginTop: 16,
               borderRadius: 999,
               overflow: 'hidden',
-              backgroundColor: COLORS.border,
+              backgroundColor: colors.border,
             }}
           >
             {totals.map((t) =>
@@ -133,9 +136,9 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
                     marginRight: 5,
                   }}
                 />
-                <Text style={{ fontSize: 12, color: COLORS.muted }}>
+                <Text style={{ fontSize: 12, color: colors.textMuted }}>
                   Z{t.zone}:{' '}
-                  <Text style={{ fontWeight: '700', color: COLORS.body }}>
+                  <Text style={{ fontWeight: '700', color: colors.textBody }}>
                     {formatZoneMinutes(t.minutes)}
                   </Text>
                 </Text>
@@ -147,8 +150,8 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
             <Text
               style={{
                 marginTop: 14,
-                backgroundColor: COLORS.tealSoft,
-                color: COLORS.tealDark,
+                backgroundColor: colors.accentSoft,
+                color: colors.accentPressed,
                 borderRadius: 10,
                 paddingHorizontal: 12,
                 paddingVertical: 9,
@@ -166,15 +169,14 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
   )
 }
 
-const card = {
-  backgroundColor: COLORS.surface,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  padding: 16,
-  shadowColor: COLORS.shadow,
-  shadowOpacity: 0.05,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 3 },
-  elevation: 2,
-} as const
+/** The card, built per render so it follows the active palette. */
+function cardFor(colors: Palette) {
+  return {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    ...colors.shadowCard,
+  } as const
+}

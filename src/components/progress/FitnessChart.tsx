@@ -13,15 +13,10 @@ import Svg, {
 } from 'react-native-svg'
 import ChartCard from './ChartCard'
 import { formatCompact, niceScale, smoothPath, type Point } from './chartUtils'
-import { COLORS } from '../../constants/theme'
 import type { DailyPoint } from '../../utils/progressMetrics'
-import { PALETTE } from '../../theme/tokens'
-
+import { useTheme } from '../../theme/ThemeProvider'
 // The one place the Fitness/Fatigue/Form colour language is defined. Blue reads
 // as "building capacity", red as "cost/fatigue", teal is FORMA's own Form brand.
-const CTL_COLOR = PALETTE.sky
-const ATL_COLOR = PALETTE.red
-const FORM_COLOR = COLORS.teal
 
 const PLOT_H = 232
 const PAD_L = 34
@@ -54,16 +49,20 @@ export default function FitnessChart({ daily, delay = 0 }: FitnessChartProps) {
 }
 
 function Legend() {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
-      <LegendItem color={CTL_COLOR} label="Fitness" />
-      <LegendItem color={ATL_COLOR} label="Fatigue" dashed />
-      <LegendItem color={FORM_COLOR} label="Form" />
+      <LegendItem color={colors.palette.sky} label="Fitness" />
+      <LegendItem color={colors.palette.red} label="Fatigue" dashed />
+      <LegendItem color={colors.accent} label="Form" />
     </View>
   )
 }
 
 function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <View
@@ -76,12 +75,14 @@ function LegendItem({ color, label, dashed }: { color: string; label: string; da
           marginRight: 6,
         }}
       />
-      <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.body }}>{label}</Text>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textBody }}>{label}</Text>
     </View>
   )
 }
 
 function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
+  const { colors } = useTheme()
+
   const [active, setActive] = useState<number | null>(null)
 
   const n = daily.length
@@ -150,8 +151,8 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
       <Svg width={width} height={PLOT_H}>
         <Defs>
           <LinearGradient id="formFill" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={FORM_COLOR} stopOpacity={0.22} />
-            <Stop offset="1" stopColor={FORM_COLOR} stopOpacity={0.02} />
+            <Stop offset="0" stopColor={colors.accent} stopOpacity={0.22} />
+            <Stop offset="1" stopColor={colors.accent} stopOpacity={0.02} />
           </LinearGradient>
         </Defs>
 
@@ -165,14 +166,14 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
                 y1={y}
                 x2={width - PAD_R}
                 y2={y}
-                stroke={COLORS.border}
+                stroke={colors.border}
                 strokeWidth={1}
               />
               <SvgText
                 x={PAD_L - 6}
                 y={y + 3}
                 fontSize={9}
-                fill={COLORS.muted}
+                fill={colors.textMuted}
                 textAnchor="end"
               >
                 {formatCompact(t)}
@@ -187,22 +188,22 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
           y1={geom.y0}
           x2={width - PAD_R}
           y2={geom.y0}
-          stroke={COLORS.subtle}
+          stroke={colors.textSubtle}
           strokeWidth={1}
           strokeDasharray="2 3"
         />
 
         {/* Form area + lines (Form drawn under CTL/ATL so they stay readable) */}
         <Path d={geom.formArea} fill="url(#formFill)" />
-        <Path d={smoothPath(geom.formPts)} stroke={FORM_COLOR} strokeWidth={2} fill="none" />
+        <Path d={smoothPath(geom.formPts)} stroke={colors.accent} strokeWidth={2} fill="none" />
         <Path
           d={smoothPath(geom.atlPts)}
-          stroke={ATL_COLOR}
+          stroke={colors.palette.red}
           strokeWidth={2}
           strokeDasharray="5 4"
           fill="none"
         />
-        <Path d={smoothPath(geom.ctlPts)} stroke={CTL_COLOR} strokeWidth={2.5} fill="none" />
+        <Path d={smoothPath(geom.ctlPts)} stroke={colors.palette.sky} strokeWidth={2.5} fill="none" />
 
         {/* X labels */}
         {geom.xLabels.map((l, i) => (
@@ -211,7 +212,7 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
             x={l.x}
             y={PLOT_H - 8}
             fontSize={9}
-            fill={COLORS.muted}
+            fill={colors.textMuted}
             textAnchor="middle"
           >
             {l.label}
@@ -226,12 +227,12 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
               y1={PAD_T}
               x2={geom.xAt(active)}
               y2={PAD_T + plotH}
-              stroke={COLORS.subtle}
+              stroke={colors.textSubtle}
               strokeWidth={1}
             />
-            <Circle cx={geom.xAt(active)} cy={geom.ctlPts[active].y} r={4} fill={CTL_COLOR} stroke={COLORS.surface} strokeWidth={1.5} />
-            <Circle cx={geom.xAt(active)} cy={geom.atlPts[active].y} r={4} fill={ATL_COLOR} stroke={COLORS.surface} strokeWidth={1.5} />
-            <Circle cx={geom.xAt(active)} cy={geom.formPts[active].y} r={4} fill={FORM_COLOR} stroke={COLORS.surface} strokeWidth={1.5} />
+            <Circle cx={geom.xAt(active)} cy={geom.ctlPts[active].y} r={4} fill={colors.palette.sky} stroke={colors.surface} strokeWidth={1.5} />
+            <Circle cx={geom.xAt(active)} cy={geom.atlPts[active].y} r={4} fill={colors.palette.red} stroke={colors.surface} strokeWidth={1.5} />
+            <Circle cx={geom.xAt(active)} cy={geom.formPts[active].y} r={4} fill={colors.accent} stroke={colors.surface} strokeWidth={1.5} />
           </G>
         ) : null}
 
@@ -247,6 +248,8 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
 }
 
 function Tooltip({ point, x, width }: { point: DailyPoint; x: number; width: number }) {
+  const { colors } = useTheme()
+
   const BUBBLE_W = 138
   const left = Math.max(4, Math.min(width - BUBBLE_W - 4, x - BUBBLE_W / 2))
   return (
@@ -258,23 +261,23 @@ function Tooltip({ point, x, width }: { point: DailyPoint; x: number; width: num
         left,
         width: BUBBLE_W,
         // A raised dark surface with a hairline, not the near-black slab this
-        // was. `COLORS.ink` used to be #111827 and made a perfectly good
+        // was. `colors.text` used to be #111827 and made a perfectly good
         // tooltip; it is now the *lightest* colour in the palette, so this
         // rendered as a white card with white body copy on it.
-        backgroundColor: COLORS.surfaceAlt,
+        backgroundColor: colors.surfaceAlt,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 10,
       }}
     >
-      <Text style={{ color: COLORS.ink, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>
+      <Text style={{ color: colors.text, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>
         {point.fullDate}
       </Text>
-      <TipRow color={CTL_COLOR} label="Fitness" value={point.ctl} />
-      <TipRow color={ATL_COLOR} label="Fatigue" value={point.atl} />
-      <TipRow color={FORM_COLOR} label="Form" value={point.form} signed />
+      <TipRow color={colors.palette.sky} label="Fitness" value={point.ctl} />
+      <TipRow color={colors.palette.red} label="Fatigue" value={point.atl} />
+      <TipRow color={colors.accent} label="Form" value={point.form} signed />
     </View>
   )
 }
@@ -290,11 +293,13 @@ function TipRow({
   value: number
   signed?: boolean
 }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1 }}>
       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, marginRight: 6 }} />
-      <Text style={{ color: COLORS.body, fontSize: 11, flex: 1 }}>{label}</Text>
-      <Text style={{ color: COLORS.ink, fontSize: 11, fontWeight: '700' }}>
+      <Text style={{ color: colors.textBody, fontSize: 11, flex: 1 }}>{label}</Text>
+      <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>
         {signed && value > 0 ? '+' : ''}
         {value}
       </Text>
@@ -303,9 +308,11 @@ function TipRow({
 }
 
 function NotEnough() {
+  const { colors } = useTheme()
+
   return (
     <View style={{ height: PLOT_H, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ fontSize: 13, color: COLORS.subtle }}>Not enough data yet</Text>
+      <Text style={{ fontSize: 13, color: colors.textSubtle }}>Not enough data yet</Text>
     </View>
   )
 }

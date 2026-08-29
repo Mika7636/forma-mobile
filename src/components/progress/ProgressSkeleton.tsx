@@ -1,6 +1,6 @@
 import { View } from 'react-native'
 import { Skeleton, SkeletonCard } from '../ui/Skeleton'
-import { RADIUS, SPACING } from '../../constants/theme'
+import { RADIUS, SPACING } from '../../theme/tokens'
 
 /** A chart card: title, subtitle, then the plot area at its real height. */
 function ChartSkeleton({ height }: { height: number }) {

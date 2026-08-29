@@ -5,8 +5,7 @@ import { severityStyle } from '../../constants/conflictColors'
 import { detectedAtDate } from '../../utils/conflictInfo'
 import { formatTimeAgo } from '../../utils/formatting'
 import type { Conflict } from '../../types/conflict'
-import { COLORS } from '../../constants/theme'
-
+import { useTheme } from '../../theme/ThemeProvider'
 interface ConflictBannerProps {
   conflict: Conflict
   /** Count of *other* unresolved conflicts, surfaced as an "N more" hint. */
@@ -30,7 +29,9 @@ export default function ConflictBanner({
   onShowMore,
   onPress,
 }: ConflictBannerProps) {
-  const style = severityStyle(conflict.severity)
+  const { colors } = useTheme()
+
+  const style = severityStyle(conflict.severity, colors)
 
   const handleDismiss = () => {
     haptics.light()
@@ -59,7 +60,7 @@ export default function ConflictBanner({
         borderColor: style.softBorder,
         borderLeftWidth: 4,
         borderLeftColor: style.solid,
-        shadowColor: COLORS.shadow,
+        shadowColor: colors.shadow,
         shadowOpacity: 0.4,
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 6 },
@@ -79,7 +80,7 @@ export default function ConflictBanner({
               width: 42,
               height: 42,
               borderRadius: 21,
-              backgroundColor: COLORS.surfaceAlt,
+              backgroundColor: colors.surfaceAlt,
               borderWidth: 1,
               borderColor: style.softBorder,
               alignItems: 'center',
@@ -93,14 +94,14 @@ export default function ConflictBanner({
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ fontSize: 14, fontWeight: '800', color: style.deep }}>{style.title}</Text>
             <Text
-              style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: COLORS.ink }}
+              style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: colors.text }}
               numberOfLines={3}
             >
               {conflict.message}
             </Text>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.muted }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textMuted }}>
                 {formatTimeAgo(detectedAtDate(conflict).toISOString())}
               </Text>
               {extraCount > 0 ? (
@@ -117,7 +118,7 @@ export default function ConflictBanner({
                   </Text>
                 </Pressable>
               ) : (
-                <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.subtle, marginLeft: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSubtle, marginLeft: 10 }}>
                   Tap for details
                 </Text>
               )}
@@ -132,7 +133,7 @@ export default function ConflictBanner({
           accessibilityLabel="Dismiss conflict"
           style={{
             marginLeft: 10,
-            backgroundColor: COLORS.surfaceAlt,
+            backgroundColor: colors.surfaceAlt,
             borderWidth: 1,
             borderColor: style.solid,
             borderRadius: 999,

@@ -11,11 +11,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { haptics } from '../../utils/haptics'
-import { COLORS } from '../../constants/theme'
 import { severityStyle, type ConflictSeverity } from '../../constants/conflictColors'
 import { formatDistanceKm } from '../../utils/formatting'
 import { sportVisual } from '../../utils/sportMeta'
 import type { Session } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
 
 /** How far the row rests open once the delete button is revealed. */
 const ACTION_WIDTH = 92
@@ -63,9 +63,11 @@ export default function SessionChip({
   onPress,
   onDelete,
 }: SessionChipProps) {
-  const { color, icon, label } = sportVisual(session.sport)
+  const { colors } = useTheme()
+
+  const { color, icon, label } = sportVisual(session.sport, colors)
   const conflicted = conflictSeverity != null
-  const conflictStyle = conflicted ? severityStyle(conflictSeverity) : null
+  const conflictStyle = conflicted ? severityStyle(conflictSeverity, colors) : null
 
   const translateX = useSharedValue(0)
   // Drag bookkeeping, kept on the UI thread so the gesture never waits on React.
@@ -179,7 +181,7 @@ export default function SessionChip({
             bottom: 0,
             right: 0,
             width: ACTION_WIDTH + 16,
-            backgroundColor: COLORS.danger,
+            backgroundColor: colors.danger,
             borderRadius: 12,
             paddingRight: 8,
           },
@@ -191,7 +193,7 @@ export default function SessionChip({
           style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
         >
           <Text style={{ fontSize: 18 }}>🗑️</Text>
-          <Text style={{ color: COLORS.onAccent, fontSize: 12, fontWeight: '800', marginTop: 2 }}>
+          <Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '800', marginTop: 2 }}>
             Delete
           </Text>
         </Pressable>
@@ -203,13 +205,13 @@ export default function SessionChip({
             {
               flexDirection: 'row',
               alignItems: 'center',
-              backgroundColor: COLORS.surface,
+              backgroundColor: colors.surface,
               borderRadius: 12,
               paddingVertical: 10,
               paddingHorizontal: 12,
               borderWidth: 1,
-              borderColor: conflictStyle ? conflictStyle.softBorder : COLORS.border,
-              shadowColor: COLORS.shadow,
+              borderColor: conflictStyle ? conflictStyle.softBorder : colors.border,
+              shadowColor: colors.shadow,
               shadowOpacity: 0.06,
               shadowRadius: 6,
               shadowOffset: { width: 0, height: 2 },
@@ -249,7 +251,7 @@ export default function SessionChip({
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text
-                style={{ fontSize: 14, fontWeight: '700', color: COLORS.ink }}
+                style={{ fontSize: 14, fontWeight: '700', color: colors.text }}
                 numberOfLines={1}
               >
                 {label}
@@ -265,12 +267,12 @@ export default function SessionChip({
                 </Text>
               ) : null}
             </View>
-            <Text style={{ marginTop: 2, fontSize: 12, color: COLORS.muted }} numberOfLines={1}>
+            <Text style={{ marginTop: 2, fontSize: 12, color: colors.textMuted }} numberOfLines={1}>
               {metaLine(session, showTime)}
             </Text>
           </View>
 
-          <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.ink, marginLeft: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, marginLeft: 8 }}>
             {session.loadScore} AU
           </Text>
         </Animated.View>

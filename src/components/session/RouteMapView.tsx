@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
+import { Platform, View } from 'react-native'
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps'
 import Animated, { FadeOut } from 'react-native-reanimated'
 import { Skeleton } from '../ui/Skeleton'
-import { COLORS } from '../../constants/theme'
 import { isValidCoordinate } from '../../utils/geo'
 import type { MapRegion } from '../../utils/maps'
 import type { RoutePoint } from '../../types/session'
-import { COLOR } from '../../theme/tokens'
-
+import { useTheme } from '../../theme/ThemeProvider'
 interface RouteMapViewProps {
   /** Already validated and decimated by {@link RouteMap}. Never empty. */
   points: RoutePoint[]
@@ -59,6 +57,8 @@ export default function RouteMapView({
   interactive,
   showMarkers,
 }: RouteMapViewProps) {
+  const { colors, scheme } = useTheme()
+
   const mapRef = useRef<MapView | null>(null)
   // MapView paints a flat grey rectangle for a beat before its tiles arrive,
   // which looks like a failed image. Cover that with the app's shimmer instead.
@@ -95,6 +95,14 @@ export default function RouteMapView({
         style={{ flex: 1 }}
         onMapReady={() => setMapReady(true)}
         initialRegion={initialRegionRef.current ?? undefined}
+        // The two platforms take the basemap's appearance by different routes:
+        // Android wants an explicit style array (empty in light mode, which is
+        // Google's own default styling), while iOS ignores `customMapStyle`
+        // altogether and follows `userInterfaceStyle`. Both are driven from the
+        // same resolved scheme, or the map becomes the only light thing on a
+        // dark screen — which is exactly how this looked before.
+        customMapStyle={Platform.OS === 'android' ? (colors.mapStyle as unknown as never) : undefined}
+        userInterfaceStyle={scheme}
         scrollEnabled={interactive}
         zoomEnabled={interactive}
         rotateEnabled={false}
@@ -106,13 +114,13 @@ export default function RouteMapView({
         {/* A single point is a degenerate polyline; skip it and let the markers
             carry the "you are here" job until there's a real segment to draw. */}
         {points.length > 1 ? (
-          <Polyline coordinates={points} strokeColor={COLORS.teal} strokeWidth={3} />
+          <Polyline coordinates={points} strokeColor={colors.accent} strokeWidth={3} />
         ) : null}
         {showMarkers && first ? (
-          <Marker coordinate={first} title="Start" pinColor={COLOR.accent} />
+          <Marker coordinate={first} title="Start" pinColor={colors.accent} />
         ) : null}
         {showMarkers && last && points.length > 1 ? (
-          <Marker coordinate={last} title="Finish" pinColor={COLOR.danger} />
+          <Marker coordinate={last} title="Finish" pinColor={colors.danger} />
         ) : null}
       </MapView>
 

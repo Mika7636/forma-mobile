@@ -9,20 +9,22 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import { haptics } from '../utils/haptics'
 import FormInput from '../components/ui/FormInput'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
-import { COLORS } from '../constants/theme'
 import { useAuthStore } from '../store/authStore'
 import type { RegisterScreenProps } from '../navigation/types'
+import { useTheme } from '../theme/ThemeProvider'
 
 // Basic email shape check so we can give a friendly message before hitting
 // Firebase.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function RegisterScreen({ navigation }: RegisterScreenProps) {
+  const { colors } = useTheme()
+
   const signUp = useAuthStore((s) => s.signUp)
   const error = useAuthStore((s) => s.error)
   const clearError = useAuthStore((s) => s.clearError)
@@ -71,9 +73,9 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* White page — dark status-bar content is what stays legible. */}
-      <StatusBar style="light" />
+      <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -90,7 +92,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
         >
           <View style={{ marginBottom: 32, alignItems: 'center' }}>
             <FormaLogo />
-            <Text style={{ marginTop: 12, fontSize: 17, color: COLORS.muted }}>
+            <Text style={{ marginTop: 12, fontSize: 17, color: colors.textMuted }}>
               Create your account
             </Text>
           </View>
@@ -140,7 +142,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
           {error ? (
             <Text
               style={{
-                color: COLORS.dangerText,
+                color: colors.dangerText,
                 fontSize: 14,
                 marginTop: 2,
                 marginBottom: 8,
@@ -164,7 +166,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
               marginTop: 28,
             }}
           >
-            <Text style={{ color: COLORS.muted, fontSize: 15 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 15 }}>
               Already have an account?{' '}
             </Text>
             <Pressable
@@ -174,7 +176,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
               }}
               hitSlop={8}
             >
-              <Text style={{ color: COLORS.teal, fontSize: 15, fontWeight: '700' }}>
+              <Text style={{ color: colors.accent, fontSize: 15, fontWeight: '700' }}>
                 Log in
               </Text>
             </Pressable>

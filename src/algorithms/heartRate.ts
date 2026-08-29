@@ -5,14 +5,13 @@
  * heart rate. We bucket every two RPE points into one of five training zones
  * and turn the %max band into a concrete bpm range using the user's max HR.
  */
-import { PALETTE } from '../theme/tokens'
+import type { Palette } from '../theme/tokens'
 
 export interface HRZone {
   zone: number
   name: string
   /** e.g. "152 - 171 bpm" */
   hrRange: string
-  color: string
   description: string
 }
 
@@ -24,31 +23,33 @@ interface ZoneDef {
   name: string
   lowerPct: number
   upperPct: number
-  color: string
   description: string
 }
 
 /**
- * The five zones, low → high. Colours are the single source of truth for HR
- * zone colour across the whole app — import {@link hrZoneColor} elsewhere so
- * the dashboard, planner and log preview all agree.
+ * The five zones, low → high. Thresholds and wording only — {@link hrZoneColor}
+ * is the single source of truth for what a zone looks like, so the dashboard,
+ * planner and log preview all agree.
  */
 const ZONE_DEFS: ZoneDef[] = [
-  { zone: 1, name: 'Recovery', lowerPct: 0.5, upperPct: 0.6, color: PALETTE.slate, description: 'Very light — active recovery' },
-  { zone: 2, name: 'Endurance', lowerPct: 0.6, upperPct: 0.7, color: PALETTE.sky, description: 'Easy aerobic base building' },
-  { zone: 3, name: 'Aerobic', lowerPct: 0.7, upperPct: 0.8, color: PALETTE.green, description: 'Moderate — improves aerobic capacity' },
-  { zone: 4, name: 'Threshold', lowerPct: 0.8, upperPct: 0.9, color: PALETTE.amber, description: 'Hard — lactate threshold work' },
-  { zone: 5, name: 'Max', lowerPct: 0.9, upperPct: 1.0, color: PALETTE.red, description: 'Maximal — short, very hard efforts' },
+  { zone: 1, name: 'Recovery', lowerPct: 0.5, upperPct: 0.6, description: 'Very light — active recovery' },
+  { zone: 2, name: 'Endurance', lowerPct: 0.6, upperPct: 0.7, description: 'Easy aerobic base building' },
+  { zone: 3, name: 'Aerobic', lowerPct: 0.7, upperPct: 0.8, description: 'Moderate — improves aerobic capacity' },
+  { zone: 4, name: 'Threshold', lowerPct: 0.8, upperPct: 0.9, description: 'Hard — lactate threshold work' },
+  { zone: 5, name: 'Max', lowerPct: 0.9, upperPct: 1.0, description: 'Maximal — short, very hard efforts' },
 ]
 
-/** Consistent HR-zone colours keyed by zone number. */
-export const HR_ZONE_COLORS: Record<number, string> = Object.fromEntries(
-  ZONE_DEFS.map((z) => [z.zone, z.color]),
-)
-
-/** The colour for a zone number (defaults to Zone 1 grey if out of range). */
-export function hrZoneColor(zone: number): string {
-  return HR_ZONE_COLORS[zone] ?? ZONE_DEFS[0].color
+/**
+ * The colour for a zone number, in the active theme.
+ *
+ * Takes the palette rather than owning a colour list. The zone hues have to
+ * differ between light and dark — the dark set is tuned for a near-black ground
+ * and washes out on white — so a module-level map here would be frozen at
+ * import time and wrong in one of the two themes. `colors.zone` is indexed
+ * 0-based; zones are numbered from 1.
+ */
+export function hrZoneColor(zone: number, colors: Palette): string {
+  return colors.zone[Math.min(Math.max(zone, 1), colors.zone.length) - 1]
 }
 
 /** Display metadata for a zone, used by the dashboard chart & session rows. */
@@ -56,7 +57,6 @@ export interface HRZoneInfo {
   zone: number
   name: string
   description: string
-  color: string
 }
 
 /** The five zones as display metadata, low → high (single source of truth). */
@@ -64,7 +64,6 @@ export const HR_ZONES: HRZoneInfo[] = ZONE_DEFS.map((z) => ({
   zone: z.zone,
   name: z.name,
   description: z.description,
-  color: z.color,
 }))
 
 /** Name + description + colour for a zone number (defaults to Zone 1). */
@@ -91,7 +90,6 @@ export function estimateHRZone(rpe: number, maxHR?: number): HRZone {
     zone: def.zone,
     name: def.name,
     hrRange: `${lower} - ${upper} bpm`,
-    color: def.color,
     description: def.description,
   }
 }

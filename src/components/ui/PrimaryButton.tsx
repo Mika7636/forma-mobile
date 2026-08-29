@@ -1,6 +1,7 @@
 import { ActivityIndicator, Text, type StyleProp, type ViewStyle } from 'react-native'
-import { COLORS, MIN_TOUCH, RADIUS } from '../../constants/theme'
 import PressableScale from './PressableScale'
+import { MIN_TOUCH, RADIUS } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface PrimaryButtonProps {
   label: string
@@ -26,6 +27,8 @@ export default function PrimaryButton({
   disabled = false,
   style,
 }: PrimaryButtonProps) {
+  const { colors } = useTheme()
+
   const isDisabled = disabled || loading
 
   return (
@@ -45,16 +48,16 @@ export default function PrimaryButton({
           borderRadius: RADIUS.md,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: isDisabled ? COLORS.tealDark : COLORS.teal,
+          backgroundColor: isDisabled ? colors.accentPressed : colors.accent,
           opacity: isDisabled ? 0.7 : 1,
         },
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={COLORS.onAccent} />
+        <ActivityIndicator color={colors.onAccent} />
       ) : (
-        <Text style={{ color: COLORS.onAccent, fontSize: 17, fontWeight: '700' }}>{label}</Text>
+        <Text style={{ color: colors.onAccent, fontSize: 17, fontWeight: '700' }}>{label}</Text>
       )}
     </PressableScale>
   )

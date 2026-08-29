@@ -1,9 +1,9 @@
 import { Text, View } from 'react-native'
 import RouteMap from './RouteMap'
-import { COLORS } from '../../constants/theme'
 import { SPORT_OPTIONS } from '../../constants/training'
 import { formatDistanceKm } from '../../utils/formatting'
 import type { Session } from '../../types/session'
+import { useTheme } from '../../theme/ThemeProvider'
 
 /**
  * Read-only detail for a single (past) session. If the session was live-tracked
@@ -12,6 +12,8 @@ import type { Session } from '../../types/session'
  * screen once a session list exists to open one.
  */
 export default function SessionDetailCard({ session }: { session: Session }) {
+  const { colors } = useTheme()
+
   const option = SPORT_OPTIONS.find((o) => o.value === session.sport)
   const hasRoute =
     Array.isArray(session.routeCoordinates) && session.routeCoordinates.length > 1
@@ -35,10 +37,10 @@ export default function SessionDetailCard({ session }: { session: Session }) {
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={{ fontSize: 34, marginRight: 12 }}>{option?.icon ?? '🏅'}</Text>
         <View>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: COLORS.ink }}>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>
             {option?.label ?? session.sport}
           </Text>
-          <Text style={{ fontSize: 14, color: COLORS.muted }}>
+          <Text style={{ fontSize: 14, color: colors.textMuted }}>
             {dateLabel}
             {session.trackingMode === 'live' ? '  ·  📍 Live tracked' : ''}
           </Text>
@@ -60,8 +62,8 @@ export default function SessionDetailCard({ session }: { session: Session }) {
           flexWrap: 'wrap',
           borderRadius: 16,
           borderWidth: 1,
-          borderColor: COLORS.border,
-          backgroundColor: COLORS.fieldBg,
+          borderColor: colors.border,
+          backgroundColor: colors.fieldBg,
           paddingVertical: 6,
           paddingHorizontal: 12,
         }}
@@ -85,10 +87,10 @@ export default function SessionDetailCard({ session }: { session: Session }) {
 
       {session.notes ? (
         <View style={{ marginTop: 16 }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted, letterSpacing: 0.5 }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.5 }}>
             NOTES
           </Text>
-          <Text style={{ marginTop: 6, fontSize: 15, color: COLORS.body, lineHeight: 21 }}>
+          <Text style={{ marginTop: 6, fontSize: 15, color: colors.textBody, lineHeight: 21 }}>
             {session.notes}
           </Text>
         </View>
@@ -98,12 +100,14 @@ export default function SessionDetailCard({ session }: { session: Session }) {
 }
 
 function DetailStat({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme()
+
   return (
     <View style={{ width: '50%', paddingVertical: 10 }}>
-      <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted, letterSpacing: 0.5 }}>
+      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.5 }}>
         {label.toUpperCase()}
       </Text>
-      <Text style={{ marginTop: 2, fontSize: 18, fontWeight: '800', color: COLORS.ink }}>
+      <Text style={{ marginTop: 2, fontSize: 18, fontWeight: '800', color: colors.text }}>
         {value}
       </Text>
     </View>

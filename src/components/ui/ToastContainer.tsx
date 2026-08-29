@@ -12,7 +12,7 @@ import { useCallback } from 'react'
 import { View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { LinearTransition } from 'react-native-reanimated'
-import { SPACING } from '../../constants/theme'
+import { SPACING } from '../../theme/tokens'
 import { useToastStore } from '../../store/toastStore'
 import Toast from './Toast'
 

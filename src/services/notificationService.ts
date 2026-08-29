@@ -53,9 +53,9 @@ import { AndroidImportance } from 'expo-notifications/build/NotificationChannelM
 import type { EventSubscription } from 'expo-modules-core'
 import type { NotificationResponse } from 'expo-notifications/build/Notifications.types'
 import { Platform } from 'react-native'
-import { COLORS } from '../constants/theme'
 import { calculateStreak } from '../utils/streak'
 import { localISODate } from '../utils/dates'
+import { NOTIFICATION_ACCENT } from '../theme/tokens'
 import {
   STREAK_MILESTONES,
   STREAK_REMINDER_HOUR,
@@ -166,7 +166,7 @@ export async function ensureAndroidChannel(): Promise<boolean> {
       name: 'Training reminders',
       importance: AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: COLORS.teal,
+      lightColor: NOTIFICATION_ACCENT,
     })
     channelReady = true
   } catch {

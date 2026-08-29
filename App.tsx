@@ -1,14 +1,21 @@
 import './global.css'
 
-import { NavigationContainer } from '@react-navigation/native'
+import {
+  NavigationContainer,
+  DarkTheme,
+  DefaultTheme,
+  type Theme,
+} from '@react-navigation/native'
+import { useMemo } from 'react'
 import Constants, { ExecutionEnvironment } from 'expo-constants'
-import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import ErrorBoundary from './src/components/ui/ErrorBoundary'
 import OfflineBanner from './src/components/ui/OfflineBanner'
+import ThemedStatusBar from './src/components/ui/ThemedStatusBar'
 import ToastContainer from './src/components/ui/ToastContainer'
+import { ThemeProvider, useTheme } from './src/theme/ThemeProvider'
 import { db } from './src/config/firebase'
 import { useNotificationObserver } from './src/hooks/useNotificationObserver'
 import { navigationRef } from './src/navigation/navigationRef'
@@ -76,40 +83,84 @@ if (Constants.executionEnvironment !== ExecutionEnvironment.StoreClient) {
 }
 
 export default function App() {
+  return (
+    // Outermost, and above the root error boundary on purpose: the boundary's
+    // fallback card is themed, so the provider has to be its ancestor for it to
+    // have a palette to paint with. It renders nothing until the persisted mode
+    // has been read, which is what stops a dark-theme user seeing a frame of
+    // white on every cold start.
+    <ThemeProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <Root />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ThemeProvider>
+  )
+}
+
+/**
+ * Everything that needs the palette.
+ *
+ * Split from `App` only because `useTheme` has to be called *below* the
+ * provider, and `App` is where the provider is mounted.
+ */
+function Root() {
+  const { colors, scheme } = useTheme()
+
   // Routes notification taps. Lives here (above the navigator) because it needs
   // to catch a cold start where the app was launched by the notification.
   useNotificationObserver()
 
+  // React Navigation paints the gap between screens — the card behind a push
+  // transition, and the flash between two screens during a stack swap — from
+  // its own theme rather than from anything a screen renders. Left at the
+  // default it uses React Navigation's white, so switching tabs on the dark
+  // theme showed a white seam that no amount of screen styling could reach.
+  const navTheme = useMemo<Theme>(() => {
+    const base = scheme === 'dark' ? DarkTheme : DefaultTheme
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.accent,
+        background: colors.bg,
+        card: colors.surface,
+        text: colors.text,
+        border: colors.border,
+        notification: colors.danger,
+      },
+    }
+  }, [colors, scheme])
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        {/* Last line of defence, below the per-screen boundaries in MainTabs /
-            AppStack. It only catches what those can't: a failure in the
-            navigator itself, or in the auth/onboarding screens that sit outside
-            the tab navigator. In a release build there is no redbox, so without
-            this an error here would blank the app entirely. */}
-        <ErrorBoundary
-          name="Root"
-          title="FORMA hit a problem"
-          message="The app ran into an unexpected error. Your training data is saved — restarting the screen usually clears it."
-          retryLabel="Reload FORMA"
-        >
-          <NavigationContainer ref={navigationRef}>
-            <RootNavigator />
-          </NavigationContainer>
-        </ErrorBoundary>
+    <>
+      {/* Last line of defence, below the per-screen boundaries in MainTabs /
+          AppStack. It only catches what those can't: a failure in the
+          navigator itself, or in the auth/onboarding screens that sit outside
+          the tab navigator. In a release build there is no redbox, so without
+          this an error here would blank the app entirely. */}
+      <ErrorBoundary
+        name="Root"
+        title="FORMA hit a problem"
+        message="The app ran into an unexpected error. Your training data is saved — restarting the screen usually clears it."
+        retryLabel="Reload FORMA"
+      >
+        <NavigationContainer ref={navigationRef} theme={navTheme}>
+          <RootNavigator />
+        </NavigationContainer>
+      </ErrorBoundary>
 
-        {/* Both of these are app-global on purpose. Mounted here — outside the
-            navigator — they survive every screen change, so a toast fired just
-            before a navigation still lands, and the offline strip doesn't have
-            to be re-implemented on each screen. */}
-        <OfflineBanner />
-        <ToastContainer />
+      {/* Both of these are app-global on purpose. Mounted here — outside the
+          navigator — they survive every screen change, so a toast fired just
+          before a navigation still lands, and the offline strip doesn't have
+          to be re-implemented on each screen. */}
+      <OfflineBanner />
+      <ToastContainer />
 
-        {/* Per-screen <StatusBar> components override this; it's the default for
-            anything that doesn't declare one. */}
-        <StatusBar style="light" />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+      {/* Per-screen <ThemedStatusBar>s override this; it's the default for
+          anything that doesn't declare one. */}
+      <ThemedStatusBar />
+    </>
   )
 }

@@ -5,7 +5,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   FadeIn,
@@ -21,7 +21,6 @@ import MonthGrid from '../components/planner/MonthGrid'
 import PlannerSkeleton from '../components/planner/PlannerSkeleton'
 import SessionDetailModal from '../components/session/SessionDetailModal'
 import EmptyState from '../components/ui/EmptyState'
-import { COLORS, RADIUS, SPACING } from '../constants/theme'
 import { useMonthPlan, type CalendarDay } from '../hooks/useMonthPlan'
 import { deleteSession, resolveConflict } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
@@ -31,6 +30,8 @@ import { formatThousands } from '../utils/formatting'
 import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
 import type { PlannerScreenProps } from '../navigation/types'
+import { RADIUS, SPACING } from '../theme/tokens'
+import { useTheme } from '../theme/ThemeProvider'
 
 /** Horizontal drag needed to commit a month change. */
 const SWIPE_THRESHOLD = 70
@@ -42,6 +43,8 @@ const YEAR = 12
 // Navigation props are unused: this screen is a pure view of logged sessions,
 // and everything it opens is a sheet rendered in place.
 export default function PlannerScreen(_props: PlannerScreenProps) {
+  const { colors } = useTheme()
+
   const uid = useAuthStore((s) => s.user?.uid)
 
   const [monthOffset, setMonthOffset] = useState(0)
@@ -168,18 +171,18 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
   const monthIsEmpty = !plan.loading && sessionCount === 0
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <ThemedStatusBar />
 
       {/* --- Header --------------------------------------------------- */}
       <View
         style={{
-          backgroundColor: COLORS.surface,
+          backgroundColor: colors.surface,
           paddingHorizontal: 20,
           paddingTop: 8,
           paddingBottom: 14,
           borderBottomWidth: 1,
-          borderBottomColor: COLORS.border,
+          borderBottomColor: colors.border,
         }}
       >
         {/* Year stepper (left) + jump-to-today (right). */}
@@ -197,7 +200,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
               marginHorizontal: 2,
               fontSize: 15,
               fontWeight: '700',
-              color: COLORS.muted,
+              color: colors.textMuted,
               minWidth: 42,
               textAlign: 'center',
             }}
@@ -224,16 +227,16 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
               borderRadius: RADIUS.pill,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: isCurrentMonth ? COLORS.teal : COLORS.surfaceAlt,
+              backgroundColor: isCurrentMonth ? colors.accent : colors.surfaceAlt,
               borderWidth: 1.5,
-              borderColor: isCurrentMonth ? COLORS.teal : COLORS.border,
+              borderColor: isCurrentMonth ? colors.accent : colors.border,
             }}
           >
             <Text
               style={{
                 fontSize: 13,
                 fontWeight: '700',
-                color: isCurrentMonth ? COLORS.onAccent : COLORS.muted,
+                color: isCurrentMonth ? colors.onAccent : colors.textMuted,
               }}
             >
               Today
@@ -246,7 +249,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
           <Animated.Text
             key={monthOffset}
             entering={FadeIn.duration(220)}
-            style={{ flex: 1, fontSize: 34, fontWeight: '800', color: COLORS.ink }}
+            style={{ flex: 1, fontSize: 34, fontWeight: '800', color: colors.text }}
             numberOfLines={1}
           >
             {monthName}
@@ -265,7 +268,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
         </View>
 
         {/* Month summary — the only aggregate on the screen, kept to one line. */}
-        <Text style={{ marginTop: 2, fontSize: 12.5, color: COLORS.subtle }}>
+        <Text style={{ marginTop: 2, fontSize: 12.5, color: colors.textSubtle }}>
           {sessionCount === 0
             ? 'No sessions logged'
             : `${sessionCount} session${sessionCount === 1 ? '' : 's'} · ${totalHours.toFixed(
@@ -288,8 +291,8 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor={COLORS.teal}
-              colors={[COLORS.teal]}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
             />
           }
         >
@@ -375,6 +378,8 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
  * visible — and it doubles as the way back into a day whose sheet was closed.
  */
 function SelectedDayBar({ day, onPress }: { day: CalendarDay | null; onPress: () => void }) {
+  const { colors } = useTheme()
+
   const count = day?.sessions.length ?? 0
 
   return (
@@ -388,25 +393,25 @@ function SelectedDayBar({ day, onPress }: { day: CalendarDay | null; onPress: ()
         height: 54,
         justifyContent: 'center',
         paddingHorizontal: 20,
-        backgroundColor: COLORS.surface,
+        backgroundColor: colors.surface,
         borderTopWidth: 1,
-        borderTopColor: COLORS.border,
+        borderTopColor: colors.border,
       }}
     >
       {day == null ? (
-        <Text style={{ fontSize: 13, color: COLORS.subtle }}>
+        <Text style={{ fontSize: 13, color: colors.textSubtle }}>
           Tap a day to see what you trained.
         </Text>
       ) : (
         <>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.ink }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
             {day.date.toLocaleDateString(undefined, {
               weekday: 'short',
               day: 'numeric',
               month: 'long',
             })}
           </Text>
-          <Text style={{ marginTop: 1, fontSize: 12.5, color: COLORS.muted }}>
+          <Text style={{ marginTop: 1, fontSize: 12.5, color: colors.textMuted }}>
             {count === 0
               ? 'No sessions'
               : `${count} session${count === 1 ? '' : 's'} · ${day.dayHours.toFixed(
@@ -435,6 +440,8 @@ function Chevron({
    *  with the month arrows next to the month name. */
   subtle?: boolean
 }) {
+  const { colors } = useTheme()
+
   return (
     <Pressable
       onPress={onPress}
@@ -447,16 +454,16 @@ function Chevron({
         borderRadius: subtle ? RADIUS.xs : RADIUS.sm,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: subtle ? 'transparent' : COLORS.fieldBg,
+        backgroundColor: subtle ? 'transparent' : colors.fieldBg,
         borderWidth: subtle ? 0 : 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
       }}
     >
       <Text
         style={{
           fontSize: subtle ? 18 : 21,
           fontWeight: '700',
-          color: subtle ? COLORS.subtle : COLORS.body,
+          color: subtle ? colors.textSubtle : colors.textBody,
           marginTop: -3,
         }}
       >

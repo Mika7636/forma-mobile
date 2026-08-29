@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
-import { COLORS } from '../../constants/theme'
 import type { ConflictSensitivity as Sensitivity } from '../../types/user'
+import { useTheme } from '../../theme/ThemeProvider'
 
 interface ConflictSensitivityProps {
   value: Sensitivity
@@ -35,6 +35,8 @@ const CARDS: { value: Sensitivity; emoji: string; label: string; description: st
  * conflicts entirely. Selected card gets a teal border, tint, and checkmark.
  */
 export default function ConflictSensitivity({ value, onChange }: ConflictSensitivityProps) {
+  const { colors } = useTheme()
+
   return (
     <View>
       {CARDS.map((card) => {
@@ -54,8 +56,8 @@ export default function ConflictSensitivity({ value, onChange }: ConflictSensiti
               alignItems: 'center',
               borderRadius: 14,
               borderWidth: 2,
-              borderColor: active ? COLORS.teal : COLORS.border,
-              backgroundColor: active ? COLORS.tealSoft : COLORS.surfaceAlt,
+              borderColor: active ? colors.accent : colors.border,
+              backgroundColor: active ? colors.accentSoft : colors.surfaceAlt,
               padding: 14,
               marginBottom: 10,
             }}
@@ -66,19 +68,19 @@ export default function ConflictSensitivity({ value, onChange }: ConflictSensiti
                 style={{
                   fontSize: 14,
                   fontWeight: '800',
-                  color: active ? COLORS.tealDark : COLORS.ink,
+                  color: active ? colors.accentPressed : colors.text,
                   textTransform: 'uppercase',
                   letterSpacing: 0.4,
                 }}
               >
                 {card.label}
               </Text>
-              <Text style={{ fontSize: 13, color: COLORS.muted, marginTop: 2, lineHeight: 17 }}>
+              <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 2, lineHeight: 17 }}>
                 {card.description}
               </Text>
             </View>
             {active ? (
-              <Text style={{ fontSize: 18, color: COLORS.teal, marginLeft: 8 }}>✓</Text>
+              <Text style={{ fontSize: 18, color: colors.accent, marginLeft: 8 }}>✓</Text>
             ) : null}
           </Pressable>
         )

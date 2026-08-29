@@ -11,7 +11,7 @@
 import { useCallback } from 'react'
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
-import { MOTION } from '../../constants/theme'
+import { MOTION } from '../../theme/tokens'
 import { haptics } from '../../utils/haptics'
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)

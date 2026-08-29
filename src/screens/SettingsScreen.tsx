@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import Slider from '@react-native-community/slider'
@@ -22,7 +22,6 @@ import ConflictSensitivity from '../components/settings/ConflictSensitivity'
 import NotificationSettings from '../components/settings/NotificationSettings'
 import SportInteractionMatrix from '../components/settings/SportInteractionMatrix'
 import SettingsSkeleton from '../components/settings/SettingsSkeleton'
-import { CARD, COLORS, SPACING, TYPE } from '../constants/theme'
 import {
   BUDGET_MAX,
   BUDGET_MIN,
@@ -52,6 +51,10 @@ import type {
   User,
   WeightUnit,
 } from '../types/user'
+import { SPACING, TYPE, cardStyle, onColor } from '../theme/tokens'
+import { sportVisual } from '../utils/sportMeta'
+import AppearanceSetting from '../components/settings/AppearanceSetting'
+import { useTheme } from '../theme/ThemeProvider'
 
 const LB_PER_KG = 2.20462
 const SAVE_DEBOUNCE_MS = 500
@@ -62,6 +65,8 @@ function pairKey(a: string, b: string): string {
 }
 
 export default function SettingsScreen() {
+  const { colors } = useTheme()
+
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
@@ -321,8 +326,8 @@ export default function SettingsScreen() {
   const initial = (displayName.trim().charAt(0) || '?').toUpperCase()
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -335,18 +340,18 @@ export default function SettingsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={COLORS.teal}
-              colors={[COLORS.teal]}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
             />
           }
         >
           {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: TYPE.display, fontWeight: '800', color: COLORS.ink }}>
+              <Text style={{ fontSize: TYPE.display, fontWeight: '800', color: colors.text }}>
                 Settings
               </Text>
-              <Text style={{ marginTop: 4, fontSize: TYPE.body, color: COLORS.muted }}>
+              <Text style={{ marginTop: 4, fontSize: TYPE.body, color: colors.textMuted }}>
                 Manage your profile and training preferences
               </Text>
             </View>
@@ -357,16 +362,16 @@ export default function SettingsScreen() {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: COLORS.tealSoft,
+                  backgroundColor: colors.accentSoft,
                   borderRadius: 999,
                   paddingHorizontal: 10,
                   paddingVertical: 5,
                   marginTop: 6,
                 }}
               >
-                <ActivityIndicator size="small" color={COLORS.teal} />
+                <ActivityIndicator size="small" color={colors.accent} />
                 <Text
-                  style={{ marginLeft: 6, fontSize: 12, fontWeight: '700', color: COLORS.tealDark }}
+                  style={{ marginLeft: 6, fontSize: 12, fontWeight: '700', color: colors.accentPressed }}
                 >
                   Saving…
                 </Text>
@@ -390,49 +395,49 @@ export default function SettingsScreen() {
                     width: 56,
                     height: 56,
                     borderRadius: 28,
-                    backgroundColor: COLORS.teal,
+                    backgroundColor: colors.accent,
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 14,
                   }}
                 >
-                  <Text style={{ color: COLORS.onAccent, fontSize: 24, fontWeight: '800' }}>
+                  <Text style={{ color: colors.onAccent, fontSize: 24, fontWeight: '800' }}>
                     {initial}
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted }}>
                     DISPLAY NAME
                   </Text>
                   <TextInput
                     value={displayName}
                     onChangeText={onChangeName}
                     placeholder="Your name"
-                    placeholderTextColor={COLORS.subtle}
+                    placeholderTextColor={colors.textSubtle}
                     style={{
                       marginTop: 2,
                       fontSize: 18,
                       fontWeight: '700',
-                      color: COLORS.ink,
+                      color: colors.text,
                       paddingVertical: 2,
                     }}
                   />
                 </View>
               </View>
 
-              <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.muted }}>EMAIL</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted }}>EMAIL</Text>
               <View
                 style={{
                   marginTop: 4,
-                  backgroundColor: COLORS.fieldBg,
+                  backgroundColor: colors.fieldBg,
                   borderRadius: 10,
                   paddingHorizontal: 12,
                   paddingVertical: 12,
                 }}
               >
-                <Text style={{ fontSize: 15, color: COLORS.subtle }}>{email || '—'}</Text>
+                <Text style={{ fontSize: 15, color: colors.textSubtle }}>{email || '—'}</Text>
               </View>
-              <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.subtle }}>
+              <Text style={{ marginTop: 6, fontSize: 12, color: colors.textSubtle }}>
                 Contact support to change your email.
               </Text>
             </Card>
@@ -449,6 +454,7 @@ export default function SettingsScreen() {
               >
                 {SPORT_OPTIONS.map((opt) => {
                   const selected = sports.includes(opt.value)
+                  const accent = sportVisual(opt.value, colors).color
                   return (
                     <Pressable
                       key={opt.value}
@@ -458,8 +464,8 @@ export default function SettingsScreen() {
                         marginBottom: 12,
                         borderRadius: 14,
                         borderWidth: 2,
-                        borderColor: selected ? opt.accent : COLORS.border,
-                        backgroundColor: selected ? opt.accent : COLORS.surfaceAlt,
+                        borderColor: selected ? accent : colors.border,
+                        backgroundColor: selected ? accent : colors.surfaceAlt,
                         paddingVertical: 16,
                         alignItems: 'center',
                       }}
@@ -470,7 +476,7 @@ export default function SettingsScreen() {
                           marginTop: 6,
                           fontSize: 13,
                           fontWeight: '700',
-                          color: selected ? COLORS.onAccent : COLORS.ink,
+                          color: selected ? onColor(accent) : colors.text,
                         }}
                       >
                         {opt.label}
@@ -482,18 +488,18 @@ export default function SettingsScreen() {
 
               <FieldTitle style={{ marginTop: 10 }}>Weekly Budget</FieldTitle>
               <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: 44, fontWeight: '800', color: COLORS.teal }}>{budget}</Text>
-                <Text style={{ fontSize: 13, color: COLORS.muted, marginTop: -4 }}>hours / week</Text>
+                <Text style={{ fontSize: 44, fontWeight: '800', color: colors.accent }}>{budget}</Text>
+                <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: -4 }}>hours / week</Text>
                 <View
                   style={{
                     marginTop: 8,
-                    backgroundColor: COLORS.tealSoft,
+                    backgroundColor: colors.accentSoft,
                     borderRadius: 999,
                     paddingHorizontal: 12,
                     paddingVertical: 4,
                   }}
                 >
-                  <Text style={{ color: COLORS.tealDark, fontWeight: '700', fontSize: 13 }}>
+                  <Text style={{ color: colors.accentPressed, fontWeight: '700', fontSize: 13 }}>
                     {budgetTier.label}
                   </Text>
                 </View>
@@ -505,13 +511,13 @@ export default function SettingsScreen() {
                 step={1}
                 value={budget}
                 onValueChange={onBudgetChange}
-                minimumTrackTintColor={COLORS.teal}
-                maximumTrackTintColor={COLORS.border}
-                thumbTintColor={COLORS.teal}
+                minimumTrackTintColor={colors.accent}
+                maximumTrackTintColor={colors.border}
+                thumbTintColor={colors.accent}
               />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 {['Casual', 'Active', 'Serious', 'Elite'].map((label) => (
-                  <Text key={label} style={{ fontSize: 11, color: COLORS.subtle }}>
+                  <Text key={label} style={{ fontSize: 11, color: colors.textSubtle }}>
                     {label}
                   </Text>
                 ))}
@@ -529,8 +535,8 @@ export default function SettingsScreen() {
                       alignItems: 'center',
                       borderRadius: 14,
                       borderWidth: 2,
-                      borderColor: active ? COLORS.teal : COLORS.border,
-                      backgroundColor: active ? COLORS.tealSoft : COLORS.surfaceAlt,
+                      borderColor: active ? colors.accent : colors.border,
+                      backgroundColor: active ? colors.accentSoft : colors.surfaceAlt,
                       padding: 14,
                       marginBottom: 10,
                     }}
@@ -541,17 +547,17 @@ export default function SettingsScreen() {
                         style={{
                           fontSize: 15,
                           fontWeight: '800',
-                          color: active ? COLORS.tealDark : COLORS.ink,
+                          color: active ? colors.accentPressed : colors.text,
                         }}
                       >
                         {opt.label}
                       </Text>
-                      <Text style={{ fontSize: 12, color: COLORS.muted, marginTop: 1 }}>
+                      <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>
                         {opt.description}
                       </Text>
                     </View>
                     {active ? (
-                      <Text style={{ fontSize: 18, color: COLORS.teal, marginLeft: 6 }}>✓</Text>
+                      <Text style={{ fontSize: 18, color: colors.accent, marginLeft: 6 }}>✓</Text>
                     ) : null}
                   </Pressable>
                 )
@@ -565,10 +571,10 @@ export default function SettingsScreen() {
                 <View
                   style={{
                     flex: 1,
-                    backgroundColor: COLORS.fieldBg,
+                    backgroundColor: colors.fieldBg,
                     borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: COLORS.border,
+                    borderColor: colors.border,
                     paddingHorizontal: 14,
                   }}
                 >
@@ -577,18 +583,18 @@ export default function SettingsScreen() {
                     onChangeText={onChangeWeight}
                     keyboardType="number-pad"
                     placeholder="70"
-                    placeholderTextColor={COLORS.subtle}
-                    style={{ height: 50, fontSize: 18, color: COLORS.ink }}
+                    placeholderTextColor={colors.textSubtle}
+                    style={{ height: 50, fontSize: 18, color: colors.text }}
                   />
                 </View>
                 <View
                   style={{
                     flexDirection: 'row',
                     marginLeft: 12,
-                    backgroundColor: COLORS.fieldBg,
+                    backgroundColor: colors.fieldBg,
                     borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: COLORS.border,
+                    borderColor: colors.border,
                     padding: 3,
                   }}
                 >
@@ -602,14 +608,14 @@ export default function SettingsScreen() {
                           paddingHorizontal: 16,
                           paddingVertical: 10,
                           borderRadius: 9,
-                          backgroundColor: active ? COLORS.teal : 'transparent',
+                          backgroundColor: active ? colors.accent : 'transparent',
                         }}
                       >
                         <Text
                           style={{
                             fontSize: 14,
                             fontWeight: '700',
-                            color: active ? COLORS.onAccent : COLORS.muted,
+                            color: active ? colors.onAccent : colors.textMuted,
                           }}
                         >
                           {u}
@@ -619,7 +625,7 @@ export default function SettingsScreen() {
                   })}
                 </View>
               </View>
-              <Text style={{ marginTop: 8, fontSize: 12, color: COLORS.subtle }}>
+              <Text style={{ marginTop: 8, fontSize: 12, color: colors.textSubtle }}>
                 Used to estimate calories for future sessions.
               </Text>
             </Card>
@@ -629,7 +635,7 @@ export default function SettingsScreen() {
               <FieldTitle>Conflict Sensitivity</FieldTitle>
               <ConflictSensitivity value={sensitivity} onChange={onSelectSensitivity} />
 
-              <View style={{ height: 1, backgroundColor: COLORS.border, marginTop: 4, marginBottom: 4 }} />
+              <View style={{ height: 1, backgroundColor: colors.border, marginTop: 4, marginBottom: 4 }} />
 
               <Pressable
                 onPress={() => {
@@ -647,11 +653,11 @@ export default function SettingsScreen() {
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text style={{ fontSize: 16, marginRight: 10 }}>🗂️</Text>
-                  <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.ink }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>
                     Conflict History
                   </Text>
                 </View>
-                <Text style={{ fontSize: 22, color: COLORS.subtle }}>›</Text>
+                <Text style={{ fontSize: 22, color: colors.textSubtle }}>›</Text>
               </Pressable>
             </Card>
 
@@ -668,10 +674,10 @@ export default function SettingsScreen() {
                   justifyContent: 'space-between',
                 }}
               >
-                <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.ink }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
                   Sport Interactions
                 </Text>
-                <Text style={{ fontSize: 15, color: COLORS.subtle }}>{matrixOpen ? '▲' : '▼'}</Text>
+                <Text style={{ fontSize: 15, color: colors.textSubtle }}>{matrixOpen ? '▲' : '▼'}</Text>
               </Pressable>
 
               {matrixOpen ? (
@@ -683,6 +689,11 @@ export default function SettingsScreen() {
                   />
                 </Animated.View>
               ) : null}
+            </Card>
+
+            {/* Appearance */}
+            <Card title="Appearance">
+              <AppearanceSetting />
             </Card>
 
             {/* Notifications */}
@@ -700,11 +711,11 @@ export default function SettingsScreen() {
                 onPress={() => Alert.alert('Export Data', 'Data export is coming soon.')}
                 style={{ paddingVertical: 12 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.teal }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.accent }}>
                   Export Data
                 </Text>
               </Pressable>
-              <View style={{ height: 1, backgroundColor: COLORS.border }} />
+              <View style={{ height: 1, backgroundColor: colors.border }} />
               <Pressable
                 onPress={() => {
                   haptics.medium()
@@ -712,7 +723,7 @@ export default function SettingsScreen() {
                 }}
                 style={{ paddingVertical: 12 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.dangerText }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.dangerText }}>
                   Clear All Training Data
                 </Text>
               </Pressable>
@@ -728,11 +739,11 @@ export default function SettingsScreen() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1.5,
-                  borderColor: COLORS.danger,
-                  backgroundColor: COLORS.surface,
+                  borderColor: colors.danger,
+                  backgroundColor: colors.surface,
                 }}
               >
-                <Text style={{ color: COLORS.dangerText, fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: colors.dangerText, fontSize: 16, fontWeight: '700' }}>
                   Log Out
                 </Text>
               </Pressable>
@@ -743,7 +754,7 @@ export default function SettingsScreen() {
                 }}
                 style={{ alignSelf: 'center', marginTop: 14, padding: 6 }}
               >
-                <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: COLORS.dangerText }}>
+                <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: colors.dangerText }}>
                   Delete Account
                 </Text>
               </Pressable>
@@ -783,15 +794,17 @@ export default function SettingsScreen() {
 /* Reusable pieces                                                     */
 /* ------------------------------------------------------------------ */
 function Card({ title, children }: { title?: string; children: React.ReactNode }) {
+  const { colors } = useTheme()
+
   return (
-    <View style={[CARD, { marginTop: SPACING.base }]}>
+    <View style={[cardStyle(colors), { marginTop: SPACING.base }]}>
       {title ? (
         <Text
           style={{
             fontSize: TYPE.micro,
             fontWeight: '800',
             letterSpacing: 1,
-            color: COLORS.muted,
+            color: colors.textMuted,
             marginBottom: 14,
           }}
         >
@@ -804,10 +817,12 @@ function Card({ title, children }: { title?: string; children: React.ReactNode }
 }
 
 function FieldTitle({ children, style }: { children: React.ReactNode; style?: object }) {
+  const { colors } = useTheme()
+
   return (
     <Text
       style={[
-        { fontSize: 13, fontWeight: '700', color: COLORS.body, marginBottom: 10 },
+        { fontSize: 13, fontWeight: '700', color: colors.textBody, marginBottom: 10 },
         style,
       ]}
     >
@@ -838,6 +853,8 @@ function ConfirmTypeModal({
   onConfirm: () => void | Promise<void>
   onClose: () => void
 }) {
+  const { colors } = useTheme()
+
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const matches = text.trim() === confirmWord.trim() && confirmWord.length > 0
@@ -866,7 +883,7 @@ function ConfirmTypeModal({
       <View
         style={{
           flex: 1,
-          backgroundColor: COLORS.scrim,
+          backgroundColor: colors.scrim,
           justifyContent: 'center',
           paddingHorizontal: 24,
         }}
@@ -874,7 +891,7 @@ function ConfirmTypeModal({
         <Animated.View
           entering={FadeInDown.duration(200)}
           style={{
-            backgroundColor: COLORS.surface,
+            backgroundColor: colors.surface,
             borderRadius: 20,
             padding: 20,
           }}
@@ -883,7 +900,7 @@ function ConfirmTypeModal({
             style={{
               fontSize: 18,
               fontWeight: '800',
-              color: COLORS.dangerText,
+              color: colors.dangerText,
               textAlign: 'center',
             }}
           >
@@ -894,7 +911,7 @@ function ConfirmTypeModal({
               marginTop: 10,
               fontSize: 14,
               lineHeight: 20,
-              color: COLORS.body,
+              color: colors.textBody,
               textAlign: 'center',
             }}
           >
@@ -904,10 +921,10 @@ function ConfirmTypeModal({
           <View
             style={{
               marginTop: 16,
-              backgroundColor: COLORS.fieldBg,
+              backgroundColor: colors.fieldBg,
               borderRadius: 12,
               borderWidth: 1.5,
-              borderColor: matches ? COLORS.danger : COLORS.border,
+              borderColor: matches ? colors.danger : colors.border,
               paddingHorizontal: 14,
             }}
           >
@@ -917,8 +934,8 @@ function ConfirmTypeModal({
               autoCapitalize="none"
               autoCorrect={false}
               placeholder={`Type "${confirmWord}"`}
-              placeholderTextColor={COLORS.subtle}
-              style={{ height: 50, fontSize: 16, color: COLORS.ink }}
+              placeholderTextColor={colors.textSubtle}
+              style={{ height: 50, fontSize: 16, color: colors.text }}
             />
           </View>
 
@@ -931,13 +948,13 @@ function ConfirmTypeModal({
               marginTop: 16,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: matches ? COLORS.danger : COLORS.border,
+              backgroundColor: matches ? colors.danger : colors.border,
             }}
           >
             {busy ? (
-              <ActivityIndicator color={COLORS.onAccent} />
+              <ActivityIndicator color={colors.onAccent} />
             ) : (
-              <Text style={{ color: COLORS.onAccent, fontSize: 16, fontWeight: '700' }}>
+              <Text style={{ color: colors.onAccent, fontSize: 16, fontWeight: '700' }}>
                 {confirmLabel}
               </Text>
             )}
@@ -950,7 +967,7 @@ function ConfirmTypeModal({
             disabled={busy}
             style={{ height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 6 }}
           >
-            <Text style={{ color: COLORS.muted, fontSize: 15, fontWeight: '700' }}>Cancel</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 15, fontWeight: '700' }}>Cancel</Text>
           </Pressable>
         </Animated.View>
       </View>

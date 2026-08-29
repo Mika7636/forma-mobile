@@ -2,17 +2,19 @@
 // pages that should cover the whole screen (Conflict History, reached from
 // Settings) push on top with a native slide + back gesture.
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { COLORS } from '../constants/theme'
 import { withScreenBoundary } from '../components/ui/withScreenBoundary'
 import ConflictHistoryScreen from '../screens/ConflictHistoryScreen'
 import MainTabs from './MainTabs'
 import type { AppStackParamList } from './types'
+import { useTheme } from '../theme/ThemeProvider'
 
 const Stack = createNativeStackNavigator<AppStackParamList>()
 
 const ConflictHistoryTab = withScreenBoundary(ConflictHistoryScreen, 'Conflict History')
 
 export default function AppStack() {
+  const { colors } = useTheme()
+
   return (
     <Stack.Navigator
       screenOptions={{
@@ -24,7 +26,7 @@ export default function AppStack() {
         animation: 'slide_from_right',
         // Without this the gap between screens flashes the window background
         // (black on Android) for a frame mid-transition.
-        contentStyle: { backgroundColor: COLORS.pageBg },
+        contentStyle: { backgroundColor: colors.bg },
       }}
     >
       <Stack.Screen name="MainTabs" component={MainTabs} />

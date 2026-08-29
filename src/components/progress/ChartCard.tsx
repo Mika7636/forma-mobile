@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { LayoutChangeEvent, Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
-import { CARD, COLORS } from '../../constants/theme'
-
+import { cardStyle } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 interface ChartCardProps {
   title: string
   subtitle?: string
@@ -33,6 +33,8 @@ export default function ChartCard({
   legend,
   children,
 }: ChartCardProps) {
+  const { colors } = useTheme()
+
   const [width, setWidth] = useState(0)
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -42,13 +44,13 @@ export default function ChartCard({
   }
 
   return (
-    <Animated.View entering={FadeInDown.delay(delay).duration(360)} style={card}>
+    <Animated.View entering={FadeInDown.delay(delay).duration(360)} style={cardStyle(colors)}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {icon ? <Text style={{ fontSize: 18, marginRight: 7 }}>{icon}</Text> : null}
-        <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.ink }}>{title}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{title}</Text>
       </View>
       {subtitle ? (
-        <Text style={{ marginTop: 2, fontSize: 13, color: COLORS.muted }}>{subtitle}</Text>
+        <Text style={{ marginTop: 2, fontSize: 13, color: colors.textMuted }}>{subtitle}</Text>
       ) : null}
 
       {legend ? <View style={{ marginTop: 12 }}>{legend}</View> : null}
@@ -60,5 +62,3 @@ export default function ChartCard({
   )
 }
 
-/** The app's standard card — radius, padding, border and shadow all shared. */
-const card = CARD

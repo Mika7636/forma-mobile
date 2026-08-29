@@ -20,8 +20,8 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated'
-import { COLORS, MOTION, TYPE } from '../../constants/theme'
-
+import { MOTION, TYPE } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 /** Matches `imageWidth` in the expo-splash-screen plugin config in app.json. */
 const MARK_WIDTH = 180
 
@@ -33,6 +33,8 @@ interface BrandSplashProps {
 }
 
 export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
+  const { colors } = useTheme()
+
   const [gone, setGone] = useState(false)
   const opacity = useSharedValue(1)
   const wordmark = useSharedValue(0)
@@ -73,7 +75,7 @@ export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: COLORS.pageBg,
+          backgroundColor: colors.bg,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -97,7 +99,7 @@ export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
               fontSize: 30,
               fontWeight: '800',
               letterSpacing: 30 * 0.12,
-              color: COLORS.teal,
+              color: colors.accent,
             }}
           >
             FORMA
@@ -108,7 +110,7 @@ export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
               fontSize: TYPE.micro,
               fontWeight: '600',
               letterSpacing: 1.4,
-              color: COLORS.subtle,
+              color: colors.textSubtle,
               textTransform: 'uppercase',
             }}
           >

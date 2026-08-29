@@ -9,12 +9,11 @@
 import { useState } from 'react'
 import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
+import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import * as Device from 'expo-device'
 import { haptics } from '../utils/haptics'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import PrimaryButton from '../components/ui/PrimaryButton'
-import { COLORS } from '../constants/theme'
 import { requestPermissions } from '../services/notificationService'
 import { updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
@@ -22,6 +21,7 @@ import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   DISABLED_NOTIFICATION_PREFERENCES,
 } from '../types/notifications'
+import { useTheme } from '../theme/ThemeProvider'
 
 const PERKS = [
   {
@@ -47,6 +47,8 @@ const PERKS = [
 ]
 
 export default function NotificationPermissionScreen() {
+  const { colors } = useTheme()
+
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
   const setProfile = useAuthStore((s) => s.setProfile)
@@ -105,8 +107,8 @@ export default function NotificationPermissionScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.pageBg }} edges={['top', 'bottom']}>
-      <StatusBar style="light" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
+      <ThemedStatusBar />
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, padding: 24, justifyContent: 'center' }}
         showsVerticalScrollIndicator={false}
@@ -118,7 +120,7 @@ export default function NotificationPermissionScreen() {
               width: 96,
               height: 96,
               borderRadius: 48,
-              backgroundColor: COLORS.tealSoft,
+              backgroundColor: colors.accentSoft,
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -131,7 +133,7 @@ export default function NotificationPermissionScreen() {
               marginTop: 22,
               fontSize: 27,
               fontWeight: '800',
-              color: COLORS.ink,
+              color: colors.text,
               textAlign: 'center',
             }}
           >
@@ -142,7 +144,7 @@ export default function NotificationPermissionScreen() {
               marginTop: 10,
               fontSize: 16,
               lineHeight: 22,
-              color: COLORS.muted,
+              color: colors.textMuted,
               textAlign: 'center',
             }}
           >
@@ -161,9 +163,9 @@ export default function NotificationPermissionScreen() {
                     width: 42,
                     height: 42,
                     borderRadius: 12,
-                    backgroundColor: COLORS.fieldBg,
+                    backgroundColor: colors.fieldBg,
                     borderWidth: 1,
-                    borderColor: COLORS.border,
+                    borderColor: colors.border,
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 13,
@@ -172,11 +174,11 @@ export default function NotificationPermissionScreen() {
                   <Text style={{ fontSize: 20 }}>{perk.icon}</Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.ink }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
                     {perk.title}
                   </Text>
                   <Text
-                    style={{ marginTop: 2, fontSize: 14, lineHeight: 19, color: COLORS.muted }}
+                    style={{ marginTop: 2, fontSize: 14, lineHeight: 19, color: colors.textMuted }}
                   >
                     {perk.body}
                   </Text>
@@ -189,19 +191,19 @@ export default function NotificationPermissionScreen() {
             <Animated.View
               entering={FadeInDown.duration(200)}
               style={{
-                backgroundColor: COLORS.warningSoft,
+                backgroundColor: colors.warnSoft,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: COLORS.warningBorder,
+                borderColor: colors.warnBorder,
                 padding: 14,
                 marginBottom: 16,
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.warningDeep }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.warnText }}>
                 Notifications are blocked
               </Text>
               <Text
-                style={{ marginTop: 4, fontSize: 13, lineHeight: 19, color: COLORS.body }}
+                style={{ marginTop: 4, fontSize: 13, lineHeight: 19, color: colors.textBody }}
               >
                 Android won&apos;t ask again once dismissed. You can turn them on in system
                 settings — or skip for now and enable them later from Settings.
@@ -214,12 +216,12 @@ export default function NotificationPermissionScreen() {
                   borderRadius: 10,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: COLORS.surface,
+                  backgroundColor: colors.surface,
                   borderWidth: 1.5,
-                  borderColor: COLORS.warningBorder,
+                  borderColor: colors.warnBorder,
                 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.warningDeep }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.warnText }}>
                   Open System Settings
                 </Text>
               </Pressable>
@@ -237,7 +239,7 @@ export default function NotificationPermissionScreen() {
             disabled={busy}
             style={{ alignSelf: 'center', marginTop: 16, padding: 8 }}
           >
-            <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.muted }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMuted }}>
               Maybe later
             </Text>
           </Pressable>
@@ -251,7 +253,7 @@ export default function NotificationPermissionScreen() {
               style={{
                 marginTop: 14,
                 fontSize: 12,
-                color: COLORS.subtle,
+                color: colors.textSubtle,
                 textAlign: 'center',
               }}
             >

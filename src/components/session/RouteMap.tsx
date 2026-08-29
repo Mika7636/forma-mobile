@@ -1,11 +1,10 @@
 import { Component, memo, useMemo, type ComponentType, type ReactNode } from 'react'
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native'
-import { COLORS, RADIUS, SPACING, TYPE } from '../../constants/theme'
 import { decimateRoute, isValidCoordinate } from '../../utils/geo'
 import { MAPS_AVAILABLE, MAPS_UNAVAILABLE_REASON, type MapRegion } from '../../utils/maps'
 import type { RoutePoint } from '../../types/session'
-import { COLOR } from '../../theme/tokens'
-
+import { RADIUS, SPACING, TYPE } from '../../theme/tokens'
+import { useTheme } from '../../theme/ThemeProvider'
 /**
  * Ceiling on how many points are handed to the native Polyline. A phone screen
  * cannot resolve more, and every point is re-serialised across the bridge each
@@ -14,8 +13,6 @@ import { COLOR } from '../../theme/tokens'
 const MAX_RENDERED_POINTS = 300
 
 /** The live tracker's card surface + hairline, so placeholders sit in with it. */
-const DARK_SURFACE = COLOR.surfaceAlt
-const DARK_BORDER = COLOR.border
 
 interface RouteMapProps {
   coordinates: RoutePoint[]
@@ -127,6 +124,8 @@ function MapShell({
   dark?: boolean
   children: ReactNode
 }) {
+  const { colors } = useTheme()
+
   return (
     <View
       style={[
@@ -134,9 +133,9 @@ function MapShell({
           height,
           borderRadius: RADIUS.card,
           overflow: 'hidden',
-          backgroundColor: dark ? DARK_SURFACE : COLORS.fieldBg,
+          backgroundColor: dark ? colors.surfaceAlt : colors.fieldBg,
           borderWidth: 1,
-          borderColor: dark ? DARK_BORDER : COLORS.border,
+          borderColor: dark ? colors.border : colors.border,
           ...(padded
             ? { alignItems: 'center' as const, justifyContent: 'center' as const, padding: SPACING.md }
             : null),
@@ -165,13 +164,15 @@ function MapPlaceholder({
   subtitle?: string
   dark?: boolean
 }) {
+  const { colors } = useTheme()
+
   return (
     <MapShell height={height} style={style} padded dark={dark}>
       <Text style={{ fontSize: 22, marginBottom: 6 }}>{icon}</Text>
       <Text
         style={{
           fontSize: TYPE.small,
-          color: dark ? COLORS.ink : COLORS.muted,
+          color: dark ? colors.text : colors.textMuted,
           fontWeight: '600',
           textAlign: 'center',
         }}
@@ -183,7 +184,7 @@ function MapPlaceholder({
           style={{
             marginTop: 4,
             fontSize: TYPE.caption,
-            color: COLORS.subtle,
+            color: colors.textSubtle,
             textAlign: 'center',
             lineHeight: 15,
           }}
