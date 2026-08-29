@@ -21,6 +21,8 @@ import { haptics } from '../../utils/haptics'
 import RouteMap from './RouteMap'
 import PrimaryButton from '../ui/PrimaryButton'
 import ToastContainer from '../ui/ToastContainer'
+import ActionSheet, { type ActionSheetItem } from '../ui/ActionSheet'
+import OverflowButton from '../ui/OverflowButton'
 import { toast } from '../../store/toastStore'
 import { SPORT_OPTIONS } from '../../constants/training'
 import { hrZoneColor } from '../../algorithms/heartRate'
@@ -90,7 +92,12 @@ export default function SessionDetailModal({
   const [distance, setDistance] = useState('')
   const [notes, setNotes] = useState('')
   const [avgBpm, setAvgBpm] = useState('')
+  const [title, setTitle] = useState('')
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  // Focused when the overflow's "Edit title" is chosen, so that item lands the
+  // user on the field rather than merely somewhere on the edit form.
+  const titleRef = useRef<TextInput>(null)
 
   const translateY = useRef(new Animated.Value(0)).current
 
@@ -112,6 +119,7 @@ export default function SessionDetailModal({
     setDistance(s.distanceKm != null ? String(s.distanceKm) : '')
     setNotes(s.notes ?? '')
     setAvgBpm(s.avgBpm != null ? String(s.avgBpm) : '')
+    setTitle(s.title ?? '')
     setAdvancedOpen(s.avgBpm != null)
   }
 
@@ -193,6 +201,7 @@ export default function SessionDetailModal({
           distanceKm: editShowsDistance ? distanceNum : undefined,
           notes: notes.trim() || undefined,
           avgBpm: avgBpmNum,
+          title: title.trim() || undefined,
         },
         profile,
         { calibrating: sessions.length < CALIBRATION_SESSION_TARGET },
@@ -264,6 +273,27 @@ export default function SessionDetailModal({
       ? `${data.averageSpeed.toFixed(1)} km/h`
       : data.averagePace ?? data.pace ?? null
 
+  /**
+   * The same three actions the workout summary offers, so editing a session
+   * feels like one thing whether it is done straight after the workout or a
+   * week later. Both of the first two drop into the edit form — which is where
+   * a saved session's fields live — and "Edit title" additionally puts the
+   * cursor in the title box.
+   */
+  const menuItems: ActionSheetItem[] = [
+    {
+      label: 'Edit title',
+      onPress: () => {
+        handleEdit()
+        // After the form has mounted; focusing a field that is not on screen yet
+        // is a no-op that looks like the menu item doing nothing.
+        requestAnimationFrame(() => titleRef.current?.focus())
+      },
+    },
+    { label: 'Change sport', description: meta?.label, onPress: handleEdit },
+    { label: 'Delete session', destructive: true, onPress: handleDelete },
+  ]
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       {/* Dim backdrop — tap to dismiss. */}
@@ -297,13 +327,20 @@ export default function SessionDetailModal({
               backgroundColor: colors.border,
             }}
           />
-          <Pressable
-            onPress={onClose}
-            hitSlop={12}
-            style={{ position: 'absolute', top: 10, right: 16, padding: 4 }}
+          <View
+            style={{
+              position: 'absolute',
+              top: 2,
+              right: 8,
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
           >
-            <Text style={{ fontSize: 22, color: colors.textSubtle, fontWeight: '600' }}>✕</Text>
-          </Pressable>
+            <OverflowButton onPress={() => setMenuOpen(true)} />
+            <Pressable onPress={onClose} hitSlop={12} style={{ padding: 4, marginLeft: 2 }}>
+              <Text style={{ fontSize: 22, color: colors.textSubtle, fontWeight: '600' }}>✕</Text>
+            </Pressable>
+          </View>
         </View>
 
         <KeyboardAvoidingView
@@ -331,8 +368,15 @@ export default function SessionDetailModal({
                 <Text style={{ fontSize: 30 }}>{meta.icon}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>
-                  {meta.label}
+                {/* The workout's own name when it has one — live sessions are
+                    saved with one — falling back to the sport. A title set on
+                    the summary screen was previously written and then never
+                    shown again anywhere in the app. */}
+                <Text
+                  style={{ fontSize: 24, fontWeight: '800', color: colors.text }}
+                  numberOfLines={2}
+                >
+                  {data.title?.trim() || meta.label}
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                   <Text style={{ fontSize: 14, color: colors.textMuted }}>{dateLine}</Text>
@@ -358,6 +402,9 @@ export default function SessionDetailModal({
               />
             ) : (
               <EditMode
+                title={title}
+                setTitle={setTitle}
+                titleRef={titleRef}
                 sport={sport}
                 setSport={setSport}
                 profileSports={profileSports}
@@ -408,6 +455,13 @@ export default function SessionDetailModal({
             is duplicated — only one of the two is ever on screen. */}
         <ToastContainer insideModal />
       </Animated.View>
+
+      {/* A sibling of the sheet rather than a child of it, so its scrim covers
+          the whole modal window instead of stopping at the sheet's top edge —
+          and inside this <Modal> rather than at the app root, because RN's
+          <Modal> is its own native window and anything outside it is drawn
+          behind. */}
+      <ActionSheet visible={menuOpen} items={menuItems} onClose={() => setMenuOpen(false)} />
     </Modal>
   )
 }
@@ -590,7 +644,7 @@ function StatTile({
               paddingVertical: 2,
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: '800', color: colors.onAccent }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: onColor(badge.color) }}>
               {badge.text}
             </Text>
           </View>
@@ -607,6 +661,9 @@ function StatTile({
 /* Edit mode                                                           */
 /* ------------------------------------------------------------------ */
 function EditMode({
+  title,
+  setTitle,
+  titleRef,
   sport,
   setSport,
   profileSports,
@@ -631,6 +688,9 @@ function EditMode({
   onSave,
   onCancel,
 }: {
+  title: string
+  setTitle: (v: string) => void
+  titleRef: React.RefObject<TextInput | null>
   sport: SportType
   setSport: (s: SportType) => void
   profileSports: SportType[]
@@ -660,6 +720,29 @@ function EditMode({
   const zoneCol = rpeColor(rpe, colors)
   return (
     <Reanimated.View entering={FadeIn.duration(200)} style={{ marginTop: 18 }}>
+      {/* Title. First field on the form because it is the one the header shows,
+          and the one the overflow menu's "Edit title" jumps to. */}
+      <FieldLabel>Title</FieldLabel>
+      <TextInput
+        ref={titleRef}
+        value={title}
+        onChangeText={setTitle}
+        placeholder={sportVisual(sport, colors).label}
+        placeholderTextColor={colors.textMuted}
+        maxLength={80}
+        style={{
+          backgroundColor: colors.fieldBg,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          paddingHorizontal: 14,
+          height: 48,
+          fontSize: 16,
+          color: colors.text,
+          marginBottom: 16,
+        }}
+      />
+
       {/* Sport selector */}
       <FieldLabel>Sport</FieldLabel>
       <ScrollView

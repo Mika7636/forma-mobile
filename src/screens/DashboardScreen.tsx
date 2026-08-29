@@ -33,6 +33,7 @@ import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
 import { RADIUS, SPACING, TYPE } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
+import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
 function getGreeting(hour: number): string {
   if (hour < 12) return 'Good morning'
@@ -42,6 +43,8 @@ function getGreeting(hour: number): string {
 
 export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const { colors } = useTheme()
+  // Reserve room for the tab bar, which is drawn over the end of this list.
+  const tabPadding = useTabContentPadding()
 
   const displayName = useAuthStore((s) => s.user?.displayName)
   const createdAt = useAuthStore((s) => s.profile?.createdAt)
@@ -133,7 +136,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
       <ThemedStatusBar />
 
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: tabPadding }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

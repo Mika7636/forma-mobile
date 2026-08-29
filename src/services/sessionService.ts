@@ -348,6 +348,15 @@ export interface UpdateSessionInput {
   distanceKm?: number
   notes?: string
   avgBpm?: number
+  /**
+   * The workout's name.
+   *
+   * Written by live tracking at save time and, since the detail sheet grew an
+   * overflow menu, editable afterwards. Blank clears it, which is why it is
+   * removed rather than stored as an empty string — a session with no title
+   * falls back to its sport name, and `''` is not the same as "no title".
+   */
+  title?: string
 }
 
 /**
@@ -368,7 +377,7 @@ export async function updateSession(
   profile: User,
   options?: { calibrating?: boolean },
 ): Promise<{ session: Session; conflicts: Conflict[] }> {
-  const { sport, date, durationMinutes, rpe, distanceKm, notes, avgBpm } = input
+  const { sport, date, durationMinutes, rpe, distanceKm, notes, avgBpm, title } = input
 
   const loadScore = calculateLoadScore(durationMinutes, rpe)
   const estimatedCalories = estimateCalories(sport, durationMinutes, rpe, profile.weightKg)
@@ -391,6 +400,7 @@ export async function updateSession(
     // Drop fields that no longer apply rather than leaving stale values.
     distanceKm: hasDistance ? distanceKm : deleteField(),
     avgBpm: avgBpm != null && avgBpm > 0 ? avgBpm : deleteField(),
+    title: title?.trim() ? title.trim() : deleteField(),
   }
   await updateDoc(sessionRef, patch)
 
@@ -407,6 +417,7 @@ export async function updateSession(
     distanceKm: hasDistance ? distanceKm : undefined,
     notes: notes?.trim() || undefined,
     avgBpm: avgBpm != null && avgBpm > 0 ? avgBpm : undefined,
+    title: title?.trim() || undefined,
   }
 
   // Conflict detection is "for this session": clear the conflicts it previously

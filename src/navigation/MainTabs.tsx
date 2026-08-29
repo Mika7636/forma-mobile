@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native'
 import { useEffect } from 'react'
 import { Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { TYPE } from '../theme/tokens'
+import { TAB_BAR_HEIGHT, TYPE } from '../theme/tokens'
 import DashboardScreen from '../screens/DashboardScreen'
 import LogScreen from '../screens/LogScreen'
 import PlannerScreen from '../screens/PlannerScreen'
@@ -41,9 +41,6 @@ const TAB_ICON: Record<string, TabIconName> = {
   Progress: 'trending',
   Settings: 'sliders',
 }
-
-/** Bar height above the safe-area inset. */
-const TAB_BAR_HEIGHT = 58
 
 export default function MainTabs() {
   const { colors } = useTheme()

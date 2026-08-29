@@ -64,10 +64,14 @@ export type FormTone = 'red' | 'orange' | 'yellow' | 'lightgreen' | 'green' | 'b
 export interface HeroFill {
   /** Two stops, top-left → bottom-right. */
   gradient: readonly [string, string]
-  /** The score, the status pill's label — whatever prints *on* the gradient. */
+  /** The score itself — the one figure the whole card exists to carry. */
   ink: string
-  /** Hairline around the card, and the pill's border. */
+  /** Hairline around the card. */
   border: string
+  /** The status pill ("Peaked", "Building"…). */
+  chipBg: string
+  chipBorder: string
+  chipInk: string
 }
 
 interface Elevation {
@@ -174,6 +178,30 @@ export interface Palette {
   hero: Record<FormTone, HeroFill>
   /** The band that sweeps across the hero in the Peaked state. */
   heroSheen: string
+  /**
+   * The hero's interior, which is the same for all six states.
+   *
+   * These exist because *nothing inside that card may use a page token*. On
+   * dark the two happen to agree — the fill is a deep wash, so `textMuted` on
+   * it looks right — and that coincidence is exactly what broke the light
+   * theme: the card became a saturated green fill and its children were still
+   * being coloured for a white page. The result was a white pill, a blue
+   * FITNESS number, a red FATIGUE number and navy body copy at 2.2:1, all
+   * inside one green rectangle.
+   *
+   * So the interior is specified per theme, next to the fill it has to sit on.
+   */
+  heroLabel: string
+  heroBody: string
+  /**
+   * The FITNESS / FATIGUE tiles.
+   *
+   * Typed as a full {@link Tint} each, because on dark they carry their own
+   * hues (sky and red, so the two readouts stay distinguishable against a wash)
+   * while on light they are both plain translucent white — a saturated fill has
+   * no room for a second and third hue inside it.
+   */
+  heroStat: { fitness: Tint; fatigue: Tint }
 
   /* ---- tinted surfaces ------------------------------------------- */
   tint: {
@@ -231,6 +259,65 @@ export interface Palette {
    * `customMapStyle` and follows the MapView's `userInterfaceStyle` instead.
    */
   mapStyle: readonly unknown[]
+}
+
+/* ------------------------------------------------------------------ */
+/* Hero builders                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A dark-theme hero fill: a deep wash of `bg`, fading into the card surface,
+ * with the hue returning as the numerals.
+ */
+function darkHero(bg: string, ink: string, border: string): HeroFill {
+  return {
+    gradient: [bg, '#141E2E'],
+    ink,
+    border,
+    // A raised surface rather than a translucent one: over a wash this dark,
+    // white-at-low-opacity is an indistinct grey smear rather than a pill.
+    chipBg: '#1B2739',
+    chipBorder: border,
+    chipInk: ink,
+  }
+}
+
+/** Translucent white, shared by both light-theme stat tiles. */
+const HERO_STAT_TILE: Tint = {
+  bg: 'rgba(255,255,255,0.15)',
+  border: 'rgba(255,255,255,0.28)',
+  text: '#FFFFFF',
+}
+
+/**
+ * A light-theme hero fill: a saturated block of colour with a white interior.
+ *
+ * ## Why the stops are so deep
+ *
+ * Everything inside this card is white or translucent white, and translucent
+ * white is not free: a 15% white tile over `#15803D` composites to `#38935A`,
+ * and solid white on *that* is 3.83:1. Laying translucent white on a fill
+ * raises the local background, so every surface added inside the card spends
+ * contrast the text still needs. Stacking two of them — a label at 80% on a
+ * tile at 15% — spends it twice.
+ *
+ * The stops are therefore at the 900 end of each ramp rather than the 700s.
+ * That buys back the headroom: the same tile over `#14532D` is `#376D4D`, white
+ * on it is 6.07:1, and a label at 80% on it is 4.57:1. The worst pair anywhere
+ * inside the card is then 4.57:1, against a 4.5 floor.
+ *
+ * `from` is the darker stop; `to` is the lighter one and therefore the case
+ * every contrast check has to be run against.
+ */
+function lightHero(from: string, to: string): HeroFill {
+  return {
+    gradient: [from, to],
+    ink: '#FFFFFF',
+    border: from,
+    chipBg: 'rgba(255,255,255,0.18)',
+    chipBorder: 'rgba(255,255,255,0.45)',
+    chipInk: '#FFFFFF',
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -296,16 +383,25 @@ const dark: Palette = {
   },
 
   // Each state washes its tint's `bg` into the card surface, so the gradient
-  // ends where the rest of the dashboard begins.
+  // ends where the rest of the dashboard begins. The pill is a raised surface
+  // with the hue as its label — the wash is too dark to print a pill *on*.
   hero: {
-    red: { gradient: ['#2A1416', '#141E2E'], ink: '#FCA5A5', border: '#5B2326' },
-    orange: { gradient: ['#2A1A10', '#141E2E'], ink: '#FDBA74', border: '#5A3A1A' },
-    yellow: { gradient: ['#2A2010', '#141E2E'], ink: '#FCD34D', border: '#5A431A' },
-    lightgreen: { gradient: ['#0E2626', '#141E2E'], ink: '#5EEAD4', border: '#1C4A48' },
-    green: { gradient: ['#10291F', '#141E2E'], ink: '#4ADE80', border: '#1D5138' },
-    brightgreen: { gradient: ['#10291F', '#141E2E'], ink: '#4ADE80', border: '#1D5138' },
+    red: darkHero('#2A1416', '#FCA5A5', '#5B2326'),
+    orange: darkHero('#2A1A10', '#FDBA74', '#5A3A1A'),
+    yellow: darkHero('#2A2010', '#FCD34D', '#5A431A'),
+    lightgreen: darkHero('#0E2626', '#5EEAD4', '#1C4A48'),
+    green: darkHero('#10291F', '#4ADE80', '#1D5138'),
+    brightgreen: darkHero('#10291F', '#4ADE80', '#1D5138'),
   },
   heroSheen: 'rgba(74,222,128,0.10)',
+  heroLabel: '#94A3B8',
+  heroBody: '#CBD5E1',
+  // Two hues, so the reader can tell the two readouts apart at a glance. This
+  // works here and only here: they sit on a dark wash, not on a saturated fill.
+  heroStat: {
+    fitness: { bg: '#111E33', border: '#25406B', text: '#93C5FD' },
+    fatigue: { bg: '#2A1416', border: '#5B2326', text: '#FCA5A5' },
+  },
 
   tint: {
     green: { bg: '#10291F', border: '#1D5138', text: '#4ADE80' },
@@ -441,17 +537,29 @@ const light: Palette = {
     elevation: 10,
   },
 
-  // Two stops of one hue, both dark enough that white numerals clear 4.5:1 at
-  // the lighter end as well as the darker one.
+  // A saturated fill with an all-white interior — no second hue anywhere inside
+  // it. See {@link lightHero} for why these stops are as deep as they are.
   hero: {
-    red: { gradient: ['#991B1B', '#B91C1C'], ink: '#FFFFFF', border: '#991B1B' },
-    orange: { gradient: ['#9A3412', '#C2410C'], ink: '#FFFFFF', border: '#9A3412' },
-    yellow: { gradient: ['#92400E', '#B45309'], ink: '#FFFFFF', border: '#92400E' },
-    lightgreen: { gradient: ['#115E59', '#0F766E'], ink: '#FFFFFF', border: '#115E59' },
-    green: { gradient: ['#166534', '#15803D'], ink: '#FFFFFF', border: '#166534' },
-    brightgreen: { gradient: ['#166534', '#15803D'], ink: '#FFFFFF', border: '#166534' },
+    red: lightHero('#6B1717', '#7F1D1D'),
+    orange: lightHero('#6B270F', '#7C2D12'),
+    yellow: lightHero('#682D0C', '#78350F'),
+    lightgreen: lightHero('#0F423F', '#134E4A'),
+    green: lightHero('#0F4C25', '#14532D'),
+    brightgreen: lightHero('#0F4C25', '#14532D'),
   },
   heroSheen: 'rgba(255,255,255,0.22)',
+  // 0.80, not the 0.70 that reads as "a muted label" on a page. Translucent
+  // white *lightens the fill underneath it*, so it eats the contrast from both
+  // ends at once: at 0.70 a label on a stat tile is 3.90:1. See lightHero.
+  heroLabel: 'rgba(255,255,255,0.80)',
+  heroBody: 'rgba(255,255,255,0.92)',
+  // Both tiles identical, and deliberately so: on a saturated fill a blue tile
+  // and a red tile are two more colours competing inside a card that already
+  // has one. They are told apart by their labels, which is enough.
+  heroStat: {
+    fitness: HERO_STAT_TILE,
+    fatigue: HERO_STAT_TILE,
+  },
 
   tint: {
     green: { bg: '#ECFDF5', border: '#A7F3D0', text: '#15803D' },
@@ -587,8 +695,33 @@ export const MOTION = {
 /** Touch targets below this fail accessibility guidance on both platforms. */
 export const MIN_TOUCH = 44
 
+/**
+ * The tab bar's height, above the safe-area inset.
+ *
+ * Lives here rather than in `MainTabs` because it is not only the navigator's
+ * business: the bar is drawn *over* the bottom of every tab screen, so each of
+ * those screens has to reserve room for it at the end of its scroll content or
+ * its last row is cut in half. See `useTabContentPadding`.
+ */
+export const TAB_BAR_HEIGHT = 58
+
 /** Android's ripple/elevation model differs enough to be worth branching on. */
 export const IS_ANDROID = Platform.OS === 'android'
+
+/**
+ * Chrome drawn on top of map imagery.
+ *
+ * Fixed rather than themed, for the same reason as {@link NOTIFICATION_ACCENT}:
+ * what is behind it is a satellite or street tile, whose brightness has nothing
+ * to do with which theme the user picked. A themed ink would be a dark glyph on
+ * a dark city block half the time.
+ *
+ * 0.62 is the shallowest disc that still puts white at 5.3:1 over the *worst*
+ * case, which is a blank white map tile — well clear of the 3:1 that WCAG asks
+ * of a graphical object, and enough for the 4.5 this project holds itself to.
+ */
+export const IMAGERY_SCRIM = 'rgba(11,18,32,0.62)'
+export const IMAGERY_INK = '#FFFFFF'
 
 /**
  * The Android notification accent.

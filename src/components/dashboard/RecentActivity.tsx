@@ -7,6 +7,7 @@ import { formatTimeAgo } from '../../utils/formatting'
 import { sportVisual } from '../../utils/sportMeta'
 import type { Session } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
+import { onColor } from '../../theme/tokens'
 
 /** How many sessions the dashboard surfaces; the rest live on Progress. */
 const MAX_ROWS = 7
@@ -159,7 +160,7 @@ function SessionRow({
                 paddingVertical: 2,
               }}
             >
-              <Text style={{ fontSize: 10, fontWeight: '800', color: colors.onAccent }}>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: onColor(hrZoneColor(zone, colors)) }}>
                 Z{zone}
               </Text>
             </View>

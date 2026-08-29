@@ -92,7 +92,7 @@ export default function BatteryOptimizationTip() {
         style={{ flex: 1 }}
         hitSlop={6}
       >
-        <Text style={{ color: colors.onAccent, fontSize: 13, fontWeight: '700' }}>
+        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>
           🔋 Samsung and some other phones stop background tracking
         </Text>
         <Text style={{ marginTop: 4, color: colors.textSubtle, fontSize: 12, lineHeight: 17 }}>

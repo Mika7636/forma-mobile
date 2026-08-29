@@ -62,6 +62,7 @@ import type { Conflict } from '../types/conflict'
 import type { SportType } from '../types/session'
 import type { LogScreenProps } from '../navigation/types'
 import { useTheme } from '../theme/ThemeProvider'
+import { useTabContentPadding } from '../hooks/useTabContentPadding'
 import { onColor, type Palette } from '../theme/tokens'
 import { sportVisual } from '../utils/sportMeta'
 
@@ -126,6 +127,8 @@ function tint(hex: string): string {
 
 export default function LogScreen({ route, navigation }: LogScreenProps) {
   const { colors } = useTheme()
+  // Reserve room for the tab bar, which is drawn over the end of this list.
+  const tabPadding = useTabContentPadding()
 
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
@@ -540,6 +543,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
           <LiveTracker
             sport={sport}
             sportLabel={sportLabel}
+            sportOptions={sports}
+            onSportChange={handleSelectSport}
             weightKg={profile?.weightKg}
             saving={saving}
             saved={liveSaved}
@@ -571,7 +576,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <ScrollView
-            contentContainerStyle={{ paddingBottom: 40 }}
+            contentContainerStyle={{ paddingBottom: tabPadding }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -770,7 +775,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 >
                   <Text
                     style={{
-                      color: colors.onAccent,
+                      color: onColor(zone.color),
                       fontSize: 12,
                       fontWeight: '800',
                       letterSpacing: 0.5,

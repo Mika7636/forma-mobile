@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -10,8 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import ThemedStatusBar from '../ui/ThemedStatusBar'
+import ActionSheet, { type ActionSheetItem } from '../ui/ActionSheet'
+import OverflowButton from '../ui/OverflowButton'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import CountUp from '../dashboard/CountUp'
 import HeroRouteMap, { TITLE_OVERLAP } from '../session/HeroRouteMap'
@@ -28,7 +30,7 @@ import {
 } from '../../algorithms/movingTime'
 import { estimateCalories } from '../../algorithms/calories'
 import { calculateLoadScore } from '../../algorithms/sRPE'
-import { SPORT_OPTIONS } from '../../constants/training'
+import { SPORT_OPTIONS, type SportOption } from '../../constants/training'
 import type { Conflict } from '../../types/conflict'
 import type { RoutePoint, SportType } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
@@ -98,6 +100,13 @@ export interface WorkoutSummaryProps {
 
   title: string
   onTitleChange: (value: string) => void
+  /**
+   * The sports this athlete trains, for the overflow menu's "Change sport".
+   * A live workout can be started under the wrong one, and noticing that at the
+   * summary is much more likely than noticing it at the start line.
+   */
+  sportOptions: SportOption[]
+  onSportChange: (value: SportType) => void
   /** Null until the athlete picks one. Save stays disabled while it is. */
   rpe: number | null
   onRpeChange: (value: number) => void
@@ -146,6 +155,8 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
     conflicts,
     title,
     onTitleChange,
+    sportOptions,
+    onSportChange,
     rpe,
     onRpeChange,
     notes,
@@ -157,6 +168,12 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
   } = props
 
   const [splitsOpen, setSplitsOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [sportPickerOpen, setSportPickerOpen] = useState(false)
+  // The overflow's "Edit title" and a tap on the title itself are the same
+  // action, so both go through the input's own focus rather than a mode flag.
+  const titleRef = useRef<TextInput>(null)
+  const insets = useSafeAreaInsets()
 
   const isCycling = sport === 'cycling'
   const hasGps = route.length >= 2 && distanceKm > 0
@@ -196,6 +213,17 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
     )
   }
 
+  const menuItems: ActionSheetItem[] = [
+    { label: 'Edit title', onPress: () => titleRef.current?.focus() },
+    { label: 'Change sport', description: sportLabel, onPress: () => setSportPickerOpen(true) },
+    { label: 'Discard session', destructive: true, onPress: handleDiscard },
+  ]
+
+  const sportItems: ActionSheetItem[] = sportOptions.map((option) => ({
+    label: `${option.icon}  ${option.label}`,
+    onPress: () => onSportChange(option.value),
+  }))
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['bottom']}>
       <ThemedStatusBar />
@@ -221,7 +249,7 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
               paddingHorizontal: SPACING.lg,
             }}
           >
-            <TitleField value={title} onChange={onTitleChange} />
+            <TitleField inputRef={titleRef} value={title} onChange={onTitleChange} />
             <Text style={{ marginTop: SPACING.xs, fontSize: 13, color: colors.textMuted }}>
               {sportLabel} · {formatStartedAt(startedAt)}
             </Text>
@@ -401,6 +429,25 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
           ) : null}
         </View>
       </KeyboardAvoidingView>
+
+      {/* Overflow, pinned to the screen rather than scrolling with the hero.
+          `edges` excludes 'top' here — the map is deliberately full-bleed — so
+          the inset has to be applied by hand or this lands under the clock. */}
+      <View style={{ position: 'absolute', top: insets.top + SPACING.xs, right: SPACING.md }}>
+        <OverflowButton onImagery onPress={() => setMenuOpen(true)} />
+      </View>
+
+      <ActionSheet
+        visible={menuOpen}
+        items={menuItems}
+        onClose={() => setMenuOpen(false)}
+      />
+      <ActionSheet
+        visible={sportPickerOpen}
+        title="Change sport"
+        items={sportItems}
+        onClose={() => setSportPickerOpen(false)}
+      />
     </SafeAreaView>
   )
 }
@@ -420,29 +467,52 @@ function formatStartedAt(startedAt: number): string {
   })
 }
 
-function TitleField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/**
+ * The workout's name.
+ *
+ * There used to be a ✏️ next to it. An emoji is the wrong thing to hang an
+ * affordance on — it is a full-colour OS bitmap that cannot take the theme's
+ * ink, is drawn differently by every Android version, and at 14pt next to a
+ * 26pt heading it reads as a leftover rather than a control. The affordance is
+ * now the underline: the field looks like a heading, and the hairline under it
+ * says it is also a text box. The overflow menu's "Edit title" focuses this
+ * same input, so there is one edit path rather than two.
+ */
+function TitleField({
+  value,
+  onChange,
+  inputRef,
+}: {
+  value: string
+  onChange: (v: string) => void
+  inputRef: React.RefObject<TextInput | null>
+}) {
   const { colors } = useTheme()
+  const [focused, setFocused] = useState(false)
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder="Name this workout"
-        placeholderTextColor={colors.textMuted}
-        maxLength={80}
-        // Borderless on purpose: this reads as a heading you happen to be able to
-        // edit, not as a form field. The pencil is the only affordance it needs.
-        style={{
-          flex: 1,
-          fontSize: 26,
-          fontWeight: '700',
-          color: colors.text,
-          padding: 0,
-        }}
-      />
-      <Text style={{ fontSize: 14, color: colors.textMuted, marginLeft: SPACING.sm }}>✏️</Text>
-    </View>
+    <TextInput
+      ref={inputRef}
+      value={value}
+      onChangeText={onChange}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      placeholder="Name this workout"
+      placeholderTextColor={colors.textMuted}
+      maxLength={80}
+      style={{
+        fontSize: 26,
+        fontWeight: '700',
+        color: colors.text,
+        paddingTop: 0,
+        paddingHorizontal: 0,
+        paddingBottom: SPACING.xs,
+        // Subtle at rest, the accent while editing — the same grammar as every
+        // other input in the app, just without a box around it.
+        borderBottomWidth: 1.5,
+        borderBottomColor: focused ? colors.accent : colors.border,
+      }}
+    />
   )
 }
 

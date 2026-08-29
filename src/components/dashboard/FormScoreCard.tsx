@@ -13,7 +13,7 @@ import CountUp from './CountUp'
 import FormInfoModal from './FormInfoModal'
 import { getFormStatus } from '../../algorithms/formScore'
 import { useTheme } from '../../theme/ThemeProvider'
-import type { FormTone } from '../../theme/tokens'
+import type { FormTone, Tint } from '../../theme/tokens'
 /**
  * The emoji for each form state.
  *
@@ -136,7 +136,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 fontSize: 11,
                 fontWeight: '800',
                 letterSpacing: 1.6,
-                color: colors.textMuted,
+                color: colors.heroLabel,
               }}
             >
               FORM SCORE
@@ -165,16 +165,16 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 flexDirection: 'row',
                 alignItems: 'center',
                 alignSelf: 'flex-start',
-                backgroundColor: colors.surfaceAlt,
+                backgroundColor: style.chipBg,
                 borderWidth: 1,
-                borderColor: style.border,
+                borderColor: style.chipBorder,
                 borderRadius: 999,
                 paddingHorizontal: 14,
                 paddingVertical: 6,
                 marginTop: 10,
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '800', color: style.ink }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: style.chipInk }}>
                 {status}
               </Text>
               <Text style={{ fontSize: 14, marginLeft: 6 }}>{emoji}</Text>
@@ -185,7 +185,7 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
                 marginTop: 10,
                 fontSize: 13,
                 fontWeight: '600',
-                color: colors.textBody,
+                color: colors.heroBody,
                 lineHeight: 18,
               }}
             >
@@ -195,8 +195,8 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
 
           {/* Right: stacked fitness / fatigue mini-cards. */}
           <View style={{ marginLeft: 14, justifyContent: 'center' }}>
-            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tone={colors.tint.sky} />
-            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tone={colors.tint.red} />
+            <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tone={colors.heroStat.fitness} />
+            <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tone={colors.heroStat.fatigue} />
           </View>
         </View>
       </LinearGradient>
@@ -207,12 +207,15 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
 }
 
 /**
- * A fitness/fatigue readout.
+ * A fitness/fatigue readout, sitting *inside* the hero's fill.
  *
- * Took a translucent white `tint` before, which only works over a saturated
- * fill — over a deep wash it turns into an indistinct grey smear. It now takes a
- * whole tint tone and builds an opaque tile from it, so the two stats stay
- * legible and stay visibly *different from each other*.
+ * Takes its whole tone from `colors.heroStat` rather than reaching for a page
+ * token, because what is behind it is the hero, not the page. On dark that tone
+ * is an opaque hue (the two readouts stay distinguishable against a wash); on
+ * light it is translucent white over the saturated fill.
+ *
+ * The labels use `heroLabel` for the same reason — `textMuted` here was a grey
+ * chosen to sit on a white page, printed on green.
  */
 function MiniStat({
   label,
@@ -223,7 +226,7 @@ function MiniStat({
   label: string
   sublabel: string
   value: number
-  tone: { bg: string; border: string; text: string }
+  tone: Tint
 }) {
   const { colors } = useTheme()
 
@@ -245,7 +248,7 @@ function MiniStat({
           fontSize: 10,
           fontWeight: '800',
           letterSpacing: 1.1,
-          color: colors.textMuted,
+          color: colors.heroLabel,
         }}
       >
         {label}
@@ -254,7 +257,7 @@ function MiniStat({
         value={value}
         style={{ fontSize: 26, fontWeight: '800', color: tone.text, marginTop: 1 }}
       />
-      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textSubtle }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.heroLabel }}>
         {sublabel}
       </Text>
     </View>

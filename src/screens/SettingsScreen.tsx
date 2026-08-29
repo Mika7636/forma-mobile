@@ -55,6 +55,7 @@ import { SPACING, TYPE, cardStyle, onColor } from '../theme/tokens'
 import { sportVisual } from '../utils/sportMeta'
 import AppearanceSetting from '../components/settings/AppearanceSetting'
 import { useTheme } from '../theme/ThemeProvider'
+import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
 const LB_PER_KG = 2.20462
 const SAVE_DEBOUNCE_MS = 500
@@ -66,6 +67,8 @@ function pairKey(a: string, b: string): string {
 
 export default function SettingsScreen() {
   const { colors } = useTheme()
+  // Reserve room for the tab bar, which is drawn over the end of this list.
+  const tabPadding = useTabContentPadding()
 
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
   const user = useAuthStore((s) => s.user)
@@ -333,7 +336,7 @@ export default function SettingsScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ padding: SPACING.base, paddingBottom: 40 }}
+          contentContainerStyle={{ padding: SPACING.base, paddingBottom: tabPadding }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={

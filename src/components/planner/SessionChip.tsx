@@ -16,6 +16,7 @@ import { formatDistanceKm } from '../../utils/formatting'
 import { sportVisual } from '../../utils/sportMeta'
 import type { Session } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
+import { onColor } from '../../theme/tokens'
 
 /** How far the row rests open once the delete button is revealed. */
 const ACTION_WIDTH = 92
@@ -193,7 +194,7 @@ export default function SessionChip({
           style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
         >
           <Text style={{ fontSize: 18 }}>🗑️</Text>
-          <Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '800', marginTop: 2 }}>
+          <Text style={{ color: onColor(colors.danger), fontSize: 12, fontWeight: '800', marginTop: 2 }}>
             Delete
           </Text>
         </Pressable>

@@ -22,10 +22,21 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg'
  * hack.
  *
  * Geometry follows Feather's, which is a 24×24 grid with a 2px stroke — a
- * well-proportioned open-source set, and matching it keeps the five glyphs
+ * well-proportioned open-source set, and matching it keeps the glyphs
  * consistent with each other and with anything added later.
+ *
+ * It has since outgrown the tab bar — `more` is the overflow button on the
+ * workout summary and the session detail sheet — but the rule is unchanged:
+ * anywhere the UI wants an icon, it is drawn here rather than reached for as an
+ * emoji, so it can take a colour and hold its shape at small sizes.
  */
-export type TabIconName = 'activity' | 'plus' | 'calendar' | 'trending' | 'sliders'
+export type TabIconName =
+  | 'activity'
+  | 'plus'
+  | 'calendar'
+  | 'trending'
+  | 'sliders'
+  | 'more'
 
 interface TabIconProps {
   name: TabIconName
@@ -80,6 +91,17 @@ export default function TabIcon({ name, color, size = 24, focused = false }: Tab
         <>
           <Path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" {...common} />
           <Path d="M1 14h6M9 8h6M17 16h6" {...common} />
+        </>
+      ) : null}
+
+      {/* Feather's `more-vertical`. Filled rather than stroked: at r=1 a hollow
+          ring is mush on a 720p panel, and dots are the one glyph where the
+          shape carries no meaning beyond "there is a menu here". */}
+      {name === 'more' ? (
+        <>
+          <Circle cx={12} cy={5} r={1.6} fill={color} stroke="none" />
+          <Circle cx={12} cy={12} r={1.6} fill={color} stroke="none" />
+          <Circle cx={12} cy={19} r={1.6} fill={color} stroke="none" />
         </>
       ) : null}
     </Svg>

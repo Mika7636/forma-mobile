@@ -32,6 +32,7 @@ import type { Session } from '../types/session'
 import type { PlannerScreenProps } from '../navigation/types'
 import { RADIUS, SPACING } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
+import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
 /** Horizontal drag needed to commit a month change. */
 const SWIPE_THRESHOLD = 70
@@ -44,6 +45,8 @@ const YEAR = 12
 // and everything it opens is a sheet rendered in place.
 export default function PlannerScreen(_props: PlannerScreenProps) {
   const { colors } = useTheme()
+  // Reserve room for the tab bar, which is drawn over the end of this list.
+  const tabPadding = useTabContentPadding()
 
   const uid = useAuthStore((s) => s.user?.uid)
 
@@ -284,7 +287,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
             flexGrow: 1,
             paddingHorizontal: 8,
             paddingTop: 12,
-            paddingBottom: 24,
+            paddingBottom: tabPadding,
           }}
           showsVerticalScrollIndicator={false}
           refreshControl={

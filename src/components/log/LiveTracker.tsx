@@ -62,7 +62,9 @@ import {
 import type { Conflict } from '../../types/conflict'
 import type { RoutePoint, Session, SessionSplit, SportType } from '../../types/session'
 import type { MapRegion } from '../../utils/maps'
+import type { SportOption } from '../../constants/training'
 import { useTheme } from '../../theme/ThemeProvider'
+import { onColor } from '../../theme/tokens'
 
 /** Data handed back to LogScreen when the user saves a live-tracked session. */
 export interface LiveResult {
@@ -114,6 +116,9 @@ export interface LiveSnapshot {
 interface LiveTrackerProps {
   sport: SportType
   sportLabel: string
+  /** Passed through to the summary's overflow menu. See `WorkoutSummary`. */
+  sportOptions: SportOption[]
+  onSportChange: (value: SportType) => void
   weightKg?: number
   /** True while LogScreen is persisting the session — drives the Save spinner. */
   saving: boolean
@@ -192,6 +197,8 @@ function formatClock(totalSeconds: number): string {
 export default function LiveTracker({
   sport,
   sportLabel,
+  sportOptions,
+  onSportChange,
   weightKg,
   saving,
   saved = false,
@@ -978,6 +985,8 @@ export default function LiveTracker({
         <WorkoutSummary
           sport={sport}
           sportLabel={sportLabel}
+          sportOptions={sportOptions}
+          onSportChange={onSportChange}
           elapsedMs={elapsedSec * 1000}
           movingTimeMs={summaryMovingMs}
           distanceKm={(summaryFrozen?.distanceM ?? distanceM) / 1000}
@@ -1048,7 +1057,7 @@ function BackgroundPermissionView({
             marginTop: 10,
             fontSize: 20,
             fontWeight: '800',
-            color: colors.onAccent,
+            color: colors.text,
             textAlign: 'center',
           }}
         >
@@ -1141,7 +1150,7 @@ function ReadyView({
         <Text style={{ fontSize: 15, color: colors.textSubtle, letterSpacing: 1, fontWeight: '700' }}>
           LIVE TRACKING
         </Text>
-        <Text style={{ marginTop: 6, fontSize: 28, fontWeight: '800', color: colors.onAccent }}>
+        <Text style={{ marginTop: 6, fontSize: 28, fontWeight: '800', color: colors.text }}>
           {sportLabel}
         </Text>
 
@@ -1286,7 +1295,7 @@ function TrackingView({
         </Text>
         <Text
           style={{
-            color: colors.onAccent,
+            color: colors.text,
             fontSize: 56,
             fontWeight: '800',
             fontFamily: TIMER_FONT,
@@ -1446,7 +1455,7 @@ function Metric({
         {label}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 4 }}>
-        <Text style={{ color: colors.onAccent, fontSize: 30, fontWeight: '800', fontFamily: TIMER_FONT }}>
+        <Text style={{ color: colors.text, fontSize: 30, fontWeight: '800', fontFamily: TIMER_FONT }}>
           {value}
         </Text>
         <Text style={{ color: colors.textSubtle, fontSize: 13, fontWeight: '600', marginLeft: 4, marginBottom: 4 }}>
@@ -1492,7 +1501,7 @@ function ControlButton({
         opacity: pressed ? 0.85 : 1,
       }}
     >
-      <Text style={{ color: colors.onAccent, fontSize: 18, fontWeight: '800' }}>{label}</Text>
+      <Text style={{ color: onColor(color), fontSize: 18, fontWeight: '800' }}>{label}</Text>
     </Pressable>
   )
 }

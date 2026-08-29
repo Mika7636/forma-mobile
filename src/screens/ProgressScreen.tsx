@@ -21,6 +21,7 @@ import { haptics } from '../utils/haptics'
 import type { ProgressScreenProps } from '../navigation/types'
 import { SPACING, TYPE } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
+import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
 /** "Jun 2 – Aug 8" for the header subtitle. */
 function formatRange(start: Date, end: Date): string {
@@ -33,6 +34,8 @@ function formatRange(start: Date, end: Date): string {
 
 export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   const { colors } = useTheme()
+  // Reserve room for the tab bar, which is drawn over the end of this list.
+  const tabPadding = useTabContentPadding()
 
   const [weeks, setWeeks] = useState<RangeWeeks>(8)
   const { data, totalSessions, loading, refresh } = useProgressData(weeks)
@@ -60,7 +63,7 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <ThemedStatusBar />
       <ScrollView
-        contentContainerStyle={{ padding: SPACING.base, paddingBottom: 40, gap: SPACING.base }}
+        contentContainerStyle={{ padding: SPACING.base, paddingBottom: tabPadding, gap: SPACING.base }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} />
