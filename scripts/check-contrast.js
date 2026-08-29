@@ -355,6 +355,11 @@ function audit(name) {
     check('tint.' + n + '.text on tint.' + n + '.bg', t.text, t.bg, AA)
     check('tint.' + n + '.text on surface', t.text, color.surface, AA)
     check('tint.' + n + '.bg vs page', t.bg, color.bg, DISTINCT)
+    // Body copy lands on a tinted panel wherever one carries an explanation
+    // rather than just a label — the Progress verdict card, the conflict
+    // banner. Those greys were picked against the page, not against a hue.
+    check('textBody on tint.' + n, color.textBody, t.bg, AA)
+    check('textMuted on tint.' + n, color.textMuted, t.bg, AA)
   }
 
   // The whole interior of the Form Score card, against both gradient stops.

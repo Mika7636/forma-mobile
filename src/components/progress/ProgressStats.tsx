@@ -4,7 +4,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated'
 import { formatThousands } from '../../utils/formatting'
 import type { ProgressStatsData } from '../../utils/progressMetrics'
 import { useTheme } from '../../theme/ThemeProvider'
-
+import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 
 interface ProgressStatsProps {
   stats: ProgressStatsData
@@ -13,9 +13,16 @@ interface ProgressStatsProps {
 }
 
 /**
- * The 2×3 summary grid at the top of the Progress screen: totals for the
- * selected range plus the current-fitness trend. Mirrors the dashboard's
- * MetricGrid styling so the two screens feel like one product.
+ * The 2×3 summary grid at the top of the Progress screen.
+ *
+ * ## The labels
+ *
+ * These used to name the model: "avg form score", "current fitness (CTL)". Both
+ * are precise and neither is readable — Form is a term of art, and CTL is an
+ * acronym for a term of art. The numbers underneath are unchanged; only what
+ * they are called is. "Readiness" is what Form actually tells you, and "fitness
+ * trend" is what the CTL card was already showing, given it carries the change
+ * arrow alongside the value.
  */
 export default function ProgressStats({ stats, baseDelay = 40 }: ProgressStatsProps) {
   const { colors } = useTheme()
@@ -25,24 +32,24 @@ export default function ProgressStats({ stats, baseDelay = 40 }: ProgressStatsPr
   const trendUp = stats.ctlTrend >= 0
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md }}>
       <StatCard delay={baseDelay} icon="📋" label="sessions" value={String(stats.totalSessions)} />
       <StatCard
         delay={baseDelay + 40}
         icon="⚡"
-        label="total load (AU)"
+        label="total load"
         value={formatThousands(stats.totalLoad)}
       />
       <StatCard
         delay={baseDelay + 80}
         icon="🔥"
-        label="est. calories (kcal)"
+        label="calories burned"
         value={formatThousands(stats.totalCalories)}
       />
       <StatCard
         delay={baseDelay + 120}
         icon="🎯"
-        label="avg form score"
+        label="avg readiness"
         value={`${form > 0 ? '+' : ''}${form}`}
         valueColor={formColor}
       />
@@ -56,10 +63,16 @@ export default function ProgressStats({ stats, baseDelay = 40 }: ProgressStatsPr
       <StatCard
         delay={baseDelay + 200}
         icon="💪"
-        label="current fitness (CTL)"
+        label="fitness trend"
         value={String(stats.currentCTL)}
         trend={
-          <Text style={{ fontSize: 13, fontWeight: '800', color: trendUp ? colors.accentText : colors.dangerText }}>
+          <Text
+            style={{
+              fontSize: TYPE.small,
+              fontWeight: WEIGHT.heavy,
+              color: trendUp ? colors.accentText : colors.dangerText,
+            }}
+          >
             {trendUp ? '↑' : '↓'} {Math.abs(stats.ctlTrend)}
           </Text>
         }
@@ -95,7 +108,7 @@ function StatCard({
         flexBasis: '30%',
         flexGrow: 1,
         backgroundColor: colors.surface,
-        borderRadius: 16,
+        borderRadius: RADIUS.card,
         padding: 14,
         borderWidth: 1,
         borderColor: colors.border,
@@ -109,14 +122,32 @@ function StatCard({
       <Text style={{ fontSize: 17 }}>{icon}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 8 }}>
         <Text
-          numberOfLines={1}
-          style={{ fontSize: small ? 15 : 22, fontWeight: '800', color: valueColor, flexShrink: 1 }}
+          // Two lines, so "Combat Sports" is a sport rather than "Combat S...".
+          // These cards are a third of a phone wide and several of the values
+          // are multi-word.
+          numberOfLines={2}
+          style={{
+            fontSize: small ? TYPE.body : TYPE.heading,
+            lineHeight: small ? 18 : 26,
+            fontWeight: WEIGHT.heavy,
+            // `valueColor` is only passed for readiness. Without the fallback
+            // the rest inherited React Native's default ink — black — which was
+            // invisible on the dark theme.
+            color: valueColor ?? colors.text,
+            flexShrink: 1,
+          }}
         >
           {value}
         </Text>
       </View>
       {trend ? <View style={{ marginTop: 2 }}>{trend}</View> : null}
-      <Text style={{ marginTop: 3, fontSize: 11, color: colors.textSubtle }} numberOfLines={1}>
+      <Text
+        // Also two lines and a step smaller: at 11pt on a third-width card
+        // "calories burned" truncated mid-word, which reads as a layout fault
+        // rather than as a label.
+        numberOfLines={2}
+        style={{ marginTop: 3, fontSize: TYPE.caption, lineHeight: 14, color: colors.textSubtle }}
+      >
         {label}
       </Text>
     </Animated.View>

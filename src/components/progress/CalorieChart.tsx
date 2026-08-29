@@ -13,7 +13,7 @@ import Svg, {
 import ChartCard from './ChartCard'
 import { formatCompact, niceScale, smoothPath, type Point } from './chartUtils'
 import { formatThousands } from '../../utils/formatting'
-import type { WeeklyPoint } from '../../utils/progressMetrics'
+import type { LoadBucket } from '../../utils/progressMetrics'
 import { useTheme } from '../../theme/ThemeProvider'
 
 const PLOT_H = 178
@@ -23,39 +23,39 @@ const PAD_T = 14
 const PAD_B = 24
 
 interface CalorieChartProps {
-  weekly: WeeklyPoint[]
+  buckets: LoadBucket[]
   delay?: number
 }
 
 /**
- * Weekly calories burned as a smooth area with a fire-orange gradient. Tap or
- * drag to read a week's total.
+ * Calories burned as a smooth area with a fire-orange gradient, one point per
+ * bucket. Tap or drag to read a bucket's total.
  */
-export default function CalorieChart({ weekly, delay = 0 }: CalorieChartProps) {
+export default function CalorieChart({ buckets, delay = 0 }: CalorieChartProps) {
   return (
-    <ChartCard title="Est. Calories Burned" subtitle="Energy out, week by week" icon="🔥" delay={delay}>
-      {(width) => <CaloriePlot weekly={weekly} width={width} />}
+    <ChartCard title="Calories Burned" subtitle="Energy out over the period" icon="🔥" delay={delay}>
+      {(width) => <CaloriePlot buckets={buckets} width={width} />}
     </ChartCard>
   )
 }
 
-function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }) {
+function CaloriePlot({ buckets, width }: { buckets: LoadBucket[]; width: number }) {
   const { colors } = useTheme()
 
   const [active, setActive] = useState<number | null>(null)
 
-  const n = weekly.length
+  const n = buckets.length
   const plotW = width - PAD_L - PAD_R
   const plotH = PLOT_H - PAD_T - PAD_B
   const labelStep = n > 8 ? 2 : 1
 
   const geom = useMemo(() => {
-    const maxCal = weekly.reduce((m, w) => Math.max(m, w.calories), 0)
+    const maxCal = buckets.reduce((m, b) => Math.max(m, b.calories), 0)
     const scale = niceScale(0, maxCal, 4)
     const xAt = (i: number) => PAD_L + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW)
     const yAt = (v: number) =>
       PAD_T + plotH - ((v - scale.min) / (scale.max - scale.min || 1)) * plotH
-    const pts: Point[] = weekly.map((w, i) => ({ x: xAt(i), y: yAt(w.calories) }))
+    const pts: Point[] = buckets.map((b, i) => ({ x: xAt(i), y: yAt(b.calories) }))
     const yBase = yAt(scale.min)
     const area =
       pts.length > 0
@@ -64,7 +64,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
           )} ${yBase.toFixed(2)} Z`
         : ''
     return { scale, xAt, yAt, pts, area, yBase }
-  }, [weekly, n, plotW, plotH])
+  }, [buckets, n, plotW, plotH])
 
   if (n < 2) {
     return (
@@ -80,7 +80,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
     setActive(Math.max(0, Math.min(n - 1, idx)))
   }
 
-  const activePoint = active != null ? weekly[active] : null
+  const activePoint = active != null ? buckets[active] : null
 
   return (
     <View
@@ -114,17 +114,17 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
         <Path d={geom.area} fill="url(#calFill)" />
         <Path d={smoothPath(geom.pts)} stroke={colors.palette.orange} strokeWidth={2.5} fill="none" />
 
-        {weekly.map((w, i) =>
+        {buckets.map((b, i) =>
           i % labelStep === 0 ? (
             <SvgText
-              key={w.weekStartISO}
+              key={b.key}
               x={geom.xAt(i)}
               y={PLOT_H - 7}
               fontSize={9}
               fill={colors.textMuted}
               textAnchor="middle"
             >
-              {w.weekLabel}
+              {b.tick}
             </SvgText>
           ) : null,
         )}
@@ -158,7 +158,7 @@ function CaloriePlot({ weekly, width }: { weekly: WeeklyPoint[]; width: number }
   )
 }
 
-function Tooltip({ point, x, width }: { point: WeeklyPoint; x: number; width: number }) {
+function Tooltip({ point, x, width }: { point: LoadBucket; x: number; width: number }) {
   const { colors } = useTheme()
 
   const BUBBLE_W = 140
@@ -184,7 +184,7 @@ function Tooltip({ point, x, width }: { point: WeeklyPoint; x: number; width: nu
       }}
     >
       <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
-        {point.weekLabel} · {point.rangeLabel}
+        {point.label}
       </Text>
       <Text style={{ color: colors.palette.orange, fontSize: 12, fontWeight: '700' }}>
         🔥 {formatThousands(point.calories)} kcal
