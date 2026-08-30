@@ -31,8 +31,11 @@ interface ConsistencyHeatmapProps {
 export default function ConsistencyHeatmap({ heatmap, delay = 0 }: ConsistencyHeatmapProps) {
   return (
     <ChartCard
-      title="Training Consistency"
-      subtitle="Darker = harder days"
+      // Named for the *shape* it draws, not for what it measures. "Training
+      // Consistency" is now the streak section above it, and two cards under
+      // one name is two cards nobody can refer to.
+      title="Training Calendar"
+      subtitle="One square per day · darker = harder"
       delay={delay}
       legend={<Scale />}
     >

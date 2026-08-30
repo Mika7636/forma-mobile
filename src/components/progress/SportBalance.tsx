@@ -1,55 +1,47 @@
 import { useMemo } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
+import TabIcon from '../ui/TabIcon'
 import { formatThousands } from '../../utils/formatting'
 import { sportVisual } from '../../utils/sportMeta'
-import { conflictSportsLabel } from '../../utils/conflictInfo'
-import { severityStyle } from '../../constants/conflictColors'
 import type { SportPoint } from '../../utils/progressMetrics'
-import type { Conflict } from '../../types/conflict'
 import { useTheme } from '../../theme/ThemeProvider'
 import { RADIUS, SPACING, TYPE, WEIGHT, cardStyle } from '../../theme/tokens'
 
 /** Segments thinner than this are unreadable, so they are pooled into "Other". */
-const MIN_SHARE = 4
+const MIN_SHARE = 5
+
+/** Above this, one sport *is* the training plan — and that is worth saying. */
+const CONCENTRATION_LIMIT = 60
+
+const BAR_H = 26
 
 interface SportBalanceProps {
   sports: SportPoint[]
-  /** Conflicts detected inside the visible range, most recent first. */
-  conflicts: Conflict[]
-  /** Opens the shared conflict detail sheet. */
-  onOpenConflict: (conflicts: Conflict[]) => void
   delay?: number
 }
 
 /**
  * Where the training actually went, by sport.
  *
- * This is the section FORMA has that a running app does not. Every other chart
- * on this screen answers "how much"; this one answers "how much of *what*", and
- * it is the input to the only advice the app gives that an athlete cannot get
- * from a watch — that two of their sports are competing for the same recovery.
- * So it gets a stacked bar they can read in one glance, a sentence that says the
- * thing out loud, and a direct route into the conflict that follows from it.
+ * This is the section FORMA has that a running app does not, so it is built as
+ * the screen's second hero rather than as a footnote to the load chart. Every
+ * other chart here answers "how much"; this one answers "how much of *what*",
+ * and it is the input to the only advice the app gives that an athlete cannot
+ * get from a watch — that two of their sports are competing for the same
+ * recovery.
+ *
+ * The conflict that follows from it used to hang off the bottom of this card.
+ * It now has its own section underneath (see `ConflictTimeline`), because a
+ * flagged pairing is a finding with a *when* and this card has no time axis to
+ * put it on.
  */
-export default function SportBalance({
-  sports,
-  conflicts,
-  onOpenConflict,
-  delay = 0,
-}: SportBalanceProps) {
+export default function SportBalance({ sports, delay = 0 }: SportBalanceProps) {
   const { colors } = useTheme()
 
   const total = sports.reduce((sum, s) => sum + s.load, 0)
-
   const insight = useMemo(() => buildInsight(sports), [sports])
-
-  // The most serious conflict wins the slot: with two flagged pairings, the one
-  // that could injure someone is the one worth the athlete's attention.
-  const headline = useMemo(() => {
-    if (conflicts.length === 0) return null
-    return [...conflicts].sort((a, b) => severityRank(b) - severityRank(a))[0]
-  }, [conflicts])
+  const concentrated = sports.length > 1 && (sports[0]?.share ?? 0) > CONCENTRATION_LIMIT
 
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(360)} style={cardStyle(colors)}>
@@ -68,7 +60,7 @@ export default function SportBalance({
         <>
           <StackedBar sports={sports} />
 
-          <View style={{ marginTop: SPACING.base, gap: 10 }}>
+          <View style={{ marginTop: SPACING.base, gap: 12 }}>
             {sports.map((sport) => (
               <SportRow key={sport.sport} sport={sport} />
             ))}
@@ -80,24 +72,19 @@ export default function SportBalance({
                 marginTop: SPACING.base,
                 fontSize: TYPE.small,
                 lineHeight: 19,
-                color: colors.textBody,
+                fontWeight: WEIGHT.semibold,
+                color: colors.accentText,
               }}
             >
               {insight}
             </Text>
           ) : null}
 
-          {headline ? (
-            <ConflictRow conflict={headline} onPress={() => onOpenConflict(conflicts)} />
-          ) : null}
+          {concentrated ? <ConcentrationNote /> : null}
         </>
       )}
     </Animated.View>
   )
-}
-
-function severityRank(conflict: Conflict): number {
-  return conflict.severity === 'danger' ? 1 : 0
 }
 
 /**
@@ -121,21 +108,29 @@ function buildInsight(sports: SportPoint[]): string | null {
   return `Your load is spread across ${sports.length} sports, led by ${top[0].label} at ${top[0].share}%.`
 }
 
-/** The horizontal stack — one segment per sport, in that sport's own colour. */
+/**
+ * The horizontal stack — one segment per sport, in that sport's own colour.
+ *
+ * Rounded on its outer corners only, so it reads as a single object that has
+ * been divided rather than as a row of tiles that happen to be touching. That is
+ * the difference between "this is my training" and "these are my sports".
+ */
 function StackedBar({ sports }: { sports: SportPoint[] }) {
   const { colors } = useTheme()
 
-  // Sub-4% slivers become a single neutral tail rather than a row of 1px
+  // Sub-5% slivers become a single neutral tail rather than a row of 1px
   // stripes that read as rendering noise.
   const shown = sports.filter((s) => s.share >= MIN_SHARE)
   const remainder = 100 - shown.reduce((sum, s) => sum + s.share, 0)
 
   return (
     <View
+      accessibilityRole="image"
+      accessibilityLabel={shown.map((s) => `${s.label} ${s.share} percent`).join(', ')}
       style={{
         flexDirection: 'row',
-        height: 22,
-        borderRadius: RADIUS.xs,
+        height: BAR_H,
+        borderRadius: RADIUS.sm,
         overflow: 'hidden',
         marginTop: SPACING.base,
         backgroundColor: colors.surfaceAlt,
@@ -144,10 +139,7 @@ function StackedBar({ sports }: { sports: SportPoint[] }) {
       {shown.map((sport) => (
         <View
           key={sport.sport}
-          style={{
-            flex: sport.share,
-            backgroundColor: sportVisual(sport.sport, colors).color,
-          }}
+          style={{ flex: sport.share, backgroundColor: sportVisual(sport.sport, colors).color }}
         />
       ))}
       {remainder > 0.5 ? (
@@ -157,7 +149,7 @@ function StackedBar({ sports }: { sports: SportPoint[] }) {
   )
 }
 
-/** One labelled row: icon, sport, its share, and the raw load behind it. */
+/** One legend row: colour dot, sport, the raw load behind it, and its share. */
 function SportRow({ sport }: { sport: SportPoint }) {
   const { colors } = useTheme()
   const color = sportVisual(sport.sport, colors).color
@@ -165,16 +157,15 @@ function SportRow({ sport }: { sport: SportPoint }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <View
-        style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: color, marginRight: 10 }}
+        style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color, marginRight: 10 }}
       />
-      <Text style={{ fontSize: TYPE.bodyLg, marginRight: 6 }}>{sport.icon}</Text>
       <Text
         numberOfLines={1}
         style={{ flex: 1, fontSize: TYPE.body, fontWeight: WEIGHT.semibold, color: colors.text }}
       >
         {sport.label}
       </Text>
-      <Text style={{ fontSize: TYPE.micro, color: colors.textSubtle, marginRight: 10 }}>
+      <Text style={{ fontSize: TYPE.micro, color: colors.textSubtle, marginRight: 12 }}>
         {formatThousands(sport.load)} AU
       </Text>
       <Text
@@ -193,43 +184,36 @@ function SportRow({ sport }: { sport: SportPoint }) {
 }
 
 /**
- * The bridge from "these two sports dominate" to "and here is why that matters".
+ * The warning that follows from a lopsided bar.
  *
- * Only rendered when the conflict engine actually flagged a pairing inside this
- * period, so it is never speculative — it is the coach's own finding, shown
- * where the athlete is already looking at the sports involved.
+ * Not a conflict — the detector has not flagged anything here — but the same
+ * kind of fact: a single sport carrying two thirds of the load means one tissue
+ * group is absorbing nearly all of it, and that is the shape injuries come from.
+ * Warn-tinted rather than danger, because it is a suggestion and not a finding.
  */
-function ConflictRow({ conflict, onPress }: { conflict: Conflict; onPress: () => void }) {
+function ConcentrationNote() {
   const { colors } = useTheme()
-  const style = severityStyle(conflict.severity, colors)
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Conflict detected: ${conflictSportsLabel(conflict)}. Open details.`}
+    <View
       style={{
-        marginTop: SPACING.base,
+        marginTop: SPACING.md,
         flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: style.softBg,
+        alignItems: 'flex-start',
+        backgroundColor: colors.tint.amber.bg,
         borderWidth: 1,
-        borderColor: style.softBorder,
+        borderColor: colors.tint.amber.border,
         borderRadius: RADIUS.md,
         paddingVertical: 10,
         paddingHorizontal: 12,
       }}
     >
-      <Text style={{ fontSize: TYPE.bodyLg, marginRight: 8 }}>{style.icon}</Text>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: style.deep }}>
-          {conflictSportsLabel(conflict)}
-        </Text>
-        <Text style={{ marginTop: 1, fontSize: TYPE.micro, color: colors.textBody }}>
-          FORMA flagged this pairing in this period
-        </Text>
+      <View style={{ marginRight: 9, paddingTop: 1 }}>
+        <TabIcon name="alert-triangle" size={16} color={colors.warn} focused />
       </View>
-      <Text style={{ fontSize: TYPE.subtitle, color: style.deep, marginLeft: 8 }}>›</Text>
-    </Pressable>
+      <Text style={{ flex: 1, fontSize: TYPE.micro, lineHeight: 17, color: colors.textBody }}>
+        Most of your load comes from one sport — cross-training could reduce injury risk.
+      </Text>
+    </View>
   )
 }

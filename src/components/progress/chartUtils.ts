@@ -59,6 +59,47 @@ export function niceScale(min: number, max: number, maxTicks = 5): Scale {
 }
 
 /**
+ * An axis that ends just above the data rather than at the next round number.
+ *
+ * {@link niceScale} rounds the *domain* up, which is right for a line chart that
+ * should breathe but wrong for a bar chart: a 3,100 AU peak became a 4,000 AU
+ * ceiling, so the tallest bar filled 78% of the frame and a typical one filled a
+ * tenth of it. The chart was mostly empty plot.
+ *
+ * Here the ceiling is exactly `max × headroom` — the tallest bar always reaches
+ * ~87% of the plot height — and only the *gridlines* are rounded, placed at a
+ * nice step and stopping below the ceiling. The axis therefore fits the window
+ * it is drawn for, and re-fits when the window changes.
+ */
+export function paddedScale(max: number, headroom = 1.15, targetTicks = 4): Scale {
+  const top = Number.isFinite(max) && max > 0 ? max * headroom : 1
+  const step = niceNum(top / Math.max(1, targetTicks), true)
+  const ticks: number[] = []
+  // `1e-9` guards the float drift that otherwise drops the last gridline when
+  // the step divides the ceiling exactly.
+  for (let v = 0; v <= top + 1e-9; v += step) ticks.push(Math.round(v * 1000) / 1000)
+  return { min: 0, max: top, ticks }
+}
+
+/**
+ * At most `count` indices spread evenly over `0..n-1`, always including both
+ * ends.
+ *
+ * For axis ticks. Labelling every bucket is what produced "Aug 10Aug 17" — a
+ * twelve-week axis has room for about five dates, whatever the data says, so the
+ * count is fixed by the frame and the labels are sampled to fit it.
+ */
+export function sampleIndices(n: number, count: number): number[] {
+  if (n <= 0) return []
+  if (n <= count) return Array.from({ length: n }, (_, i) => i)
+  const picked = new Set<number>()
+  for (let i = 0; i < count; i++) {
+    picked.add(Math.round((i * (n - 1)) / (count - 1)))
+  }
+  return Array.from(picked).sort((a, b) => a - b)
+}
+
+/**
  * A smooth SVG path through `points` using a Catmull-Rom → cubic-Bézier
  * conversion (tension 1/6). Endpoints are duplicated so the curve doesn't
  * overshoot at the edges. Returns an empty string for no points.

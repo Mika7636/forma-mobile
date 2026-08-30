@@ -1,12 +1,13 @@
 // Progress Analytics.
 //
 // The screen leads with one question — "am I training about the right amount?"
-// — answered in a sentence, then as bars against the range the athlete's
-// current fitness supports. Sport Balance follows, because "which sports is
-// this load coming from" is the question only FORMA can answer. The CTL/ATL/Form
-// model still runs underneath all of it (conflict detection reads the same
-// numbers); it is simply no longer what the athlete is asked to read. It lives
-// verbatim in the Advanced expander at the foot of the page.
+// — answered in a sentence, then as a compact row of the period's numbers, then
+// as bars against the range the athlete's current fitness supports. Under the
+// chart come the two sections a running app structurally cannot show: which
+// sports the load came from, and how many weeks in a row the *amount* was right.
+// The CTL/ATL/Form model still runs underneath all of it (conflict detection
+// reads the same numbers); it is simply no longer what the athlete is asked to
+// read. It lives verbatim in the Advanced expander at the foot of the page.
 import { useCallback, useMemo, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -14,12 +15,14 @@ import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import AdvancedSection from '../components/progress/AdvancedSection'
 import CalorieChart from '../components/progress/CalorieChart'
 import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
+import ConflictTimeline from '../components/progress/ConflictTimeline'
 import ConsistencyHeatmap from '../components/progress/ConsistencyHeatmap'
 import FitnessChart from '../components/progress/FitnessChart'
 import GranularitySelector from '../components/progress/GranularitySelector'
 import ProgressSkeleton from '../components/progress/ProgressSkeleton'
 import ProgressStats from '../components/progress/ProgressStats'
 import SportBalance from '../components/progress/SportBalance'
+import TrainingConsistency from '../components/progress/TrainingConsistency'
 import TrainingLoadChart, { LoadVerdictHeader } from '../components/progress/TrainingLoadChart'
 import EmptyState from '../components/ui/EmptyState'
 import { useConflictHistory } from '../hooks/useConflictHistory'
@@ -59,17 +62,18 @@ function formatRange(start: Date, end: Date): string {
 
 export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   const { colors } = useTheme()
-  // Reserve room for the tab bar, which is drawn over the end of this list.
+  // Reserve room for the tab bar, which is drawn over the end of this list —
+  // tab-bar height plus the gesture-bar inset, plus the page's own end margin.
   const tabPadding = useTabContentPadding()
 
   const [granularity, setGranularity] = useState<Granularity>('weekly')
   const { data, totalSessions, loading, refresh } = useProgressData(granularity)
   const [refreshing, setRefreshing] = useState(false)
 
-  // Sport Balance links straight into the conflict that a sport pairing caused,
-  // so it needs the full history (resolved included) rather than the dashboard's
-  // unresolved-only feed — a conflict from six weeks ago is still the reason
-  // those two sports are worth looking at together.
+  // The conflict timeline links straight into the conflict that a sport pairing
+  // caused, so it needs the full history (resolved included) rather than the
+  // dashboard's unresolved-only feed — a conflict from six weeks ago is still
+  // the reason those two sports are worth looking at together.
   const { conflicts: allConflicts } = useConflictHistory()
   const { sessions } = useSessionHistory()
   const [openConflicts, setOpenConflicts] = useState<Conflict[] | null>(null)
@@ -140,26 +144,35 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
           <>
             <LoadVerdictHeader verdict={data.verdict} />
 
+            {/* The period's figures, unboxed, directly above the chart they
+                summarise — so the eye lands on the numbers and then on the
+                shape they came in. */}
+            <ProgressStats stats={data.stats} baseDelay={40} />
+
             <TrainingLoadChart
               buckets={data.buckets}
               band={data.band}
               verdict={data.verdict}
               granularity={granularity}
               rangeLabel={rangeLabel}
-              delay={60}
-            />
-
-            <SportBalance
-              sports={data.sports}
-              conflicts={rangeConflicts}
-              onOpenConflict={setOpenConflicts}
               delay={100}
             />
 
-            <ProgressStats stats={data.stats} baseDelay={140} />
+            <SportBalance sports={data.sports} delay={140} />
 
-            <CalorieChart buckets={data.buckets} delay={200} />
-            <ConsistencyHeatmap heatmap={data.heatmap} delay={240} />
+            {/* Only present when the engine actually flagged something in this
+                period; renders nothing otherwise. */}
+            <ConflictTimeline
+              buckets={data.buckets}
+              conflicts={rangeConflicts}
+              onOpenConflict={setOpenConflicts}
+              delay={180}
+            />
+
+            <TrainingConsistency consistency={data.consistency} delay={220} />
+
+            <CalorieChart buckets={data.buckets} delay={260} />
+            <ConsistencyHeatmap heatmap={data.heatmap} delay={300} />
 
             <AdvancedSection
               title="Advanced — training model"
@@ -201,7 +214,7 @@ function ProgressLockedGuard({
       <ThemedStatusBar />
       <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
         <EmptyState
-          emoji="📈"
+          icon="trending"
           title="Keep logging!"
           message={`Progress charts unlock after ${target} sessions, once there's enough history to show a meaningful trend.`}
           progress={{

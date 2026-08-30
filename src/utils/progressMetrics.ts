@@ -106,6 +106,17 @@ export interface LoadBucket {
   startISO: string
   /** Axis tick, e.g. "23" (daily), "Jun 23" (weekly), "Aug" (monthly). */
   tick: string
+  /**
+   * The shortest form of {@link tick} that still identifies the bucket: a
+   * weekday initial for a day, the tick itself otherwise.
+   *
+   * The load chart's axis has room for about five labels across a phone, and
+   * for the fourteen-day view the only label that fits at all is one character.
+   * Derived here rather than in the chart because it needs the bucket's `Date`,
+   * and re-parsing `startISO` in the view would shift the day by one in every
+   * timezone west of UTC.
+   */
+  tickShort: string
   /** Tooltip heading, e.g. "Mon, Jun 23", "Jun 23 – 29", "August 2026". */
   label: string
   load: number
@@ -177,6 +188,38 @@ export interface HeatmapWeek {
   days: (HeatmapDay | null)[]
 }
 
+/** One column of the Training Consistency dot grid. */
+export interface ConsistencyWeek {
+  weekStartISO: string
+  /** Short label for accessibility, e.g. "Aug 24". */
+  label: string
+  load: number
+  /**
+   * Where the week landed against the sustainable range, or `null` while it is
+   * still running and has not reached the floor — a Tuesday is not a week that
+   * came in light.
+   */
+  standing: BucketStanding | null
+  /** True for the week in progress, which the grid rings rather than fills. */
+  current: boolean
+}
+
+/**
+ * Training Consistency: how many weeks in a row the athlete put in an amount
+ * their fitness could absorb.
+ *
+ * The distinction from a streak counter is the whole point of the section. A
+ * streak asks whether you turned up; this asks whether the amount was right, so
+ * a week of three sensible sessions extends it and a week of one enormous one
+ * does not.
+ */
+export interface ConsistencyData {
+  /** The last {@link CONSISTENCY_WEEKS} weeks, oldest → newest. */
+  weeks: ConsistencyWeek[]
+  /** Consecutive weeks, counting back from now, that landed inside the range. */
+  streak: number
+}
+
 export interface ProgressStatsData {
   totalSessions: number
   totalLoad: number
@@ -199,8 +242,12 @@ export interface ProgressData {
   verdict: LoadVerdict
   sports: SportPoint[]
   heatmap: HeatmapWeek[]
+  consistency: ConsistencyData
   stats: ProgressStatsData
 }
+
+/** Weeks in the Training Consistency dot grid. A quarter, at a glance. */
+export const CONSISTENCY_WEEKS = 12
 
 /** Fixed AU thresholds for the heatmap's four intensity bands (see spec). */
 const HEAT_LIGHT = 200
@@ -309,19 +356,33 @@ function bucketIndexOf(granularity: Granularity, rangeStart: Date, date: Date): 
   return index >= 0 && index < count ? index : -1
 }
 
-function labelsFor(granularity: Granularity, edge: BucketEdge): { tick: string; label: string } {
+/** Mon→Sun initials, indexed by `Date.getDay()` (which starts on Sunday). */
+const WEEKDAY_INITIAL = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+
+function labelsFor(
+  granularity: Granularity,
+  edge: BucketEdge,
+): { tick: string; tickShort: string; label: string } {
   if (granularity === 'daily') {
-    return { tick: String(edge.start.getDate()), label: tooltipDate(edge.start) }
+    return {
+      tick: String(edge.start.getDate()),
+      tickShort: WEEKDAY_INITIAL[edge.start.getDay()],
+      label: tooltipDate(edge.start),
+    }
   }
   if (granularity === 'weekly') {
     const last = addDays(edge.endExclusive, -1)
+    const tick = shortDate(edge.start)
     return {
-      tick: shortDate(edge.start),
+      tick,
+      tickShort: tick,
       label: `${shortDate(edge.start)} – ${last.toLocaleDateString(undefined, { day: 'numeric' })}`,
     }
   }
+  const tick = edge.start.toLocaleDateString(undefined, { month: 'short' })
   return {
-    tick: edge.start.toLocaleDateString(undefined, { month: 'short' }),
+    tick,
+    tickShort: tick,
     label: edge.start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
   }
 }
@@ -342,7 +403,7 @@ function verdictFor(buckets: LoadBucket[], band: LoadBand | null): LoadVerdict {
     return {
       tone: 'unknown',
       headline: 'Still learning your range',
-      detail: 'Log a few more sessions and FORMA can tell you how this period compares.',
+      detail: 'Log a few more sessions and FORMA can place this period against your range.',
     }
   }
 
@@ -353,14 +414,14 @@ function verdictFor(buckets: LoadBucket[], band: LoadBand | null): LoadVerdict {
     return {
       tone,
       headline: "You're ramping up fast",
-      detail: 'Recent training is heavier than your current fitness comfortably absorbs — watch for lingering fatigue.',
+      detail: 'Recent training is heavier than your fitness comfortably absorbs — watch for lingering fatigue.',
     }
   }
   if (tone === 'below') {
     return {
       tone,
       headline: "You're easing off",
-      detail: 'Recent training is lighter than your current fitness supports. Fine for recovery, but fitness drifts down if it lasts.',
+      detail: 'Recent training is lighter than your fitness supports — fine for recovery, costly if it lasts.',
     }
   }
   return {
@@ -483,11 +544,12 @@ export function computeProgress(
     // stricter test marked *today* complete and drew the daily view's last bar
     // at full weight as though the day were over.
     const partial = edge.endExclusive > today
-    const { tick, label } = labelsFor(granularity, edge)
+    const { tick, tickShort, label } = labelsFor(granularity, edge)
     return {
       key: localISODate(edge.start),
       startISO: localISODate(edge.start),
       tick,
+      tickShort,
       label,
       load: acc[i].load,
       sessions: acc[i].sessions,
@@ -551,6 +613,62 @@ export function computeProgress(
     heatmap.push({ weekStartISO: localISODate(weekStart), days: cells })
   }
 
+  // ---- Training consistency (always weekly, whatever the granularity) ----
+  //
+  // Deliberately independent of the selected grain: "how many weeks in a row
+  // did I get the amount right" is one question with one answer, and having it
+  // change meaning when the athlete switches the chart to Monthly would make it
+  // a second reading of the chart rather than a fact about their training. The
+  // band is therefore always the *weekly* one, and the window is always the
+  // last twelve weeks — which reaches further back than the daily view's range,
+  // so it is built from `loadByDay` rather than from the dense `loads` array.
+  const weeklyBand: LoadBand | null =
+    currentCTL > 0
+      ? {
+          low: Math.round(currentCTL * BAND_LOW * 7),
+          high: Math.round(currentCTL * BAND_HIGH * 7),
+          ctl: currentCTL,
+        }
+      : null
+  const thisWeekStart = startOfWeek(today)
+  const consistencyWeeks: ConsistencyWeek[] = []
+  for (let i = CONSISTENCY_WEEKS - 1; i >= 0; i--) {
+    const weekStart = addDays(thisWeekStart, -i * 7)
+    let load = 0
+    for (let d = 0; d < 7; d++) {
+      const day = addDays(weekStart, d)
+      if (day > today) break
+      load += loadByDay.get(localISODate(day)) ?? 0
+    }
+    const current = i === 0
+    const standing = classify(load, weeklyBand)
+    consistencyWeeks.push({
+      weekStartISO: localISODate(weekStart),
+      label: shortDate(weekStart),
+      load,
+      // A running week that has not yet reached the floor is unjudged, not
+      // "below": on a Tuesday every week is below its own weekly range.
+      standing: current && standing === 'below' ? null : standing,
+      current,
+    })
+  }
+
+  // Counted from now backwards. The week in progress extends the streak only
+  // once it has actually landed inside the range; if it has already overshot it
+  // breaks the streak, because load only accumulates and it cannot come back.
+  let streak = 0
+  for (let i = consistencyWeeks.length - 1; i >= 0; i--) {
+    const week = consistencyWeeks[i]
+    if (week.standing === 'inside') {
+      streak++
+      continue
+    }
+    if (week.current && week.standing === null) continue // not yet decided
+    break
+  }
+
+  const consistency: ConsistencyData = { weeks: consistencyWeeks, streak }
+
   // ---- Summary stats ----
   const totalCalories = inRange.reduce((sum, s) => sum + (s.estimatedCalories ?? 0), 0)
   const avgForm = daily.length
@@ -578,6 +696,7 @@ export function computeProgress(
     verdict,
     sports,
     heatmap,
+    consistency,
     stats,
   }
 }

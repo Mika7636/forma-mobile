@@ -13,13 +13,25 @@ function ChartSkeleton({ height }: { height: number }) {
   )
 }
 
+/** One borderless stat column: the figure, then its label. */
+function StatSkeleton() {
+  return (
+    <View style={{ flex: 1, paddingRight: SPACING.sm }}>
+      <Skeleton width="60%" height={22} />
+      <Skeleton width="80%" height={9} style={{ marginTop: 10 }} />
+    </View>
+  )
+}
+
 /**
  * First-load placeholder while `computeProgress` and the first Firestore snapshot
  * settle.
  *
- * Mirrors the real screen's stack in order — verdict, load chart, sport balance,
- * stats grid, then the shorter charts — so unlocking to live data doesn't reflow
- * the page under the reader's thumb.
+ * Mirrors the real screen's stack in order — verdict, the two stat rows, the
+ * load chart, sport balance, consistency, then the shorter charts — so unlocking
+ * to live data doesn't reflow the page under the reader's thumb. The conflict
+ * timeline has no placeholder on purpose: it is absent far more often than not,
+ * and a block that usually resolves to nothing is a page that jumps.
  */
 export default function ProgressSkeleton() {
   return (
@@ -30,33 +42,51 @@ export default function ProgressSkeleton() {
         <Skeleton width="90%" height={12} style={{ marginTop: SPACING.md }} />
       </SkeletonCard>
 
-      {/* Training load, with room for its three-line legend */}
+      {/* The two borderless stat rows, with their divider */}
+      <View>
+        <View style={{ flexDirection: 'row' }}>
+          <StatSkeleton />
+          <StatSkeleton />
+          <StatSkeleton />
+        </View>
+        <Skeleton height={1} style={{ marginVertical: SPACING.base }} />
+        <View style={{ flexDirection: 'row' }}>
+          <StatSkeleton />
+          <StatSkeleton />
+          <StatSkeleton />
+        </View>
+      </View>
+
+      {/* Training load: title, one-line legend, then the 200pt plot */}
       <SkeletonCard>
         <Skeleton width="45%" height={16} />
         <Skeleton width="70%" height={10} style={{ marginTop: SPACING.sm }} />
-        <Skeleton width="80%" height={44} style={{ marginTop: SPACING.md }} />
-        <Skeleton height={200} radius={RADIUS.md} style={{ marginTop: SPACING.base }} />
+        <Skeleton width="55%" height={12} style={{ marginTop: SPACING.md }} />
+        <Skeleton height={236} radius={RADIUS.md} style={{ marginTop: SPACING.base }} />
       </SkeletonCard>
 
       {/* Sport balance: the stacked bar plus a few sport rows */}
       <SkeletonCard>
         <Skeleton width="40%" height={16} />
-        <Skeleton height={22} radius={RADIUS.xs} style={{ marginTop: SPACING.base }} />
+        <Skeleton height={26} radius={RADIUS.sm} style={{ marginTop: SPACING.base }} />
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} width="85%" height={12} style={{ marginTop: SPACING.md }} />
         ))}
       </SkeletonCard>
 
-      {/* Stats grid */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md }}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <SkeletonCard key={i} style={{ flexBasis: '30%', flexGrow: 1 }}>
-            <Skeleton width={26} height={26} />
-            <Skeleton width="70%" height={22} style={{ marginTop: 10 }} />
-            <Skeleton width="50%" height={10} style={{ marginTop: SPACING.sm }} />
-          </SkeletonCard>
-        ))}
-      </View>
+      {/* Training consistency: the big numeral beside the dot grid */}
+      <SkeletonCard>
+        <Skeleton width="45%" height={16} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.base }}>
+          <View style={{ width: 92 }}>
+            <Skeleton width={54} height={44} />
+            <Skeleton width={76} height={9} style={{ marginTop: SPACING.sm }} />
+          </View>
+          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+            <Skeleton width={168} height={51} radius={RADIUS.xs} />
+          </View>
+        </View>
+      </SkeletonCard>
 
       <ChartSkeleton height={150} />
       <ChartSkeleton height={150} />

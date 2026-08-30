@@ -33,7 +33,7 @@ interface CalorieChartProps {
  */
 export default function CalorieChart({ buckets, delay = 0 }: CalorieChartProps) {
   return (
-    <ChartCard title="Calories Burned" subtitle="Energy out over the period" icon="🔥" delay={delay}>
+    <ChartCard title="Calories Burned" subtitle="Energy out over the period" delay={delay}>
       {(width) => <CaloriePlot buckets={buckets} width={width} />}
     </ChartCard>
   )
@@ -187,7 +187,7 @@ function Tooltip({ point, x, width }: { point: LoadBucket; x: number; width: num
         {point.label}
       </Text>
       <Text style={{ color: colors.palette.orange, fontSize: 12, fontWeight: '700' }}>
-        🔥 {formatThousands(point.calories)} kcal
+        {formatThousands(point.calories)} kcal
       </Text>
     </View>
   )

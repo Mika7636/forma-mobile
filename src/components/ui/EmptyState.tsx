@@ -9,6 +9,7 @@
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import PrimaryButton from './PrimaryButton'
+import TabIcon, { type TabIconName } from './TabIcon'
 import { MOTION, RADIUS, SPACING, TYPE } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
@@ -22,7 +23,16 @@ export interface EmptyStateProgress {
 }
 
 interface EmptyStateProps {
-  emoji: string
+  /**
+   * A drawn glyph in the disc, in the accent colour.
+   *
+   * Preferred over {@link emoji} on any screen that has sworn off emoji: unlike
+   * an OS-supplied bitmap this takes the theme's ink, so the disc and its
+   * contents are one object rather than a full-colour sticker sitting in a
+   * tinted circle. Takes precedence when both are given.
+   */
+  icon?: TabIconName
+  emoji?: string
   title: string
   message: string
   actionLabel?: string
@@ -39,6 +49,7 @@ interface EmptyStateProps {
 }
 
 export default function EmptyState({
+  icon,
   emoji,
   title,
   message,
@@ -83,7 +94,11 @@ export default function EmptyState({
           justifyContent: 'center',
         }}
       >
-        <Text style={{ fontSize: quiet ? 26 : 40 }}>{emoji}</Text>
+        {icon ? (
+          <TabIcon name={icon} size={quiet ? 26 : 38} color={colors.accentText} focused />
+        ) : (
+          <Text style={{ fontSize: quiet ? 26 : 40 }}>{emoji}</Text>
+        )}
       </View>
 
       <Text

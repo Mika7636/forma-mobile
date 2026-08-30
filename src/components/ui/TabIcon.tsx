@@ -26,7 +26,9 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg'
  * consistent with each other and with anything added later.
  *
  * It has since outgrown the tab bar — `more` is the overflow button on the
- * workout summary and the session detail sheet — but the rule is unchanged:
+ * workout summary and the session detail sheet, and `info` / `alert-triangle` /
+ * `check-circle` / `trending-down` / `chevron-right` carry the Progress screen's
+ * state cues where it used to reach for emoji — but the rule is unchanged:
  * anywhere the UI wants an icon, it is drawn here rather than reached for as an
  * emoji, so it can take a colour and hold its shape at small sizes.
  */
@@ -37,6 +39,11 @@ export type TabIconName =
   | 'trending'
   | 'sliders'
   | 'more'
+  | 'info'
+  | 'alert-triangle'
+  | 'check-circle'
+  | 'trending-down'
+  | 'chevron-right'
 
 interface TabIconProps {
   name: TabIconName
@@ -93,6 +100,39 @@ export default function TabIcon({ name, color, size = 24, focused = false }: Tab
           <Path d="M1 14h6M9 8h6M17 16h6" {...common} />
         </>
       ) : null}
+
+      {name === 'info' ? (
+        <>
+          <Circle cx={12} cy={12} r={9.5} {...common} />
+          <Path d="M12 16v-4.5M12 8h.01" {...common} />
+        </>
+      ) : null}
+
+      {name === 'alert-triangle' ? (
+        <>
+          <Path
+            d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"
+            {...common}
+          />
+          <Path d="M12 9v4M12 17h.01" {...common} />
+        </>
+      ) : null}
+
+      {name === 'check-circle' ? (
+        <>
+          <Path d="M22 11.1V12a10 10 0 1 1-5.9-9.1" {...common} />
+          <Path d="M22 4 12 14l-3-3" {...common} />
+        </>
+      ) : null}
+
+      {name === 'trending-down' ? (
+        <>
+          <Path d="M23 18l-9.5-9.5-5 5L1 6" {...common} />
+          <Path d="M17 18h6v-6" {...common} />
+        </>
+      ) : null}
+
+      {name === 'chevron-right' ? <Path d="M9 18l6-6-6-6" {...common} /> : null}
 
       {/* Feather's `more-vertical`. Filled rather than stroked: at r=1 a hollow
           ring is mush on a 720p panel, and dots are the one glyph where the
