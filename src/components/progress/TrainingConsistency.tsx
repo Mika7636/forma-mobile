@@ -1,8 +1,8 @@
 import { Text, View } from 'react-native'
-import Animated, { FadeInDown } from 'react-native-reanimated'
-import type { ConsistencyData, ConsistencyWeek } from '../../utils/progressMetrics'
+import { standingColor } from './TrainingLoadChart'
+import type { WeekBucket } from '../../utils/progressMetrics'
 import { useTheme } from '../../theme/ThemeProvider'
-import { RADIUS, SPACING, TYPE, WEIGHT, type Palette } from '../../theme/tokens'
+import { SPACING, TYPE, WEIGHT, cardStyle, type Palette } from '../../theme/tokens'
 
 const DOT = 15
 /** The dot's cell. Bigger than the dot so the current week's ring has room. */
@@ -10,57 +10,47 @@ const CELL = 23
 const GAP = 5
 
 interface TrainingConsistencyProps {
-  consistency: ConsistencyData
-  delay?: number
+  /** The same twelve weeks the chart is drawn from. */
+  weeks: WeekBucket[]
+  streak: number
 }
 
 /**
- * The streak block — but counted in load, not attendance.
+ * The streak card — but counted in load, not attendance.
  *
- * ## Why this is not a Strava streak
+ * ## Why this is not Strava's streak
  *
  * A streak counter asks "did you show up?", which is a question about
- * discipline. FORMA already knows the amount each week was worth *against this
+ * discipline. FORMA already knows what each week was worth *against this
  * athlete's own fitness*, so it can ask the better question: was it the right
- * amount? A week of three sensible sessions extends this; a week of one
- * enormous one does not, and neither does a week of six easy ones. That is a
- * measure a step-and-attendance app structurally cannot compute, because it has
- * no model of what this person can absorb.
+ * amount? A week of three sensible sessions extends this; a week of one enormous
+ * one does not, and neither does a week of six easy ones. That is a measure an
+ * attendance app structurally cannot compute, because it has no model of what
+ * this person can absorb.
  *
- * It is also the honest counterweight to the load chart. The chart shows twelve
- * bars and invites the reader to look at the tallest; this says the tallest bar
- * was never the point.
+ * It is also the honest counterweight to the chart above it. The chart shows
+ * twelve bars and invites the reader to admire the tallest; this says the
+ * tallest bar was never the point.
+ *
+ * The dots are the *same twelve weeks* as the chart, in the same order and the
+ * same colours — so the grid is a second reading of the plot the athlete has
+ * just looked at, not a new dataset to decode.
  */
-export default function TrainingConsistency({
-  consistency,
-  delay = 0,
-}: TrainingConsistencyProps) {
+export default function TrainingConsistency({ weeks, streak }: TrainingConsistencyProps) {
   const { colors } = useTheme()
 
-  const { streak, weeks } = consistency
-
   return (
-    <Animated.View
-      entering={FadeInDown.delay(delay).duration(360)}
-      style={{
-        backgroundColor: colors.surface,
-        borderRadius: RADIUS.card,
-        padding: SPACING.base,
-        borderWidth: 1,
-        borderColor: colors.border,
-        ...colors.shadowCard,
-      }}
-    >
+    <View style={cardStyle(colors)}>
       <Text style={{ fontSize: TYPE.subtitle, fontWeight: WEIGHT.heavy, color: colors.text }}>
-        Training Consistency
+        Consistency
       </Text>
       <Text style={{ marginTop: 2, fontSize: TYPE.small, color: colors.textMuted }}>
         How often the amount was right
       </Text>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.base }}>
-        {/* The count, at hero scale. This is the one figure the section exists
-            to carry, and at anything less than display size it reads as another
+        {/* The count, at hero scale. This is the one figure the card exists to
+            carry, and at anything less than display size it reads as another
             stat rather than as an achievement. */}
         <View style={{ minWidth: 92 }}>
           <Text
@@ -106,7 +96,7 @@ export default function TrainingConsistency({
       >
         Consistency beats intensity. Weeks inside your range build fitness that lasts.
       </Text>
-    </Animated.View>
+    </View>
   )
 }
 
@@ -116,20 +106,19 @@ export default function TrainingConsistency({
  * Filled accent for a week inside the range, warn for one above it, and a hollow
  * ring for one below — hollow rather than a third fill, because "below" is the
  * absence of the thing being counted and an empty dot says that without needing
- * a legend.
+ * a legend. The two fills come from the chart's own `standingColor`, so a dot
+ * can never disagree with the bar it stands for.
  */
-function dotStyle(week: ConsistencyWeek, colors: Palette) {
-  if (week.standing === 'inside') {
-    return { fill: colors.accent, border: colors.accent, hollow: false }
+function dotStyle(week: WeekBucket, colors: Palette) {
+  const standing = week.standingSoFar
+  if (standing === 'inside' || standing === 'above') {
+    return { fill: standingColor(standing, colors), hollow: false }
   }
-  if (week.standing === 'above') {
-    return { fill: colors.warn, border: colors.warn, hollow: false }
-  }
-  return { fill: 'transparent', border: colors.borderStrong, hollow: true }
+  return { fill: 'transparent', hollow: true }
 }
 
 /** Twelve weeks, oldest → newest, wrapping to two rows on a narrow phone. */
-function DotGrid({ weeks }: { weeks: ConsistencyWeek[] }) {
+function DotGrid({ weeks }: { weeks: WeekBucket[] }) {
   const { colors } = useTheme()
 
   return (
@@ -146,8 +135,8 @@ function DotGrid({ weeks }: { weeks: ConsistencyWeek[] }) {
         const style = dotStyle(week, colors)
         return (
           <View
-            key={week.weekStartISO}
-            accessibilityLabel={`Week of ${week.label}: ${week.standing ?? 'in progress'}`}
+            key={week.key}
+            accessibilityLabel={`Week of ${week.label}: ${week.standingSoFar ?? 'in progress'}`}
             style={{
               width: CELL,
               height: CELL,
@@ -158,7 +147,7 @@ function DotGrid({ weeks }: { weeks: ConsistencyWeek[] }) {
               // kind of thing as the weeks before it, just the one you are
               // standing in — so it keeps whatever fill it has earned so far
               // and gains a halo around it.
-              borderWidth: week.current ? 1.5 : 0,
+              borderWidth: week.partial ? 1.5 : 0,
               borderColor: colors.borderStrong,
             }}
           >
@@ -169,7 +158,7 @@ function DotGrid({ weeks }: { weeks: ConsistencyWeek[] }) {
                 borderRadius: DOT / 2,
                 backgroundColor: style.fill,
                 borderWidth: style.hollow ? 1.5 : 0,
-                borderColor: style.border,
+                borderColor: colors.borderStrong,
               }}
             />
           </View>

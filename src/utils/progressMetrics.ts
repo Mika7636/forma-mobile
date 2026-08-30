@@ -1,17 +1,27 @@
 // Progress analytics engine. Derives every dataset the Progress screen renders —
-// the bucketed training-load series and its sustainable band, the per-sport
-// breakdown, the consistency heatmap, summary stats, and the daily
+// the twelve-week training-load series and its sustainable band, this week's
+// summary, the per-sport breakdown, the consistency streak, and the daily
 // Fitness/Fatigue/Form series behind the Advanced section — from a raw session
 // list. Pure and deterministic; call it inside a `useMemo`.
 //
-// ## What changed, and what deliberately did not
+// ## One window, not three
 //
-// The screen used to be built around a 4/8/12-week window and a three-line
-// CTL/ATL/Form chart. It now buckets by day/week/month and leads with load
-// against a band. **The CTL/ATL/Form maths below is untouched** — same windows,
-// same cold-start blend, same per-day series. Conflict detection reads the same
-// model, so changing it here would change what the coach warns about; this file
-// only changed how the numbers are grouped and described.
+// The screen used to carry a Daily / Weekly / Monthly switch, and each option
+// defined its *own* window: a fortnight, a quarter, a year. So the band moved,
+// the bars changed meaning, the verdict was computed over a different span, and
+// nothing on screen could be compared with anything the athlete had seen a
+// moment earlier. Every reading was true and none of them were comparable.
+//
+// There is now exactly one window — the last twelve weeks, one bar per week —
+// and it never changes. A fixed axis is what makes a chart legible over time:
+// the athlete learns the shape of their own twelve weeks, and next week's chart
+// is the same chart with one more bar on it.
+//
+// ## What did not change
+//
+// **The CTL/ATL/Form maths below is untouched** — same windows, same cold-start
+// blend, same per-day series. Conflict detection reads the same model, so
+// changing it here would change what the coach warns about.
 import type { Session, SportType } from '../types/session'
 import { SPORT_META } from './sportMeta'
 import { addDays, startOfWeek, localISODate, daysBetween } from './dates'
@@ -27,54 +37,29 @@ const ATL_WINDOW = 7
  */
 const BLEND_DAYS = 21
 
-/* ------------------------------------------------------------------ */
-/* Granularity                                                         */
-/* ------------------------------------------------------------------ */
-
 /**
- * How the load chart buckets time.
+ * The one window the whole screen is drawn for: twelve weeks, one bar each.
  *
- * These replaced a 4/8/12-week selector. The old options asked the athlete to
- * pick a window length, which is a question about the chart rather than about
- * their training; these ask what *grain* they want to look at, and the window
- * follows from it.
+ * Long enough that a training block has a shape, short enough that every bar is
+ * still wide enough to read and to tap on a phone.
  */
-export type Granularity = 'daily' | 'weekly' | 'monthly'
-
-/** Buckets shown per granularity: a fortnight, a quarter, a year. */
-export const BUCKET_COUNT: Record<Granularity, number> = {
-  daily: 14,
-  weekly: 12,
-  monthly: 12,
-}
-
-/**
- * Nominal days in one bucket, used only to scale the sustainable band.
- *
- * A month is 30.44 days on average, so February's bar is measured against a
- * band about 8% too generous and a 31-day month's about 2% too tight. Both are
- * far inside the noise of the band's own 0.8–1.3 width, and a band that stepped
- * up and down with month length would read as a data series rather than as the
- * fixed reference it is meant to be.
- */
-const BUCKET_DAYS: Record<Granularity, number> = {
-  daily: 1,
-  weekly: 7,
-  monthly: 30.44,
-}
+export const WEEKS = 12
 
 /**
  * The sustainable band, as multiples of the load the athlete's current fitness
- * implies for a bucket.
+ * implies for a week.
  *
- * CTL *is* an average daily load, so "what this athlete currently absorbs" for a
- * bucket is CTL × the bucket's days. Below ~0.8× of that, fitness drifts down;
- * above ~1.3×, the ramp is faster than adaptation and is where the injury
- * literature starts to get nervous. Deliberately wide: this is a coaching hint,
- * not a target, and a narrow band would have athletes chasing the middle of it.
+ * CTL *is* an average daily load, so "what this athlete currently absorbs" in a
+ * week is CTL x 7. Below ~0.8x of that, fitness drifts down; above ~1.3x, the
+ * ramp is faster than adaptation and is where the injury literature starts to
+ * get nervous. Deliberately wide: this is a coaching hint, not a target, and a
+ * narrow band would have athletes chasing the middle of it.
  */
 const BAND_LOW = 0.8
 const BAND_HIGH = 1.3
+
+/** Which sport the screen is filtered to. `all` is the default. */
+export type SportFilter = SportType | 'all'
 
 /** Baseline seeds and account age used to blend the cold-start CTL/ATL series. */
 export interface ProgressBaseline {
@@ -84,7 +69,7 @@ export interface ProgressBaseline {
   createdAt?: string
 }
 
-/** One day of the Fitness/Fatigue/Form series (also feeds the heatmap). */
+/** One day of the Fitness/Fatigue/Form series behind the Advanced section. */
 export interface DailyPoint {
   dateISO: string
   /** Short label for tooltips, e.g. "Mon, Jun 23". */
@@ -96,46 +81,54 @@ export interface DailyPoint {
   form: number
 }
 
-/** Where a bucket's load sits relative to the sustainable band. */
+/** Where a week's load sits relative to the sustainable band. */
 export type BucketStanding = 'above' | 'inside' | 'below'
 
-/** One bar of the training-load chart: a day, a week, or a month. */
-export interface LoadBucket {
+/** One bar of the training-load chart. Always a week; there are always twelve. */
+export interface WeekBucket {
   /** Stable React key / identity. */
   key: string
   startISO: string
-  /** Axis tick, e.g. "23" (daily), "Jun 23" (weekly), "Aug" (monthly). */
-  tick: string
-  /**
-   * The shortest form of {@link tick} that still identifies the bucket: a
-   * weekday initial for a day, the tick itself otherwise.
-   *
-   * The load chart's axis has room for about five labels across a phone, and
-   * for the fourteen-day view the only label that fits at all is one character.
-   * Derived here rather than in the chart because it needs the bucket's `Date`,
-   * and re-parsing `startISO` in the view would shift the day by one in every
-   * timezone west of UTC.
-   */
-  tickShort: string
-  /** Tooltip heading, e.g. "Mon, Jun 23", "Jun 23 – 29", "August 2026". */
+  /** Tooltip heading, e.g. "Jun 23 – 29". */
   label: string
+  /**
+   * Short month name in caps ("JUN"), on the first week of each month only.
+   *
+   * The axis used to label every bucket, or every other one, which is how it
+   * ended up rendering "Aug 10Aug 17" and reading as though bars were missing.
+   * A month boundary is the only tick a twelve-week axis actually needs: it is
+   * the unit the athlete thinks in, there are three or four of them in frame,
+   * and they never collide.
+   */
+  monthTick: string | null
   load: number
   sessions: number
+  minutes: number
   calories: number
   /**
-   * `null` while the bucket is still running.
+   * `null` while the week is still running.
    *
    * A week that is two days old has not "gone below the range" — it simply has
    * not happened yet. Classifying it would paint the current bar grey every
-   * Monday and drag the headline verdict down with it, so an unfinished bucket
-   * is drawn but not judged, and is excluded from the verdict entirely.
+   * Monday and drag the headline verdict down with it, so an unfinished week is
+   * drawn but not judged, and is excluded from the verdict entirely.
    */
   standing: BucketStanding | null
-  /** True while this bucket still has days left to run. */
+  /**
+   * Where the load sits *right now*, finished or not — `null` only for a running
+   * week that has not yet reached the floor.
+   *
+   * The consistency grid needs this rather than {@link standing}: a week that
+   * has already landed inside the range has earned its dot on the Thursday, and
+   * one that has already overshot cannot come back, because load only ever
+   * accumulates.
+   */
+  standingSoFar: BucketStanding | null
+  /** True while this week still has days left to run. */
   partial: boolean
 }
 
-/** The load range the athlete's current fitness implies for one bucket. */
+/** The load range the athlete's current fitness implies for one week. */
 export interface LoadBand {
   low: number
   high: number
@@ -145,113 +138,75 @@ export interface LoadBand {
 
 export type VerdictTone = BucketStanding | 'unknown'
 
-/** The plain-English read on the period, shown above the chart. */
+/** The plain-English read on the period, shown as a caption under the chart. */
 export interface LoadVerdict {
   tone: VerdictTone
   /** e.g. "You're building safely". */
   headline: string
-  /** One line of explanation underneath. */
+  /** One clause of explanation, appended after the headline on the same line. */
   detail: string
 }
 
+/** The three figures in the "This week" block. */
+export interface WeekSummary {
+  load: number
+  minutes: number
+  sessions: number
+}
+
 /**
- * Aggregated load for a single sport over the range.
+ * Aggregated load for a single sport over the window.
  *
  * Carries no colour: this is a pure data module with no palette in scope, and a
  * hue baked in here would be frozen at whichever theme was active when the
- * metrics were computed. The chart resolves it with `sportVisual(sport, colors)`
+ * metrics were computed. The view resolves it with `sportVisual(sport, colors)`
  * at render time instead.
  */
 export interface SportPoint {
   sport: SportType
   label: string
-  icon: string
   load: number
   sessions: number
+  minutes: number
   calories: number
-  /** Percentage of the range's total load, 0–100, rounded. */
+  /** Percentage of the window's total load, 0–100, rounded. */
   share: number
 }
 
-export interface HeatmapDay {
-  dateISO: string
-  fullDate: string
-  load: number
-  sessions: number
-  /** 0 = no training, 1 (light) → 3 (hardest) per the heatmap's fixed AU bands. */
-  level: 0 | 1 | 2 | 3
-}
-
-/** A column in the consistency heatmap: 7 cells, Monday→Sunday. */
-export interface HeatmapWeek {
-  weekStartISO: string
-  days: (HeatmapDay | null)[]
-}
-
-/** One column of the Training Consistency dot grid. */
-export interface ConsistencyWeek {
-  weekStartISO: string
-  /** Short label for accessibility, e.g. "Aug 24". */
-  label: string
-  load: number
-  /**
-   * Where the week landed against the sustainable range, or `null` while it is
-   * still running and has not reached the floor — a Tuesday is not a week that
-   * came in light.
-   */
-  standing: BucketStanding | null
-  /** True for the week in progress, which the grid rings rather than fills. */
-  current: boolean
-}
-
-/**
- * Training Consistency: how many weeks in a row the athlete put in an amount
- * their fitness could absorb.
- *
- * The distinction from a streak counter is the whole point of the section. A
- * streak asks whether you turned up; this asks whether the amount was right, so
- * a week of three sensible sessions extends it and a week of one enormous one
- * does not.
- */
-export interface ConsistencyData {
-  /** The last {@link CONSISTENCY_WEEKS} weeks, oldest → newest. */
-  weeks: ConsistencyWeek[]
-  /** Consecutive weeks, counting back from now, that landed inside the range. */
-  streak: number
-}
-
-export interface ProgressStatsData {
-  totalSessions: number
-  totalLoad: number
-  totalCalories: number
-  avgForm: number
-  topSport: SportPoint | null
-  currentCTL: number
-  /** Change in CTL (Fitness) from the first to the last day of the range. */
-  ctlTrend: number
-}
-
 export interface ProgressData {
-  granularity: Granularity
+  /** Monday of the first week shown. */
   rangeStart: Date
+  /** Sunday of the current week — the last day the chart has a slot for. */
   rangeEnd: Date
-  daily: DailyPoint[]
-  buckets: LoadBucket[]
+  /** Exactly {@link WEEKS} buckets, oldest → newest. */
+  weeks: WeekBucket[]
   /** `null` when there is no fitness estimate yet to derive a range from. */
   band: LoadBand | null
   verdict: LoadVerdict
+  /** The last bucket, as the three figures the "This week" block shows. */
+  thisWeek: WeekSummary
+  /** Consecutive weeks, counting back from now, that landed inside the range. */
+  streak: number
   sports: SportPoint[]
-  heatmap: HeatmapWeek[]
-  consistency: ConsistencyData
-  stats: ProgressStatsData
+  /**
+   * Every sport with training in the window, busiest first — the filter chips.
+   *
+   * Always computed from the *unfiltered* sessions. Deriving it from the
+   * filtered set would delete every other chip the moment one was chosen,
+   * leaving no way back.
+   */
+  availableSports: SportType[]
+  /**
+   * The daily Fitness/Fatigue/Form series, from **all** sessions regardless of
+   * the sport filter.
+   *
+   * The Advanced section shows the model the engine actually runs, and the
+   * engine does not know about the filter — fatigue from a swim is fatigue when
+   * you go running. Filtering this chart would show the athlete a model that
+   * nothing in the app uses.
+   */
+  daily: DailyPoint[]
 }
-
-/** Weeks in the Training Consistency dot grid. A quarter, at a glance. */
-export const CONSISTENCY_WEEKS = 12
-
-/** Fixed AU thresholds for the heatmap's four intensity bands (see spec). */
-const HEAT_LIGHT = 200
-const HEAT_HARD = 400
 
 function shortDate(date: Date): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -259,13 +214,6 @@ function shortDate(date: Date): string {
 
 function tooltipDate(date: Date): string {
   return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-}
-
-function heatLevel(load: number): HeatmapDay['level'] {
-  if (load <= 0) return 0
-  if (load < HEAT_LIGHT) return 1
-  if (load <= HEAT_HARD) return 2
-  return 3
 }
 
 /**
@@ -284,109 +232,6 @@ function blendBaseline(
   return Math.round(baseline * (1 - dataWeight) + calculated * dataWeight)
 }
 
-/* ------------------------------------------------------------------ */
-/* Bucketing                                                           */
-/* ------------------------------------------------------------------ */
-
-interface BucketEdge {
-  start: Date
-  endExclusive: Date
-}
-
-/** First day shown and last day shown, for the selected granularity. */
-function rangeFor(granularity: Granularity, today: Date): { start: Date; end: Date } {
-  if (granularity === 'daily') {
-    return { start: addDays(today, -(BUCKET_COUNT.daily - 1)), end: today }
-  }
-  if (granularity === 'weekly') {
-    const currentWeekStart = startOfWeek(today)
-    return {
-      start: addDays(currentWeekStart, -(BUCKET_COUNT.weekly - 1) * 7),
-      end: addDays(currentWeekStart, 6),
-    }
-  }
-  // Whole calendar months, ending with the one in progress. Day 0 of the next
-  // month is JavaScript's idiom for "last day of this month".
-  const start = new Date(today.getFullYear(), today.getMonth() - (BUCKET_COUNT.monthly - 1), 1)
-  const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-  end.setHours(0, 0, 0, 0)
-  return { start, end }
-}
-
-function edgesFor(granularity: Granularity, rangeStart: Date): BucketEdge[] {
-  const count = BUCKET_COUNT[granularity]
-  const edges: BucketEdge[] = []
-  for (let i = 0; i < count; i++) {
-    if (granularity === 'daily') {
-      const start = addDays(rangeStart, i)
-      edges.push({ start, endExclusive: addDays(start, 1) })
-    } else if (granularity === 'weekly') {
-      const start = addDays(rangeStart, i * 7)
-      edges.push({ start, endExclusive: addDays(start, 7) })
-    } else {
-      edges.push({
-        start: new Date(rangeStart.getFullYear(), rangeStart.getMonth() + i, 1),
-        endExclusive: new Date(rangeStart.getFullYear(), rangeStart.getMonth() + i + 1, 1),
-      })
-    }
-  }
-  return edges
-}
-
-/**
- * Which bucket a date falls in, or -1 if it is outside the range.
- *
- * Index arithmetic rather than a scan over the edges: this runs once per
- * session, and a year of training is a lot of sessions to walk twelve buckets
- * for.
- */
-function bucketIndexOf(granularity: Granularity, rangeStart: Date, date: Date): number {
-  const count = BUCKET_COUNT[granularity]
-  let index: number
-  if (granularity === 'monthly') {
-    index =
-      (date.getFullYear() - rangeStart.getFullYear()) * 12 +
-      (date.getMonth() - rangeStart.getMonth())
-  } else {
-    const day = new Date(date)
-    day.setHours(0, 0, 0, 0)
-    const offset = daysBetween(rangeStart, day)
-    index = granularity === 'daily' ? offset : Math.floor(offset / 7)
-  }
-  return index >= 0 && index < count ? index : -1
-}
-
-/** Mon→Sun initials, indexed by `Date.getDay()` (which starts on Sunday). */
-const WEEKDAY_INITIAL = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-
-function labelsFor(
-  granularity: Granularity,
-  edge: BucketEdge,
-): { tick: string; tickShort: string; label: string } {
-  if (granularity === 'daily') {
-    return {
-      tick: String(edge.start.getDate()),
-      tickShort: WEEKDAY_INITIAL[edge.start.getDay()],
-      label: tooltipDate(edge.start),
-    }
-  }
-  if (granularity === 'weekly') {
-    const last = addDays(edge.endExclusive, -1)
-    const tick = shortDate(edge.start)
-    return {
-      tick,
-      tickShort: tick,
-      label: `${shortDate(edge.start)} – ${last.toLocaleDateString(undefined, { day: 'numeric' })}`,
-    }
-  }
-  const tick = edge.start.toLocaleDateString(undefined, { month: 'short' })
-  return {
-    tick,
-    tickShort: tick,
-    label: edge.start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
-  }
-}
-
 function classify(load: number, band: LoadBand | null): BucketStanding | null {
   if (!band) return null
   if (load > band.high) return 'above'
@@ -394,235 +239,140 @@ function classify(load: number, band: LoadBand | null): BucketStanding | null {
   return 'inside'
 }
 
-/** The plain-English read on the period as a whole. */
-function verdictFor(buckets: LoadBucket[], band: LoadBand | null): LoadVerdict {
-  // Only finished buckets. Averaging in a week that is one day old would say
+/** The plain-English read on the window as a whole. */
+function verdictFor(weeks: WeekBucket[], band: LoadBand | null): LoadVerdict {
+  // Only finished weeks. Averaging in a week that is one day old would say
   // "easing off" every Tuesday.
-  const complete = buckets.filter((b) => !b.partial)
+  const complete = weeks.filter((w) => !w.partial)
   if (!band || complete.length === 0) {
     return {
       tone: 'unknown',
       headline: 'Still learning your range',
-      detail: 'Log a few more sessions and FORMA can place this period against your range.',
+      detail: 'log a few more sessions',
     }
   }
 
-  const mean = complete.reduce((sum, b) => sum + b.load, 0) / complete.length
+  const mean = complete.reduce((sum, w) => sum + w.load, 0) / complete.length
   const tone = classify(mean, band) ?? 'inside'
 
   if (tone === 'above') {
-    return {
-      tone,
-      headline: "You're ramping up fast",
-      detail: 'Recent training is heavier than your fitness comfortably absorbs — watch for lingering fatigue.',
-    }
+    return { tone, headline: "You're ramping up fast", detail: 'watch for lingering fatigue' }
   }
   if (tone === 'below') {
-    return {
-      tone,
-      headline: "You're easing off",
-      detail: 'Recent training is lighter than your fitness supports — fine for recovery, costly if it lasts.',
-    }
+    return { tone, headline: "You're easing off", detail: 'fitness drifts down if it lasts' }
   }
-  return {
-    tone,
-    headline: "You're building safely",
-    detail: 'Recent training sits inside the range your current fitness can absorb — this is where progress comes from.',
-  }
+  return { tone, headline: "You're building safely", detail: 'this is where progress comes from' }
 }
 
 /* ------------------------------------------------------------------ */
 /* Engine                                                              */
 /* ------------------------------------------------------------------ */
 
+/** Daily load totals keyed by *local* calendar date. */
+function totalsByDay(sessions: Session[]) {
+  const load = new Map<string, number>()
+  const count = new Map<string, number>()
+  for (const session of sessions) {
+    const key = localISODate(new Date(session.date))
+    load.set(key, (load.get(key) ?? 0) + session.loadScore)
+    count.set(key, (count.get(key) ?? 0) + 1)
+  }
+  return { load, count }
+}
+
+/** A dense day-by-day load array from `start`, `days` long. */
+function denseLoads(byDay: Map<string, number>, start: Date, days: number): number[] {
+  const out: number[] = []
+  for (let i = 0; i < days; i++) out.push(byDay.get(localISODate(addDays(start, i))) ?? 0)
+  return out
+}
+
+function rollingMean(loads: number[], endIdx: number, window: number): number {
+  let sum = 0
+  for (let j = Math.max(0, endIdx - window + 1); j <= endIdx; j++) sum += loads[j]
+  return sum / window
+}
+
 /**
- * Derives every dataset the Progress screen renders for the selected
- * granularity.
+ * Derives every dataset the Progress screen renders, for the fixed twelve-week
+ * window and the selected sport.
  *
  * CTL/ATL/Form are computed per-day from a daily-load array that extends 42 days
- * before the visible range, so Fitness is accurate from the first day shown.
+ * before the visible window, so Fitness is accurate from the first day shown.
  */
 export function computeProgress(
   sessions: Session[],
-  granularity: Granularity,
+  sport: SportFilter = 'all',
   now: Date = new Date(),
   baseline: ProgressBaseline = {},
 ): ProgressData {
   const today = new Date(now)
   today.setHours(0, 0, 0, 0)
 
-  const { start: rangeStart, end: rangeEnd } = rangeFor(granularity, today)
+  // Whole weeks, ending with the one in progress.
+  const thisWeekStart = startOfWeek(today)
+  const rangeStart = addDays(thisWeekStart, -(WEEKS - 1) * 7)
+  const rangeEnd = addDays(thisWeekStart, 6)
   const rangeEndExclusive = addDays(rangeEnd, 1)
+
+  const filtered = sport === 'all' ? sessions : sessions.filter((s) => s.sport === sport)
 
   // Fatigue baseline sits slightly below fitness — matches metricsStore's seed.
   const baselineCTL = baseline.baselineCTL
   const baselineATL = baselineCTL != null ? baselineCTL * 0.9 : undefined
 
-  // Daily totals keyed by local calendar date, so a workout lands on the day it
-  // happened in the user's timezone (matches the planner's day grouping).
-  const loadByDay = new Map<string, number>()
-  const sessionsByDay = new Map<string, number>()
-  for (const session of sessions) {
-    const key = localISODate(new Date(session.date))
-    loadByDay.set(key, (loadByDay.get(key) ?? 0) + session.loadScore)
-    sessionsByDay.set(key, (sessionsByDay.get(key) ?? 0) + 1)
-  }
+  const all = totalsByDay(sessions)
+  const view = sport === 'all' ? all : totalsByDay(filtered)
 
-  // Dense load array from (rangeStart − 42d) through rangeEnd, for rolling means.
+  // Dense load arrays from (rangeStart − 42d) through rangeEnd, for rolling means.
   const mapStart = addDays(rangeStart, -CTL_WINDOW)
   const totalDays = daysBetween(mapStart, rangeEnd) + 1
-  const loads: number[] = []
-  for (let i = 0; i < totalDays; i++) {
-    loads.push(loadByDay.get(localISODate(addDays(mapStart, i))) ?? 0)
-  }
+  const allLoads = denseLoads(all.load, mapStart, totalDays)
+  const viewLoads = sport === 'all' ? allLoads : denseLoads(view.load, mapStart, totalDays)
 
-  const rollingMean = (endIdx: number, window: number): number => {
-    let sum = 0
-    for (let j = Math.max(0, endIdx - window + 1); j <= endIdx; j++) sum += loads[j]
-    return sum / window
-  }
-
-  // ---- Daily Fitness / Fatigue / Form series (range only, up to today) ----
+  // ---- Daily Fitness / Fatigue / Form series (unfiltered; Advanced only) ----
   const daily: DailyPoint[] = []
   for (let i = CTL_WINDOW; i < totalDays; i++) {
     const date = addDays(mapStart, i)
-    if (date > today) break // don't plot future days of the current bucket
+    if (date > today) break // don't plot future days of the current week
     // Account age *as of this day*, so the blend fades exactly as it did in the
     // past — early days lean on the baseline, recent days are pure data.
     const daysSinceReg = baseline.createdAt
       ? Math.max(0, daysBetween(baseline.createdAt, date))
       : undefined
-    const ctl = blendBaseline(rollingMean(i, CTL_WINDOW), baselineCTL, daysSinceReg)
-    const atl = blendBaseline(rollingMean(i, ATL_WINDOW), baselineATL, daysSinceReg)
+    const ctl = blendBaseline(rollingMean(allLoads, i, CTL_WINDOW), baselineCTL, daysSinceReg)
+    const atl = blendBaseline(rollingMean(allLoads, i, ATL_WINDOW), baselineATL, daysSinceReg)
     const key = localISODate(date)
     daily.push({
       dateISO: key,
       fullDate: tooltipDate(date),
-      load: loads[i],
-      sessions: sessionsByDay.get(key) ?? 0,
+      load: allLoads[i],
+      sessions: all.count.get(key) ?? 0,
       ctl,
       atl,
       form: ctl - atl,
     })
   }
 
-  const currentCTL = daily.length ? daily[daily.length - 1].ctl : 0
-
   // ---- The sustainable band ----
   //
-  // Derived from *current* fitness rather than each bucket's own, so it is one
+  // Derived from *current* fitness rather than each week's own, so it is one
   // horizontal reference the whole chart is read against — "what I can absorb
   // now" — rather than a second data series chasing the bars.
-  const bandDays = BUCKET_DAYS[granularity]
+  //
+  // Under a sport filter it is built from that sport's own rolling load, which
+  // is the only reference that makes the filtered bars mean anything: measuring
+  // running-only weeks against whole-body capacity would report "below range"
+  // for every athlete who does more than one sport. The onboarding baseline is
+  // deliberately *not* blended in there — it seeds total fitness, and there is
+  // no such thing as a seeded swimming baseline.
+  const todayIdx = daysBetween(mapStart, today)
+  const currentCTL =
+    sport === 'all'
+      ? (daily.length ? daily[daily.length - 1].ctl : 0)
+      : Math.round(rollingMean(viewLoads, todayIdx, CTL_WINDOW))
+
   const band: LoadBand | null =
-    currentCTL > 0
-      ? {
-          low: Math.round(currentCTL * BAND_LOW * bandDays),
-          high: Math.round(currentCTL * BAND_HIGH * bandDays),
-          ctl: currentCTL,
-        }
-      : null
-
-  // ---- Load buckets ----
-  const edges = edgesFor(granularity, rangeStart)
-  const acc = edges.map(() => ({ load: 0, sessions: 0, calories: 0 }))
-  const inRange: Session[] = []
-  for (const s of sessions) {
-    const when = new Date(s.date)
-    if (when < rangeStart || when >= rangeEndExclusive) continue
-    inRange.push(s)
-    const index = bucketIndexOf(granularity, rangeStart, when)
-    if (index === -1) continue
-    acc[index].load += s.loadScore
-    acc[index].sessions += 1
-    acc[index].calories += s.estimatedCalories ?? 0
-  }
-
-  const buckets: LoadBucket[] = edges.map((edge, i) => {
-    // Still running if it contains today or reaches past it. Note `> today` and
-    // not `> tomorrow`: today's own bucket ends at midnight tonight, so the
-    // stricter test marked *today* complete and drew the daily view's last bar
-    // at full weight as though the day were over.
-    const partial = edge.endExclusive > today
-    const { tick, tickShort, label } = labelsFor(granularity, edge)
-    return {
-      key: localISODate(edge.start),
-      startISO: localISODate(edge.start),
-      tick,
-      tickShort,
-      label,
-      load: acc[i].load,
-      sessions: acc[i].sessions,
-      calories: Math.round(acc[i].calories),
-      standing: partial ? null : classify(acc[i].load, band),
-      partial,
-    }
-  })
-
-  const verdict = verdictFor(buckets, band)
-
-  // ---- Sport breakdown over the visible range ----
-  const sportAcc = new Map<SportType, { load: number; sessions: number; calories: number }>()
-  for (const s of inRange) {
-    const entry = sportAcc.get(s.sport) ?? { load: 0, sessions: 0, calories: 0 }
-    entry.load += s.loadScore
-    entry.sessions += 1
-    entry.calories += s.estimatedCalories ?? 0
-    sportAcc.set(s.sport, entry)
-  }
-  const totalLoad = inRange.reduce((sum, s) => sum + s.loadScore, 0)
-  const sports: SportPoint[] = Array.from(sportAcc.entries())
-    .map(([sport, entry]) => ({
-      sport,
-      label: SPORT_META[sport].label,
-      icon: SPORT_META[sport].icon,
-      load: entry.load,
-      sessions: entry.sessions,
-      calories: Math.round(entry.calories),
-      share: totalLoad > 0 ? Math.round((entry.load / totalLoad) * 100) : 0,
-    }))
-    .sort((a, b) => b.load - a.load)
-
-  // ---- Consistency heatmap (weeks as columns, Mon→Sun rows) ----
-  //
-  // Always whole weeks, whatever the granularity: the grid *is* a week-shaped
-  // object. It starts at the Monday on or before the range's first day so a
-  // 14-day or month-aligned range still lands in complete columns.
-  const heatStart = startOfWeek(rangeStart)
-  const heatWeeks = Math.ceil((daysBetween(heatStart, rangeEnd) + 1) / 7)
-  const heatmap: HeatmapWeek[] = []
-  for (let w = 0; w < heatWeeks; w++) {
-    const weekStart = addDays(heatStart, w * 7)
-    const cells: (HeatmapDay | null)[] = []
-    for (let d = 0; d < 7; d++) {
-      const date = addDays(weekStart, d)
-      if (date > today || date < rangeStart) {
-        cells.push(null) // outside the range, or a future day of the current week
-        continue
-      }
-      const key = localISODate(date)
-      const load = loadByDay.get(key) ?? 0
-      cells.push({
-        dateISO: key,
-        fullDate: tooltipDate(date),
-        load,
-        sessions: sessionsByDay.get(key) ?? 0,
-        level: heatLevel(load),
-      })
-    }
-    heatmap.push({ weekStartISO: localISODate(weekStart), days: cells })
-  }
-
-  // ---- Training consistency (always weekly, whatever the granularity) ----
-  //
-  // Deliberately independent of the selected grain: "how many weeks in a row
-  // did I get the amount right" is one question with one answer, and having it
-  // change meaning when the athlete switches the chart to Monthly would make it
-  // a second reading of the chart rather than a fact about their training. The
-  // band is therefore always the *weekly* one, and the window is always the
-  // last twelve weeks — which reaches further back than the daily view's range,
-  // so it is built from `loadByDay` rather than from the dense `loads` array.
-  const weeklyBand: LoadBand | null =
     currentCTL > 0
       ? {
           low: Math.round(currentCTL * BAND_LOW * 7),
@@ -630,73 +380,137 @@ export function computeProgress(
           ctl: currentCTL,
         }
       : null
-  const thisWeekStart = startOfWeek(today)
-  const consistencyWeeks: ConsistencyWeek[] = []
-  for (let i = CONSISTENCY_WEEKS - 1; i >= 0; i--) {
-    const weekStart = addDays(thisWeekStart, -i * 7)
-    let load = 0
-    for (let d = 0; d < 7; d++) {
-      const day = addDays(weekStart, d)
-      if (day > today) break
-      load += loadByDay.get(localISODate(day)) ?? 0
-    }
-    const current = i === 0
-    const standing = classify(load, weeklyBand)
-    consistencyWeeks.push({
-      weekStartISO: localISODate(weekStart),
-      label: shortDate(weekStart),
-      load,
-      // A running week that has not yet reached the floor is unjudged, not
-      // "below": on a Tuesday every week is below its own weekly range.
-      standing: current && standing === 'below' ? null : standing,
-      current,
-    })
+
+  // ---- The twelve weekly buckets ----
+  const acc = Array.from({ length: WEEKS }, () => ({
+    load: 0,
+    sessions: 0,
+    minutes: 0,
+    calories: 0,
+  }))
+  const inRange: Session[] = []
+  const inRangeAll: Session[] = []
+  for (const s of sessions) {
+    const when = new Date(s.date)
+    if (when < rangeStart || when >= rangeEndExclusive) continue
+    inRangeAll.push(s)
+    if (sport !== 'all' && s.sport !== sport) continue
+    inRange.push(s)
+    const day = new Date(when)
+    day.setHours(0, 0, 0, 0)
+    const index = Math.floor(daysBetween(rangeStart, day) / 7)
+    if (index < 0 || index >= WEEKS) continue
+    acc[index].load += s.loadScore
+    acc[index].sessions += 1
+    acc[index].minutes += s.durationMinutes
+    acc[index].calories += s.estimatedCalories ?? 0
   }
 
-  // Counted from now backwards. The week in progress extends the streak only
-  // once it has actually landed inside the range; if it has already overshot it
-  // breaks the streak, because load only accumulates and it cannot come back.
+  let previousMonth = -1
+  const weeks: WeekBucket[] = acc.map((entry, i) => {
+    const start = addDays(rangeStart, i * 7)
+    const endExclusive = addDays(start, 7)
+    // Still running if it contains today or reaches past it. Note `> today` and
+    // not `> tomorrow`: today's own week ends at midnight on Sunday, so the
+    // stricter test marked the current week complete.
+    const partial = endExclusive > today
+    // One tick per month, on the first week that *starts* in it. Comparing
+    // start months (rather than asking whether the week contains a 1st) keeps
+    // the labels strictly increasing and exactly one per month, including for
+    // the week that straddles the boundary.
+    const month = start.getMonth()
+    const monthTick =
+      i === 0 || month !== previousMonth
+        ? start.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()
+        : null
+    previousMonth = month
+
+    const standingSoFar = classify(entry.load, band)
+    return {
+      key: localISODate(start),
+      startISO: localISODate(start),
+      label: `${shortDate(start)} – ${addDays(endExclusive, -1).toLocaleDateString(undefined, { day: 'numeric' })}`,
+      monthTick,
+      load: entry.load,
+      sessions: entry.sessions,
+      minutes: entry.minutes,
+      calories: Math.round(entry.calories),
+      standing: partial ? null : standingSoFar,
+      // On a Tuesday every week is below its own weekly range, which is not a
+      // fact about the athlete.
+      standingSoFar: partial && standingSoFar === 'below' ? null : standingSoFar,
+      partial,
+    }
+  })
+
+  const verdict = verdictFor(weeks, band)
+
+  const last = weeks[weeks.length - 1]
+  const thisWeek: WeekSummary = {
+    load: last.load,
+    minutes: last.minutes,
+    sessions: last.sessions,
+  }
+
+  // ---- The streak ----
+  //
+  // Counted from now backwards. The week in progress extends it only once it
+  // has actually landed inside the range; if it has already overshot it breaks
+  // the streak, because load only accumulates and it cannot come back.
   let streak = 0
-  for (let i = consistencyWeeks.length - 1; i >= 0; i--) {
-    const week = consistencyWeeks[i]
-    if (week.standing === 'inside') {
+  for (let i = weeks.length - 1; i >= 0; i--) {
+    const week = weeks[i]
+    if (week.standingSoFar === 'inside') {
       streak++
       continue
     }
-    if (week.current && week.standing === null) continue // not yet decided
+    if (week.partial && week.standingSoFar === null) continue // not yet decided
     break
   }
 
-  const consistency: ConsistencyData = { weeks: consistencyWeeks, streak }
-
-  // ---- Summary stats ----
-  const totalCalories = inRange.reduce((sum, s) => sum + (s.estimatedCalories ?? 0), 0)
-  const avgForm = daily.length
-    ? Math.round(daily.reduce((sum, d) => sum + d.form, 0) / daily.length)
-    : 0
-  const startCTL = daily.length ? daily[0].ctl : 0
-
-  const stats: ProgressStatsData = {
-    totalSessions: inRange.length,
-    totalLoad,
-    totalCalories: Math.round(totalCalories),
-    avgForm,
-    topSport: sports[0] ?? null,
-    currentCTL,
-    ctlTrend: currentCTL - startCTL,
+  // ---- Sport breakdown over the window ----
+  const sportAcc = new Map<
+    SportType,
+    { load: number; sessions: number; minutes: number; calories: number }
+  >()
+  for (const s of inRange) {
+    const entry = sportAcc.get(s.sport) ?? { load: 0, sessions: 0, minutes: 0, calories: 0 }
+    entry.load += s.loadScore
+    entry.sessions += 1
+    entry.minutes += s.durationMinutes
+    entry.calories += s.estimatedCalories ?? 0
+    sportAcc.set(s.sport, entry)
   }
+  const totalLoad = inRange.reduce((sum, s) => sum + s.loadScore, 0)
+  const sports: SportPoint[] = Array.from(sportAcc.entries())
+    .map(([key, entry]) => ({
+      sport: key,
+      label: SPORT_META[key]?.label ?? key,
+      load: entry.load,
+      sessions: entry.sessions,
+      minutes: entry.minutes,
+      calories: Math.round(entry.calories),
+      share: totalLoad > 0 ? Math.round((entry.load / totalLoad) * 100) : 0,
+    }))
+    .sort((a, b) => b.load - a.load)
+
+  // Chips come from the unfiltered window, busiest sport first.
+  const chipLoad = new Map<SportType, number>()
+  for (const s of inRangeAll) chipLoad.set(s.sport, (chipLoad.get(s.sport) ?? 0) + s.loadScore)
+  const availableSports = Array.from(chipLoad.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([key]) => key)
 
   return {
-    granularity,
     rangeStart,
     rangeEnd,
-    daily,
-    buckets,
+    weeks,
     band,
     verdict,
+    thisWeek,
+    streak,
     sports,
-    heatmap,
-    consistency,
-    stats,
+    availableSports,
+    daily,
   }
 }

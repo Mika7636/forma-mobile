@@ -82,24 +82,6 @@ export function paddedScale(max: number, headroom = 1.15, targetTicks = 4): Scal
 }
 
 /**
- * At most `count` indices spread evenly over `0..n-1`, always including both
- * ends.
- *
- * For axis ticks. Labelling every bucket is what produced "Aug 10Aug 17" — a
- * twelve-week axis has room for about five dates, whatever the data says, so the
- * count is fixed by the frame and the labels are sampled to fit it.
- */
-export function sampleIndices(n: number, count: number): number[] {
-  if (n <= 0) return []
-  if (n <= count) return Array.from({ length: n }, (_, i) => i)
-  const picked = new Set<number>()
-  for (let i = 0; i < count; i++) {
-    picked.add(Math.round((i * (n - 1)) / (count - 1)))
-  }
-  return Array.from(picked).sort((a, b) => a - b)
-}
-
-/**
  * A smooth SVG path through `points` using a Catmull-Rom → cubic-Bézier
  * conversion (tension 1/6). Endpoints are duplicated so the curve doesn't
  * overshoot at the edges. Returns an empty string for no points.

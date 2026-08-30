@@ -1,29 +1,38 @@
 // Progress Analytics.
 //
-// The screen leads with one question — "am I training about the right amount?"
-// — answered in a sentence, then as a compact row of the period's numbers, then
-// as bars against the range the athlete's current fitness supports. Under the
-// chart come the two sections a running app structurally cannot show: which
-// sports the load came from, and how many weeks in a row the *amount* was right.
-// The CTL/ATL/Form model still runs underneath all of it (conflict detection
-// reads the same numbers); it is simply no longer what the athlete is asked to
-// read. It lives verbatim in the Advanced expander at the foot of the page.
+// ## One window, one question
+//
+// The screen used to open with a Daily / Weekly / Monthly switch. Each option
+// defined its own window — a fortnight, a quarter, a year — so every axis, the
+// band, and the verdict all changed meaning the moment it was touched, and
+// nothing the athlete saw could be compared with anything they had seen a
+// moment before. Three readings, all true, none comparable.
+//
+// It is now one fixed window: the last twelve weeks, one bar per week, forever.
+// A fixed axis is what makes a chart legible over time — next week's chart is
+// this chart with one more bar on it, and the athlete comes to know the shape of
+// their own quarter. What varies instead is *which* training is in view, via the
+// sport chips at the top, which changes the subject without moving the frame.
+//
+// The order down the page answers one question at a time: what have I done this
+// week, how does the last quarter look, is that sensible, how consistent have I
+// been, where did it come from, and did any of it clash. The CTL/ATL/Form model
+// still runs underneath all of it (conflict detection reads the same numbers);
+// it lives verbatim in the Advanced expander at the foot of the page.
 import { useCallback, useMemo, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import AdvancedSection from '../components/progress/AdvancedSection'
-import CalorieChart from '../components/progress/CalorieChart'
 import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
 import ConflictTimeline from '../components/progress/ConflictTimeline'
-import ConsistencyHeatmap from '../components/progress/ConsistencyHeatmap'
 import FitnessChart from '../components/progress/FitnessChart'
-import GranularitySelector from '../components/progress/GranularitySelector'
 import ProgressSkeleton from '../components/progress/ProgressSkeleton'
-import ProgressStats from '../components/progress/ProgressStats'
 import SportBalance from '../components/progress/SportBalance'
+import SportFilterChips from '../components/progress/SportFilterChips'
+import ThisWeekBlock from '../components/progress/ThisWeekBlock'
 import TrainingConsistency from '../components/progress/TrainingConsistency'
-import TrainingLoadChart, { LoadVerdictHeader } from '../components/progress/TrainingLoadChart'
+import TrainingLoadChart from '../components/progress/TrainingLoadChart'
 import EmptyState from '../components/ui/EmptyState'
 import { useConflictHistory } from '../hooks/useConflictHistory'
 import { useProgressData } from '../hooks/useProgressData'
@@ -32,18 +41,18 @@ import { PROGRESS_UNLOCK_SESSIONS } from '../utils/calibration'
 import { detectedAtDate } from '../utils/conflictInfo'
 import { haptics } from '../utils/haptics'
 import type { Conflict } from '../types/conflict'
-import type { Granularity } from '../utils/progressMetrics'
+import type { SportFilter } from '../utils/progressMetrics'
 import type { ProgressScreenProps } from '../navigation/types'
 import { SPACING, TYPE, WEIGHT } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
 import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
 /**
- * The active range, spelled out.
+ * The window, spelled out under the title.
  *
- * Shown because the tabs no longer say how long a period is: "Monthly" tells you
- * the grain but not that you are looking at a year. Includes the year when the
- * range crosses one, which the twelve-month view always does.
+ * Worth stating even though it never changes: "Progress" alone does not say how
+ * far back you are looking, and the dates are how the athlete places the bars
+ * against their own memory of the block.
  */
 function formatRange(start: Date, end: Date): string {
   const sameYear = start.getFullYear() === end.getFullYear()
@@ -66,8 +75,8 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   // tab-bar height plus the gesture-bar inset, plus the page's own end margin.
   const tabPadding = useTabContentPadding()
 
-  const [granularity, setGranularity] = useState<Granularity>('weekly')
-  const { data, totalSessions, loading, refresh } = useProgressData(granularity)
+  const [sport, setSport] = useState<SportFilter>('all')
+  const { data, totalSessions, loading, refresh } = useProgressData(sport)
   const [refreshing, setRefreshing] = useState(false)
 
   // The conflict timeline links straight into the conflict that a sport pairing
@@ -105,8 +114,6 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
     return <ProgressLockedGuard logged={totalSessions} onLogSession={goToLog} />
   }
 
-  const rangeLabel = formatRange(data.rangeStart, data.rangeEnd)
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <ThemedStatusBar />
@@ -126,53 +133,36 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
           />
         }
       >
-        {/* Header */}
         <View>
           <Text style={{ fontSize: TYPE.display, fontWeight: WEIGHT.heavy, color: colors.text }}>
             Progress
           </Text>
           <Text style={{ marginTop: 2, fontSize: TYPE.body, color: colors.textMuted }}>
-            {rangeLabel}
+            {formatRange(data.rangeStart, data.rangeEnd)}
           </Text>
         </View>
 
-        <GranularitySelector value={granularity} onChange={setGranularity} />
+        <SportFilterChips sports={data.availableSports} value={sport} onChange={setSport} />
 
         {loading ? (
           <ProgressSkeleton />
         ) : (
           <>
-            <LoadVerdictHeader verdict={data.verdict} />
+            <ThisWeekBlock summary={data.thisWeek} />
 
-            {/* The period's figures, unboxed, directly above the chart they
-                summarise — so the eye lands on the numbers and then on the
-                shape they came in. */}
-            <ProgressStats stats={data.stats} baseDelay={40} />
+            <TrainingLoadChart weeks={data.weeks} band={data.band} verdict={data.verdict} />
 
-            <TrainingLoadChart
-              buckets={data.buckets}
-              band={data.band}
-              verdict={data.verdict}
-              granularity={granularity}
-              rangeLabel={rangeLabel}
-              delay={100}
-            />
+            <TrainingConsistency weeks={data.weeks} streak={data.streak} />
 
-            <SportBalance sports={data.sports} delay={140} />
+            <SportBalance sports={data.sports} />
 
-            {/* Only present when the engine actually flagged something in this
-                period; renders nothing otherwise. */}
+            {/* Only present when the engine actually flagged something in the
+                window; renders nothing otherwise. */}
             <ConflictTimeline
-              buckets={data.buckets}
+              weeks={data.weeks}
               conflicts={rangeConflicts}
               onOpenConflict={setOpenConflicts}
-              delay={180}
             />
-
-            <TrainingConsistency consistency={data.consistency} delay={220} />
-
-            <CalorieChart buckets={data.buckets} delay={260} />
-            <ConsistencyHeatmap heatmap={data.heatmap} delay={300} />
 
             <AdvancedSection
               title="Advanced — training model"

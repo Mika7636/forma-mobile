@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { Text, View } from 'react-native'
-import Animated, { FadeInDown } from 'react-native-reanimated'
 import TabIcon from '../ui/TabIcon'
 import { formatThousands } from '../../utils/formatting'
 import { sportVisual } from '../../utils/sportMeta'
@@ -18,7 +17,6 @@ const BAR_H = 26
 
 interface SportBalanceProps {
   sports: SportPoint[]
-  delay?: number
 }
 
 /**
@@ -36,7 +34,7 @@ interface SportBalanceProps {
  * flagged pairing is a finding with a *when* and this card has no time axis to
  * put it on.
  */
-export default function SportBalance({ sports, delay = 0 }: SportBalanceProps) {
+export default function SportBalance({ sports }: SportBalanceProps) {
   const { colors } = useTheme()
 
   const total = sports.reduce((sum, s) => sum + s.load, 0)
@@ -44,7 +42,7 @@ export default function SportBalance({ sports, delay = 0 }: SportBalanceProps) {
   const concentrated = sports.length > 1 && (sports[0]?.share ?? 0) > CONCENTRATION_LIMIT
 
   return (
-    <Animated.View entering={FadeInDown.delay(delay).duration(360)} style={cardStyle(colors)}>
+    <View style={cardStyle(colors)}>
       <Text style={{ fontSize: TYPE.subtitle, fontWeight: WEIGHT.heavy, color: colors.text }}>
         Sport Balance
       </Text>
@@ -83,7 +81,7 @@ export default function SportBalance({ sports, delay = 0 }: SportBalanceProps) {
           {concentrated ? <ConcentrationNote /> : null}
         </>
       )}
-    </Animated.View>
+    </View>
   )
 }
 
