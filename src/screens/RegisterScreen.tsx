@@ -176,7 +176,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
               }}
               hitSlop={8}
             >
-              <Text style={{ color: colors.accent, fontSize: 15, fontWeight: '700' }}>
+              <Text style={{ color: colors.accentText, fontSize: 15, fontWeight: '700' }}>
                 Log in
               </Text>
             </Pressable>

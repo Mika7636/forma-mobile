@@ -714,7 +714,7 @@ export default function SettingsScreen() {
                 onPress={() => Alert.alert('Export Data', 'Data export is coming soon.')}
                 style={{ paddingVertical: 12 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.accent }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.accentText }}>
                   Export Data
                 </Text>
               </Pressable>

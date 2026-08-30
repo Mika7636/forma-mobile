@@ -343,7 +343,7 @@ function TimeRow({
       }}
     >
       <Text style={{ fontSize: 14, color: colors.textBody }}>{label}</Text>
-      <Text style={{ fontSize: 16, fontWeight: '800', color: colors.accent }}>{time}</Text>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: colors.accentText }}>{time}</Text>
     </Pressable>
   )
 }

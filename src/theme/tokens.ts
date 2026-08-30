@@ -74,6 +74,31 @@ export interface HeroFill {
   chipInk: string
 }
 
+/**
+ * The dark scrim a piece of hero content sits on.
+ *
+ * Exists because the light hero is a *vibrant* fill, and white type cannot sit
+ * directly on one: white on `#22C55E` is 2.28:1. Every readout inside the card
+ * therefore gets a darkened panel under it, which buys the contrast back
+ * (white on the scrim over that same green is 6.81:1) without giving up the
+ * saturation the card exists for.
+ *
+ * The dark theme needs none of this — its hero is already a deep wash — so
+ * there the panel is fully transparent with zero width and zero padding, and
+ * renders as nothing at all. That is why the geometry lives here as values
+ * rather than as a `scheme === 'light'` branch inside the card: with a
+ * zero-inset transparent panel the dark hero is pixel-identical to what it was
+ * before the panel existed.
+ */
+export interface HeroPanel {
+  bg: string
+  border: string
+  borderWidth: number
+  /** Inset around the content. 0 on dark, so the layout is untouched there. */
+  pad: number
+  radius: number
+}
+
 interface Elevation {
   shadowColor: string
   shadowOpacity: number
@@ -193,6 +218,8 @@ export interface Palette {
    */
   heroLabel: string
   heroBody: string
+  /** The scrim every hero readout sits on. See {@link HeroPanel}. */
+  heroPanel: HeroPanel
   /**
    * The FITNESS / FATIGUE tiles.
    *
@@ -282,40 +309,50 @@ function darkHero(bg: string, ink: string, border: string): HeroFill {
   }
 }
 
-/** Translucent white, shared by both light-theme stat tiles. */
+/** The scrimmed tile shared by both light-theme stat readouts. */
 const HERO_STAT_TILE: Tint = {
-  bg: 'rgba(255,255,255,0.15)',
-  border: 'rgba(255,255,255,0.28)',
+  bg: 'rgba(11,18,32,0.52)',
+  border: 'rgba(255,255,255,0.22)',
   text: '#FFFFFF',
 }
 
+/** The dark scrim used for every panel, chip and tile inside the light hero. */
+const HERO_SCRIM = 'rgba(11,18,32,0.52)'
+const HERO_SCRIM_EDGE = 'rgba(255,255,255,0.22)'
+
 /**
- * A light-theme hero fill: a saturated block of colour with a white interior.
+ * A light-theme hero fill: a *vibrant* block of colour, with every readout on a
+ * dark scrim.
  *
- * ## Why the stops are so deep
+ * ## Why the interior is scrimmed rather than translucent white
  *
- * Everything inside this card is white or translucent white, and translucent
- * white is not free: a 15% white tile over `#15803D` composites to `#38935A`,
- * and solid white on *that* is 3.83:1. Laying translucent white on a fill
- * raises the local background, so every surface added inside the card spends
- * contrast the text still needs. Stacking two of them — a label at 80% on a
- * tile at 15% — spends it twice.
+ * The card used to be a deep, near-olive green with plain white contents. That
+ * is the only other arrangement that works, and it works because the fill is
+ * dark: white on `#14532D` is 4.57:1, and one step brighter — `#166534` —
+ * drops the worst interior pair to 3.86:1. The deep fill was therefore sitting
+ * exactly on the contrast floor, and the price was a hero that read as olive
+ * rather than as the brand's green.
  *
- * The stops are therefore at the 900 end of each ramp rather than the 700s.
- * That buys back the headroom: the same tile over `#14532D` is `#376D4D`, white
- * on it is 6.07:1, and a label at 80% on it is 4.57:1. The worst pair anywhere
- * inside the card is then 4.57:1, against a 4.5 floor.
+ * Translucent white made it worse, not better: a 15% white tile over the fill
+ * *raises* the local background, so an 80% white label on that tile spends the
+ * contrast twice. That pair is what pinned the old stops in place.
  *
- * `from` is the darker stop; `to` is the lighter one and therefore the case
- * every contrast check has to be run against.
+ * Inverting the scrim removes the ceiling entirely. The fill is now the actual
+ * accent (`#22C55E`), and each readout sits on `rgba(11,18,32,0.52)`, which
+ * composites to `#16683E` over that green — white on it is 6.81:1 and the 80%
+ * label is 5.01:1, both comfortably clear. The worst case across all six tones
+ * is the yellow state at 4.94:1.
+ *
+ * `from` is the brighter stop and the one every check has to be run against,
+ * since a dark scrim has least to work with over the lightest fill.
  */
 function lightHero(from: string, to: string): HeroFill {
   return {
     gradient: [from, to],
     ink: '#FFFFFF',
     border: from,
-    chipBg: 'rgba(255,255,255,0.18)',
-    chipBorder: 'rgba(255,255,255,0.45)',
+    chipBg: HERO_SCRIM,
+    chipBorder: HERO_SCRIM_EDGE,
     chipInk: '#FFFFFF',
   }
 }
@@ -402,6 +439,19 @@ const dark: Palette = {
     fitness: { bg: '#111E33', border: '#25406B', text: '#93C5FD' },
     fatigue: { bg: '#2A1416', border: '#5B2326', text: '#FCA5A5' },
   },
+  // Nothing at all. The dark hero is a deep wash, so its readouts already have
+  // all the contrast they need and need no scrim under them — and a fully
+  // transparent panel at zero width and zero padding leaves the card
+  // pixel-identical to what it was before the panel existed. `rgba(…,0)`
+  // rather than the `transparent` keyword so the contrast checker can
+  // composite it like any other layer.
+  heroPanel: {
+    bg: 'rgba(0,0,0,0)',
+    border: 'rgba(0,0,0,0)',
+    borderWidth: 0,
+    pad: 0,
+    radius: 0,
+  },
 
   tint: {
     green: { bg: '#10291F', border: '#1D5138', text: '#4ADE80' },
@@ -456,63 +506,67 @@ const dark: Palette = {
 
 const light: Palette = {
   bg: '#FFFFFF',
-  surface: '#F8FAFC',
-  surfaceAlt: '#F1F5F9',
-  border: '#E2E8F0',
+  // Pure white, not the slate `#F8FAFC` this used to be. A card a shade grey
+  // makes every card on the page read as a slightly dirty panel; the elevation
+  // is carried by the hairline and the shadow, which is what they are for.
+  surface: '#FFFFFF',
+  // The only surface with any tint left, and barely: nested wells still have to
+  // be tellable from the card they sit in.
+  surfaceAlt: '#F5F7FA',
+  border: '#E5E9EF',
   borderStrong: '#CBD5E1',
   text: '#0F172A',
   textBody: '#334155',
-  // Specified as #64748B, darkened one step. That value is 4.76:1 on `bg` but
-  // only 4.34:1 on `surfaceAlt`, and muted type lands on stat tiles and input
-  // wells constantly. This clears 4.5:1 on all three surfaces.
-  textMuted: '#5B6B80',
-  // Specified as #64748B, darkened for the same reason as `textMuted` above:
-  // 4.76:1 on `bg` but 4.34:1 on `surfaceAlt` and `fieldBg`, and the dimmest
-  // type in the app lands on stat tiles and input wells constantly. Still a
-  // step lighter than `textMuted`, so the hierarchy survives.
-  textSubtle: '#5F6E7E',
-  fieldBg: '#F1F5F9',
+  // Warmer than the slate `#64748B` this was specified as, and than the
+  // `#5B6B80` it was corrected to — both of which pulled the whole page blue.
+  // 5.83:1 on white, 5.43:1 on `surfaceAlt`.
+  textMuted: '#5B6675',
+  // A step lighter than `textMuted` so the hierarchy survives, and warm for the
+  // same reason. Still clears 4.5:1 on every surface (5.12:1 on `surfaceAlt`).
+  textSubtle: '#5F6A78',
+  fieldBg: '#F5F7FA',
 
-  // The spec's #16A34A, darkened one step.
+  // The brand green at full strength. `accent` was previously darkened all the
+  // way to `#15803D` so that a *white* button label would clear 4.5:1 — which
+  // worked, and cost the app its colour: every fill, bar, chip and rail on the
+  // light theme went olive.
   //
-  // `accent` is the primary button, and `onAccent` is white — and white on
-  // #16A34A is 3.3:1, which is a CTA label nobody can read outdoors. The two
-  // honest options were a near-black label on the spec green (what `onColor`
-  // would pick, 5.68:1) or a darker green under a white one. This is the
-  // second: a white label on a deep green is what a light theme's primary
-  // button looks like, and a dark label on a mid-green is not.
-  //
-  // It leaves `accent` and `accentText` at the same value here. That is a
-  // coincidence of this palette, not a rule — on dark they are still different
-  // colours, and the distinction between "a fill" and "type in the accent hue"
-  // is what the two keys mean.
-  accent: '#15803D',
-  accentPressed: '#166534',
+  // The label is what gives, not the hue. `onAccent` is near-black here, which
+  // is what `onColor('#22C55E')` picks anyway (8.22:1, against 2.28:1 for
+  // white). A bright fill with a dark label is what a modern light theme's
+  // primary button looks like; a dark fill with a white one is what a dark
+  // theme's does.
+  accent: '#22C55E',
+  accentPressed: '#16A34A',
+  // The same hue as *type*. `accent` itself is 1.85:1 on white — fine for a
+  // 200px bar, illegible as a 13pt caption — so anything under ~18px in the
+  // brand green uses this instead. See the `accent` vs `accentText` note on
+  // the Palette interface.
   accentText: '#15803D',
-  accentSoft: '#ECFDF5',
-  accentBorder: '#A7F3D0',
+  // The vibrant hue at low alpha over the page, rather than a pre-mixed pastel.
+  // `#ECFDF5` is a mint that has lost its relationship to the green it is
+  // supposed to be a wash of; this is literally that green, at 10%.
+  accentSoft: 'rgba(34,197,94,0.10)',
+  accentBorder: 'rgba(34,197,94,0.32)',
 
-  // Darkened from the spec's #D97706 for the same reason: 3.19:1 under white
-  // type. It also does real work for the conflict rails and severity dots,
-  // which are amber-on-white and were far too pale at the lighter value.
-  warn: '#B45309',
+  warn: '#F59E0B',
   warnText: '#B45309',
-  // Nudged off #FFFBEB, which was 1.04:1 against the white page — a tinted
-  // panel that was, to the eye, simply not there.
-  warnSoft: '#FEF7E0',
-  warnBorder: '#FDE68A',
+  warnSoft: 'rgba(245,158,11,0.12)',
+  warnBorder: 'rgba(245,158,11,0.38)',
 
-  danger: '#DC2626',
+  danger: '#EF4444',
   dangerText: '#B91C1C',
-  dangerSoft: '#FEF2F2',
-  dangerBorder: '#FECACA',
+  dangerSoft: 'rgba(239,68,68,0.10)',
+  dangerBorder: 'rgba(239,68,68,0.32)',
 
-  info: '#2563EB',
+  info: '#3B82F6',
   infoText: '#1D4ED8',
-  infoSoft: '#EFF6FF',
-  infoBorder: '#BFDBFE',
+  infoSoft: 'rgba(59,130,246,0.10)',
+  infoBorder: 'rgba(59,130,246,0.32)',
 
-  onAccent: '#FFFFFF',
+  // Near-black, not white. See the `accent` note above: this is
+  // `onColor(accent)`, and on a vibrant fill that answer is dark.
+  onAccent: '#0B1220',
 
   bgFade: ['rgba(255,255,255,0.50)', 'rgba(255,255,255,0.92)'],
   shadow: '#000000',
@@ -537,20 +591,21 @@ const light: Palette = {
     elevation: 10,
   },
 
-  // A saturated fill with an all-white interior — no second hue anywhere inside
-  // it. See {@link lightHero} for why these stops are as deep as they are.
+  // The actual state hues, at full strength — this card is the largest block of
+  // colour in the app and it was reading as olive. The white interior each one
+  // carries is what makes the brightness affordable: every readout sits on a
+  // dark scrim rather than straight on the fill. See {@link lightHero}.
   hero: {
-    red: lightHero('#6B1717', '#7F1D1D'),
-    orange: lightHero('#6B270F', '#7C2D12'),
-    yellow: lightHero('#682D0C', '#78350F'),
-    lightgreen: lightHero('#0F423F', '#134E4A'),
-    green: lightHero('#0F4C25', '#14532D'),
-    brightgreen: lightHero('#0F4C25', '#14532D'),
+    red: lightHero('#EF4444', '#DC2626'),
+    orange: lightHero('#F97316', '#EA580C'),
+    yellow: lightHero('#F59E0B', '#D97706'),
+    lightgreen: lightHero('#14B8A6', '#0D9488'),
+    green: lightHero('#22C55E', '#16A34A'),
+    brightgreen: lightHero('#22C55E', '#16A34A'),
   },
-  heroSheen: 'rgba(255,255,255,0.22)',
-  // 0.80, not the 0.70 that reads as "a muted label" on a page. Translucent
-  // white *lightens the fill underneath it*, so it eats the contrast from both
-  // ends at once: at 0.70 a label on a stat tile is 3.90:1. See lightHero.
+  heroSheen: 'rgba(255,255,255,0.28)',
+  // 0.80, not the 0.70 that reads as "a muted label": this is printed on the
+  // scrim, and the scrim is only as dark as it needs to be.
   heroLabel: 'rgba(255,255,255,0.80)',
   heroBody: 'rgba(255,255,255,0.92)',
   // Both tiles identical, and deliberately so: on a saturated fill a blue tile
@@ -560,15 +615,28 @@ const light: Palette = {
     fitness: HERO_STAT_TILE,
     fatigue: HERO_STAT_TILE,
   },
+  heroPanel: {
+    bg: HERO_SCRIM,
+    border: HERO_SCRIM_EDGE,
+    borderWidth: 1,
+    pad: 12,
+    radius: 16,
+  },
 
+  // Each tint is its own vibrant hue at 8–12% over the page, not a pre-mixed
+  // pastel. The difference is visible: `#ECFDF5` is a mint with no remaining
+  // relationship to the green it washes, while `rgba(34,197,94,0.10)` is
+  // unmistakably *that* green, quietly. The type on each stays the darker
+  // `*Text` value, because a caption on a 10% wash is still a caption on
+  // near-white.
   tint: {
-    green: { bg: '#ECFDF5', border: '#A7F3D0', text: '#15803D' },
-    amber: { bg: '#FEF7E0', border: '#FDE68A', text: '#B45309' },
-    red: { bg: '#FEF2F2', border: '#FECACA', text: '#B91C1C' },
-    sky: { bg: '#EFF6FF', border: '#BFDBFE', text: '#1D4ED8' },
-    orange: { bg: '#FFF7ED', border: '#FED7AA', text: '#C2410C' },
-    teal: { bg: '#E6FBF6', border: '#99F6E4', text: '#0F766E' },
-    violet: { bg: '#F5F3FF', border: '#DDD6FE', text: '#6D28D9' },
+    green: { bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.32)', text: '#15803D' },
+    amber: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.38)', text: '#B45309' },
+    red: { bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.32)', text: '#B91C1C' },
+    sky: { bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.32)', text: '#1D4ED8' },
+    orange: { bg: 'rgba(249,115,22,0.10)', border: 'rgba(249,115,22,0.32)', text: '#C2410C' },
+    teal: { bg: 'rgba(20,184,166,0.12)', border: 'rgba(20,184,166,0.36)', text: '#0F766E' },
+    violet: { bg: 'rgba(139,92,246,0.10)', border: 'rgba(139,92,246,0.32)', text: '#6D28D9' },
   },
 
   palette: {

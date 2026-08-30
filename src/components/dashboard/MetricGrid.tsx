@@ -20,11 +20,17 @@ interface MetricGridProps {
 }
 
 
-/** Progress-bar colour: accent under budget, amber from 80%, red once over. */
+/**
+ * Progress-bar colour: accent under budget, amber from 80%, red once over.
+ *
+ * The *fill* tokens, not the `*Text` ones. This is a bar, not a caption — a
+ * 100px block of colour, which is what the vibrant end of the palette is for.
+ * It read as olive while it was borrowing the type colours.
+ */
 function budgetColor(ratio: number, colors: Palette): string {
-  if (ratio > 1) return colors.dangerText
-  if (ratio >= 0.8) return colors.warnText
-  return colors.accentText
+  if (ratio > 1) return colors.danger
+  if (ratio >= 0.8) return colors.warn
+  return colors.accent
 }
 
 /**

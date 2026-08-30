@@ -250,7 +250,7 @@ export default function OnboardingScreen() {
           <View style={{ height: 28, justifyContent: 'center' }}>
             {step > 0 ? (
               <Pressable onPress={goBack} hitSlop={12} style={{ alignSelf: 'flex-start' }}>
-                <Text style={{ fontSize: 16, color: colors.accent, fontWeight: '600' }}>
+                <Text style={{ fontSize: 16, color: colors.accentText, fontWeight: '600' }}>
                   ‹ Back
                 </Text>
               </Pressable>

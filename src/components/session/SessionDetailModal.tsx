@@ -1028,7 +1028,7 @@ function LivePill({ label, value }: { label: string; value: string }) {
       <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.5, color: colors.textSubtle }}>
         {label.toUpperCase()}
       </Text>
-      <Text style={{ marginTop: 2, fontSize: 15, fontWeight: '800', color: colors.accent }}>
+      <Text style={{ marginTop: 2, fontSize: 15, fontWeight: '800', color: colors.accentText }}>
         {value}
       </Text>
     </View>

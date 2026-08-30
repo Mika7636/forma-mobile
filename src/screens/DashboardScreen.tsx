@@ -156,7 +156,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             <Text style={{ marginTop: 3, fontSize: TYPE.body, color: colors.textMuted }}>
               {todayLabel}
             </Text>
-            <Text style={{ marginTop: 2, fontSize: TYPE.small, fontWeight: '600', color: colors.accent }}>
+            <Text style={{ marginTop: 2, fontSize: TYPE.small, fontWeight: '600', color: colors.accentText }}>
               {sessionsLabel}
             </Text>
           </View>

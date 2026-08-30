@@ -202,7 +202,7 @@ function GateSplash({ stalled = false }: { stalled?: boolean }) {
           borderColor: colors.accent,
         }}
       >
-        <Text style={{ fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: colors.accent }}>
+        <Text style={{ fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: colors.accentText }}>
           Try now
         </Text>
       </Pressable>

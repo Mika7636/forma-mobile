@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated'
 import { useNetworkStore } from '../../store/networkStore'
-import { RADIUS, SPACING, TYPE } from '../../theme/tokens'
+import { RADIUS, SPACING, TYPE, onColor } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 export default function OfflineBanner() {
@@ -30,10 +30,9 @@ export default function OfflineBanner() {
   const offline = status === 'offline'
   if (!offline && !reconnecting) return null
 
-  // On the light theme both slabs were dark with white type. On dark, "a dark
-  // slab" is no longer distinguishable from the page, so the offline state
-  // becomes a raised surface with a hairline and the reconnecting state keeps
-  // its accent fill — where the type has to go dark, not light.
+  // On dark, "a dark slab" is not distinguishable from the page, so the offline
+  // state is a raised surface with a hairline while the reconnecting state keeps
+  // its accent fill.
   const look = offline
     ? {
         bg: colors.surfaceAlt,
@@ -50,14 +49,19 @@ export default function OfflineBanner() {
 
   return (
     <>
-      {/* The bar extends under the status bar, and both variants fill it with a
-          saturated colour of their own — the danger red offline, the accent
-          reconnecting. Both are dark enough for light icons in either theme, so
-          this states its requirement outright rather than going through
-          <ThemedStatusBar>: what is behind the icons here is the banner, not
-          the page. Unmounting restores whatever the screen underneath asked
-          for. */}
-      <StatusBar style="light" />
+      {/* The bar extends under the status bar, so what is behind the clock and
+          the battery here is the banner, not the page — it states its own
+          requirement rather than going through <ThemedStatusBar>, and
+          unmounting restores whatever the screen underneath asked for.
+
+          Derived from the slab rather than hard-coded: this used to assert
+          "light", on the grounds that both variants were dark in both themes.
+          Neither half of that is true now. The light theme's offline slab is
+          `surfaceAlt`, which is near-white, and its reconnecting slab is the
+          vibrant accent, which carries dark ink — white icons on either are
+          about 1.1:1 and 2.3:1. `onColor` answers the same question for the
+          status bar that it answers for the banner's own label. */}
+      <StatusBar style={onColor(look.bg) === '#FFFFFF' ? 'light' : 'dark'} />
 
       <Animated.View
         // Keyed by state so swapping offline -> reconnecting replays the

@@ -1368,7 +1368,7 @@ function TrackingView({
             // when the screen does. Say it plainly rather than letting them find
             // out at the end of an hour.
             <Text
-              style={{ marginTop: 6, color: colors.warn, fontSize: 12, fontWeight: '600' }}
+              style={{ marginTop: 6, color: colors.warnText, fontSize: 12, fontWeight: '600' }}
             >
               Keep the screen on — background tracking is off
             </Text>

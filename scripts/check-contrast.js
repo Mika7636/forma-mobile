@@ -138,13 +138,25 @@ function readBuilder(name) {
   return { params, fields }
 }
 
+/** A module-level `const NAME = '<colour>'`, or null if there is no such const. */
+function moduleConst(name) {
+  const m = source.match(
+    new RegExp(String.raw`(^|\s)const ` + name + String.raw`\s*=\s*'(#[0-9a-fA-F]{6}|rgba?\([^)]*\))'`, 'm'),
+  )
+  return m ? m[2] : null
+}
+
 /** Resolve a builder template against one call site's arguments. */
 function applyBuilder(tpl, args) {
   const bind = (t) => {
     if (t.lit !== undefined) return t.lit
     const i = tpl.params.indexOf(t.param)
-    if (i === -1) throw new Error('unresolved builder term: ' + t.param)
-    return args[i]
+    if (i !== -1) return args[i]
+    // Not a parameter — the light builder shares one scrim across every tone
+    // via a module const rather than repeating the rgba six times.
+    const c = moduleConst(t.param)
+    if (c === null) throw new Error('unresolved builder term: ' + t.param)
+    return c
   }
   const out = {}
   for (const [k, v] of Object.entries(tpl.fields)) {
@@ -165,12 +177,22 @@ function heroes(text) {
   return out
 }
 
-/** `key: '<literal>'`, for keys whose value may be an rgba rather than a hex. */
+/**
+ * `key: '<literal>'`, for keys whose value may be an rgba rather than a hex.
+ *
+ * A value may also be a bare identifier — the light hero panel and its chip
+ * share one scrim through a module const rather than repeating the rgba — so an
+ * unquoted word is looked up as a module-level colour const before being
+ * skipped. Skipping it silently is how a whole section of the audit disappears.
+ */
 function literalsOf(text) {
   const out = {}
-  const re = /(\w+)\s*:\s*'(#[0-9a-fA-F]{6}|rgba?\([^)]*\))'/g
+  const re = /(\w+)\s*:\s*(?:'(#[0-9a-fA-F]{6}|rgba?\([^)]*\))'|([A-Za-z_]\w*))/g
   let m
-  while ((m = re.exec(text))) out[m[1]] = m[2]
+  while ((m = re.exec(text))) {
+    const v = m[2] !== undefined ? m[2] : moduleConst(m[3])
+    if (v !== null && v !== undefined) out[m[1]] = v
+  }
   return out
 }
 
@@ -183,7 +205,7 @@ function literalsOf(text) {
  */
 function topLevel(text) {
   let flat = text
-  for (const name of ['tint', 'palette', 'sport', 'hero', 'heroStat', 'shadowCard', 'shadowFloating']) {
+  for (const name of ['tint', 'palette', 'sport', 'hero', 'heroStat', 'heroPanel', 'shadowCard', 'shadowFloating']) {
     flat = flat.replace(block(text, name), '')
   }
   // `literalsOf`, not `flatHexes`: `heroLabel` and `heroBody` are rgba on the
@@ -300,7 +322,10 @@ function audit(name) {
   const color = topLevel(src)
   const palette = flatHexes(block(src, 'palette'))
   const sport = flatHexes(block(src, 'sport'))
-  const tint = nestedHexes(block(src, 'tint'))
+  // `nestedLiterals`, not `nestedHexes`: the light tints are the vibrant hue at
+  // 8-12% over the page, and a hex-only parser drops every one of them without
+  // saying so — which would silently delete this whole section of the audit.
+  const tint = nestedLiterals(block(src, 'tint'))
   const hero = heroes(block(src, 'hero'))
 
   // Every surface a piece of type can land on.
@@ -325,10 +350,18 @@ function audit(name) {
     infoText: color.infoText,
   }
 
-  // Fills that have to carry `onAccent` as their ink.
-  const fills = {
+  // The two fills `onAccent` is actually printed on. Its documented contract is
+  // "type on a saturated *accent* fill" and nothing else — every other fill in
+  // the app (a sport hue, an RPE swatch, warn, danger) is inked by `onColor`,
+  // which picks per fill by measurement. Asserting one token across all five
+  // was only ever true while they were all dark, and it is the check that would
+  // have forced the accent to stay olive.
+  const accentFills = {
     accent: color.accent,
     accentPressed: color.accentPressed,
+  }
+  // Everything else: whatever `onColor` picks for it must clear the floor.
+  const inkedFills = {
     warn: color.warn,
     danger: color.danger,
     info: color.info,
@@ -352,14 +385,18 @@ function audit(name) {
 
   console.log('\n== [' + name + '] each tint carries its own type ==')
   for (const [n, t] of Object.entries(tint)) {
-    check('tint.' + n + '.text on tint.' + n + '.bg', t.text, t.bg, AA)
+    // A tint is a wash *over the page*, so anything measured against one is
+    // handed the whole stack rather than the wash on its own — an rgba has no
+    // luminance until you know what is behind it.
+    const panel = [color.bg, t.bg]
+    check('tint.' + n + '.text on tint.' + n + '.bg', t.text, panel, AA)
     check('tint.' + n + '.text on surface', t.text, color.surface, AA)
     check('tint.' + n + '.bg vs page', t.bg, color.bg, DISTINCT)
     // Body copy lands on a tinted panel wherever one carries an explanation
     // rather than just a label — the Progress verdict card, the conflict
     // banner. Those greys were picked against the page, not against a hue.
-    check('textBody on tint.' + n, color.textBody, t.bg, AA)
-    check('textMuted on tint.' + n, color.textMuted, t.bg, AA)
+    check('textBody on tint.' + n, color.textBody, panel, AA)
+    check('textMuted on tint.' + n, color.textMuted, panel, AA)
   }
 
   // The whole interior of the Form Score card, against both gradient stops.
@@ -371,13 +408,20 @@ function audit(name) {
   // itself on the gradient, so `check` is handed the whole stack.
   console.log('\n== [' + name + "] everything inside the hero, on both stops ==")
   const stat = nestedLiterals(block(src, 'heroStat'))
+  const panel = literalsOf(block(src, 'heroPanel')).bg
+  if (!panel) throw new Error(name + ': heroPanel has no bg')
   for (const [n, h] of Object.entries(hero)) {
     for (const [which, stop] of [['1st', h.gradient[0]], ['2nd', h.gradient[1]]]) {
       const on = ' on ' + n + ' ' + which + ' stop'
-      check('hero.ink' + on, h.ink, stop, AA)
+      // Everything in the card sits on the scrim panel, which on light is a
+      // dark wash over a vibrant fill and on dark is fully transparent — so
+      // this same stack measures both themes correctly, and measures what the
+      // card actually renders rather than what it rendered two designs ago.
+      const face = [stop, panel]
+      check('hero.ink' + on, h.ink, face, AA)
       check('hero.chipInk' + on, h.chipInk, [stop, h.chipBg], AA)
-      check('heroLabel' + on, color.heroLabel, stop, AA)
-      check('heroBody' + on, color.heroBody, stop, AA)
+      check('heroLabel' + on, color.heroLabel, face, AA)
+      check('heroBody' + on, color.heroBody, face, AA)
       for (const [sn, sv] of Object.entries(stat)) {
         check('heroStat.' + sn + '.text' + on, sv.text, [stop, sv.bg], AA)
         check('heroLabel on heroStat.' + sn + on, color.heroLabel, [stop, sv.bg], AA)
@@ -385,8 +429,17 @@ function audit(name) {
     }
   }
 
-  console.log('\n== [' + name + '] onAccent reads on the saturated fills ==')
-  for (const [n, v] of Object.entries(fills)) check('onAccent on ' + n, color.onAccent, v, AA)
+  console.log('\n== [' + name + '] onAccent reads on the accent fills ==')
+  for (const [n, v] of Object.entries(accentFills))
+    check('onAccent on ' + n, color.onAccent, v, AA)
+
+  console.log('\n== [' + name + '] onColor picks a legible ink for every other fill ==')
+  const INK_DARK = '#0B1220'
+  const INK_LIGHT = '#FFFFFF'
+  for (const [n, v] of Object.entries(inkedFills)) {
+    const ink = ratio(INK_DARK, v) >= ratio(INK_LIGHT, v) ? INK_DARK : INK_LIGHT
+    check('onColor(' + n + ') on ' + n, ink, v, AA)
+  }
 
   console.log('\n== [' + name + '] borders are visible against what they enclose ==')
   for (const [sn, sv] of Object.entries(surfaces)) check('border on ' + sn, color.border, sv, DISTINCT)

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Pressable, Text, View, type ViewStyle } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, {
   Easing,
@@ -13,7 +13,7 @@ import CountUp from './CountUp'
 import FormInfoModal from './FormInfoModal'
 import { getFormStatus } from '../../algorithms/formScore'
 import { useTheme } from '../../theme/ThemeProvider'
-import type { FormTone, Tint } from '../../theme/tokens'
+import type { FormTone, HeroPanel, Tint } from '../../theme/tokens'
 /**
  * The emoji for each form state.
  *
@@ -131,34 +131,35 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
         <View style={{ flexDirection: 'row' }}>
           {/* Left: the headline score + status. */}
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '800',
-                letterSpacing: 1.6,
-                color: colors.heroLabel,
-              }}
-            >
-              FORM SCORE
-            </Text>
+            <Panel panel={colors.heroPanel} style={{ alignSelf: 'flex-start' }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  letterSpacing: 1.6,
+                  color: colors.heroLabel,
+                }}
+              >
+                FORM SCORE
+              </Text>
 
-            <CountUp
-              value={rounded}
-              // Always signed: "+8" reads as form, "8" reads as a bare stat.
-              format={(v) => {
-                const n = Math.round(v)
-                return n > 0 ? `+${n}` : String(n)
-              }}
-              style={{
-                fontSize: 64,
-                fontWeight: '800',
-                // The hue, as the numerals. This is the accent-coloured figure
-                // the tinted surface exists to carry.
-                color: style.ink,
-                lineHeight: 70,
-                marginTop: 2,
-              }}
-            />
+              <CountUp
+                value={rounded}
+                // Always signed: "+8" reads as form, "8" reads as a bare stat.
+                format={(v) => {
+                  const n = Math.round(v)
+                  return n > 0 ? `+${n}` : String(n)
+                }}
+                style={{
+                  fontSize: 64,
+                  fontWeight: '800',
+                  // White on the scrim, not on the fill. See `HeroPanel`.
+                  color: style.ink,
+                  lineHeight: 70,
+                  marginTop: 2,
+                }}
+              />
+            </Panel>
 
             <View
               style={{
@@ -180,17 +181,18 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
               <Text style={{ fontSize: 14, marginLeft: 6 }}>{emoji}</Text>
             </View>
 
-            <Text
-              style={{
-                marginTop: 10,
-                fontSize: 13,
-                fontWeight: '600',
-                color: colors.heroBody,
-                lineHeight: 18,
-              }}
-            >
-              {message}
-            </Text>
+            <Panel panel={colors.heroPanel} style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: colors.heroBody,
+                  lineHeight: 18,
+                }}
+              >
+                {message}
+              </Text>
+            </Panel>
           </View>
 
           {/* Right: stacked fitness / fatigue mini-cards. */}
@@ -203,6 +205,43 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
 
       <FormInfoModal visible={infoOpen} onClose={() => setInfoOpen(false)} />
     </Animated.View>
+  )
+}
+
+/**
+ * The scrim a hero readout sits on.
+ *
+ * On light this is a dark wash that buys white type its contrast back over a
+ * vibrant fill; on dark every value in `heroPanel` is zero or fully
+ * transparent, so this renders as a bare `View` with no background, no border
+ * and no inset — which is exactly what the dark card looked like before panels
+ * existed. One code path, two appearances, no `scheme ===` branch.
+ */
+function Panel({
+  panel,
+  style,
+  children,
+}: {
+  panel: HeroPanel
+  style?: ViewStyle
+  children: ReactNode
+}) {
+  return (
+    <View
+      style={[
+        {
+          backgroundColor: panel.bg,
+          borderWidth: panel.borderWidth,
+          borderColor: panel.border,
+          borderRadius: panel.radius,
+          paddingHorizontal: panel.pad,
+          paddingVertical: panel.pad > 0 ? panel.pad - 4 : 0,
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
   )
 }
 

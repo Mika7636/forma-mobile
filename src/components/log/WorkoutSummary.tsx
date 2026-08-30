@@ -402,7 +402,7 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             hitSlop={8}
             style={{ alignSelf: 'center', paddingVertical: SPACING.sm }}
           >
-            <Text style={{ color: colors.danger, fontSize: 14, fontWeight: '700' }}>Discard</Text>
+            <Text style={{ color: colors.dangerText, fontSize: 14, fontWeight: '700' }}>Discard</Text>
           </Pressable>
 
           <SaveButton
@@ -856,7 +856,7 @@ function TrainingLoadBlock({
         >
           <Text style={{ fontSize: 15, marginRight: SPACING.sm }}>⚠️</Text>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.warn, letterSpacing: 0.4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.warnText, letterSpacing: 0.4 }}>
               {worst.severity === 'danger' ? 'HIGH INJURY RISK' : 'TRAINING CONFLICT'}
             </Text>
             <Text style={{ marginTop: 3, fontSize: 13, color: colors.text, lineHeight: 18 }}>
