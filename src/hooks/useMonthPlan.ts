@@ -3,14 +3,18 @@
 // Given a month offset (0 = this month, -1 = last month, +1 = next month) it
 // builds the calendar grid for that month: whole Sunday→Saturday rows, padded
 // at both ends with the neighbouring months' days so no row is ragged. Each
-// cell carries the sessions and unresolved conflicts that landed on it.
+// cell carries what landed on it: sessions logged, sessions planned, and the
+// conflicts raised by either — the plans and their clashes coming from
+// `usePlannedSessions`, which the Dashboard shares.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { toSession } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
+import { usePlannedSessions } from './usePlannedSessions'
 import { localISODate } from '../utils/dates'
-import type { Conflict } from '../types/conflict'
+import type { Conflict, PlannedConflict } from '../types/conflict'
+import type { PlannedSession } from '../types/planned'
 import type { Session } from '../types/session'
 
 /** One cell of the month grid. */
@@ -27,8 +31,18 @@ export interface CalendarDay {
   isFuture: boolean
   /** Sessions on this day, chronological. */
   sessions: Session[]
+  /** Sessions *planned* for this day — intentions, not training. */
+  planned: PlannedSession[]
   /** Unresolved conflicts anchored to a session on this day. */
   conflicts: Conflict[]
+  /**
+   * Planned-session clashes touching this day.
+   *
+   * A planned conflict spans two days and is attached to **both**, so an athlete
+   * scanning the grid sees the mark on the Tuesday they would move as readily as
+   * on the Wednesday it lands on. The day sheet then explains the pair.
+   */
+  plannedConflicts: PlannedConflict[]
   dayLoad: number
   dayHours: number
   dayCalories: number
@@ -47,6 +61,8 @@ export interface MonthPlan {
   totalLoad: number
   totalCalories: number
   sessionCount: number
+  /** Plans on the displayed month (padding days excluded). */
+  plannedCount: number
   loading: boolean
   /** Pull-to-refresh handle (see the note on {@link useMonthPlan}). */
   refresh: () => Promise<void>
@@ -70,6 +86,12 @@ export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
  */
 export function useMonthPlan(monthOffset = 0): MonthPlan {
   const uid = useAuthStore((s) => s.user?.uid)
+
+  // Plans and their clashes come from the shared hook, so the Planner and the
+  // Dashboard can never disagree about the same week.
+  // Consumers that want the calendar-wide list rather than the per-day one call
+  // `usePlannedSessions` directly; a month grid only ever needs the buckets.
+  const { byDay: plannedByDay, conflictsByDay: plannedConflictsByDay } = usePlannedSessions()
 
   const [sessions, setSessions] = useState<Session[]>([])
   const [conflicts, setConflicts] = useState<Conflict[]>([])
@@ -191,7 +213,9 @@ export function useMonthPlan(monthOffset = 0): MonthPlan {
           isToday: isoDate === todayKey,
           isFuture: isoDate > todayKey,
           sessions: daySessions,
+          planned: plannedByDay.get(isoDate) ?? [],
           conflicts: conflictsByDay.get(isoDate) ?? [],
+          plannedConflicts: plannedConflictsByDay.get(isoDate) ?? [],
           dayLoad: daySessions.reduce((sum, s) => sum + (s.loadScore ?? 0), 0),
           dayHours: daySessions.reduce((sum, s) => sum + s.durationMinutes, 0) / 60,
           dayCalories: daySessions.reduce((sum, s) => sum + (s.estimatedCalories ?? 0), 0),
@@ -210,8 +234,9 @@ export function useMonthPlan(monthOffset = 0): MonthPlan {
       totalLoad: monthDays.reduce((sum, d) => sum + d.dayLoad, 0),
       totalCalories: monthDays.reduce((sum, d) => sum + d.dayCalories, 0),
       sessionCount: monthDays.reduce((sum, d) => sum + d.sessions.length, 0),
+      plannedCount: monthDays.reduce((sum, d) => sum + d.planned.length, 0),
     }
-  }, [byDay, conflictsByDay, monthOffset])
+  }, [byDay, plannedByDay, conflictsByDay, plannedConflictsByDay, monthOffset])
 
   return { ...grid, loading, refresh }
 }

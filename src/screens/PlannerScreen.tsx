@@ -1,7 +1,23 @@
 // Training calendar — the whole month on one surface, Apple Calendar style.
-// Swipe (or tap the arrows) to move between months, tap a day to open what you
-// trained on it. Nothing is logged from here: the Log tab owns that, so this
-// screen stays a read-only view of what actually happened.
+// Swipe (or tap the arrows) to move between months, tap a day to open it.
+//
+// ## The screen now looks forward as well as back
+//
+// It used to be a read-only view of what had already happened: the Log tab owned
+// every write, and a day with nothing in it was simply blank. That made the
+// Planner useless to the one person who most needs it — someone who signed up
+// this morning, has logged nothing, and has no history for any of FORMA's
+// analytics to describe.
+//
+// So a day now holds two things: sessions that happened, and sessions that are
+// *planned*. Plans are cheap to enter (sport, duration, intensity) and they are
+// enough to run FORMA's signature check forward instead of backward — a hard
+// Combat session pencilled in for Tuesday and a hard run for Wednesday raise a
+// conflict the moment the second one is added, on an account with no history at
+// all. That warning is the product's whole differentiator, and this is where a
+// brand-new user meets it.
+//
+// Logged training is still read-only here; the Log tab keeps that job.
 import { useCallback, useMemo, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -16,21 +32,30 @@ import Animated, {
 } from 'react-native-reanimated'
 import { haptics } from '../utils/haptics'
 import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
+import PlannedConflictSheet from '../components/conflict/PlannedConflictSheet'
+import AddPlannedSessionSheet from '../components/planner/AddPlannedSessionSheet'
 import DaySessionsSheet from '../components/planner/DaySessionsSheet'
 import MonthGrid from '../components/planner/MonthGrid'
+import PlannedConflictSummary from '../components/planner/PlannedConflictSummary'
 import PlannerSkeleton from '../components/planner/PlannerSkeleton'
 import SessionDetailModal from '../components/session/SessionDetailModal'
 import EmptyState from '../components/ui/EmptyState'
 import { useMonthPlan, type CalendarDay } from '../hooks/useMonthPlan'
+import {
+  addPlannedSession,
+  deletePlannedSession,
+} from '../services/plannedSessionService'
 import { deleteSession, resolveConflict } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
 import { isOffline } from '../store/networkStore'
 import { toast } from '../store/toastStore'
+import { localISODate } from '../utils/dates'
 import { formatThousands } from '../utils/formatting'
-import type { Conflict } from '../types/conflict'
+import type { Conflict, PlannedConflict } from '../types/conflict'
+import type { PlannedSession, PlannedSessionInput } from '../types/planned'
 import type { Session } from '../types/session'
 import type { PlannerScreenProps } from '../navigation/types'
-import { RADIUS, SPACING } from '../theme/tokens'
+import { MIN_TOUCH, RADIUS, SPACING, TYPE, WEIGHT } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
 import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
@@ -41,33 +66,34 @@ const SLIDE_DISTANCE = 60
 /** Months in a year — the step the year chevrons take. */
 const YEAR = 12
 
-// Navigation props are unused: this screen is a pure view of logged sessions,
-// and everything it opens is a sheet rendered in place.
+// Navigation props are unused: everything this screen opens is a sheet rendered
+// in place.
 export default function PlannerScreen(_props: PlannerScreenProps) {
   const { colors } = useTheme()
   // Reserve room for the tab bar, which is drawn over the end of this list.
   const tabPadding = useTabContentPadding()
 
   const uid = useAuthStore((s) => s.user?.uid)
+  const sports = useAuthStore((s) => s.profile?.sports)
 
   const [monthOffset, setMonthOffset] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   /** The day ringed on the grid — set by any tap, including empty days. */
   const [selectedIso, setSelectedIso] = useState<string | null>(null)
-  /** Whether the selected day's session list is showing. */
+  /** Whether the selected day's card is showing. */
   const [dayListOpen, setDayListOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const [conflictSheet, setConflictSheet] = useState<Conflict[] | null>(null)
+  const [plannedSheet, setPlannedSheet] = useState<PlannedConflict[] | null>(null)
+  /** The day the "plan a session" sheet is collecting for, if open. */
+  const [planningIso, setPlanningIso] = useState<string | null>(null)
 
   const plan = useMonthPlan(monthOffset)
-  const { weeks, monthName, year, totalHours, totalLoad, sessionCount } = plan
+  const { weeks, monthName, year, totalHours, totalLoad, sessionCount, plannedCount } = plan
 
   // Flattened month sessions, so the conflict detail sheet can resolve the two
   // sessions each conflict involves.
-  const monthSessions = useMemo(
-    () => weeks.flat().flatMap((d) => d.sessions),
-    [weeks],
-  )
+  const monthSessions = useMemo(() => weeks.flat().flatMap((d) => d.sessions), [weeks])
 
   const translateX = useSharedValue(0)
   const opacity = useSharedValue(1)
@@ -144,17 +170,16 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
   )
 
   /**
-   * One session goes straight to its detail sheet; several open the day list
-   * first, so the user picks which one they meant. An empty day just takes the
-   * selection ring, and the bar under the grid says there's nothing there.
+   * Tapping a day opens its card — always, including an empty one.
+   *
+   * It used to open only for a day holding more than one session, because there
+   * was nothing to do on an empty day. There is now: an empty future day is
+   * where you plan, and the card is where planning happens.
    */
   const handleDayPress = useCallback((day: CalendarDay) => {
     haptics.light()
     setSelectedIso(day.isoDate)
-    // Set rather than toggled: tapping a one-session day while another day's
-    // list is open has to close that list, not leave it under the detail sheet.
-    setDayListOpen(day.sessions.length > 1)
-    if (day.sessions.length === 1) setSelectedSession(day.sessions[0])
+    setDayListOpen(true)
   }, [])
 
   // The selection is held as a date key, not as the CalendarDay object that was
@@ -166,12 +191,90 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
     [weeks, selectedIso],
   )
 
-  // Deleting the last session of an open day closes the list rather than
-  // leaving an empty sheet behind.
-  const sheetDay = dayListOpen && selectedDay && selectedDay.sessions.length > 0 ? selectedDay : null
+  /**
+   * The week the summary line speaks for: the row holding the selected day, or
+   * the row holding today, or the first row of the month on screen.
+   *
+   * A week rather than the whole month on purpose. "You have four planned
+   * conflicts in August" is a statistic; "Combat Tue → Running Wed" is something
+   * an athlete can act on this afternoon, and a week is the unit they plan in.
+   */
+  const focusWeek = useMemo(() => {
+    if (weeks.length === 0) return []
+    const containsSelected = selectedIso
+      ? weeks.find((week) => week.some((d) => d.isoDate === selectedIso))
+      : undefined
+    return containsSelected ?? weeks.find((week) => week.some((d) => d.isToday)) ?? weeks[0]
+  }, [weeks, selectedIso])
+
+  // De-duplicated: a clash spans two days and both of them are usually in the
+  // same row, so a naive flatMap would list every conflict twice.
+  const weekPlannedConflicts = useMemo(() => {
+    const seen = new Set<string>()
+    const out: PlannedConflict[] = []
+    for (const day of focusWeek) {
+      for (const conflict of day.plannedConflicts) {
+        if (seen.has(conflict.id)) continue
+        seen.add(conflict.id)
+        out.push(conflict)
+      }
+    }
+    return out
+  }, [focusWeek])
+
+  const weekPlannedCount = useMemo(
+    () => focusWeek.reduce((sum, d) => sum + d.planned.length, 0),
+    [focusWeek],
+  )
+
+  const handleAddPlan = useCallback(
+    async (input: PlannedSessionInput) => {
+      if (!uid) return
+      try {
+        await addPlannedSession(uid, input)
+        setPlanningIso(null)
+        haptics.success()
+        // No "conflict?" check here: the live snapshot re-runs
+        // `detectPlannedConflicts` over the whole calendar, so the warning (or
+        // its absence) lands on the grid and in the week summary by itself. A
+        // second, imperative check would be a second source of truth.
+        toast.success('Added to your plan')
+      } catch {
+        toast.error('Could not save the plan', {
+          description: isOffline()
+            ? "You're offline — reconnect and try again."
+            : 'Something went wrong. Please try again.',
+        })
+      }
+    },
+    [uid],
+  )
+
+  const handleDeletePlan = useCallback(
+    (planned: PlannedSession) => {
+      if (!uid) return
+      deletePlannedSession(uid, planned.id).catch(() => {
+        toast.error('Could not remove the plan', {
+          description: isOffline()
+            ? "You're offline — reconnect and try again."
+            : 'Something went wrong. Please try again.',
+        })
+      })
+    },
+    [uid],
+  )
+
+  // Deleting the last item of an open day still leaves a card worth showing —
+  // it holds the "plan a session" action — so the sheet stays until dismissed.
+  const sheetDay = dayListOpen ? selectedDay : null
 
   const isCurrentMonth = monthOffset === 0
-  const monthIsEmpty = !plan.loading && sessionCount === 0
+  const monthIsEmpty = !plan.loading && sessionCount === 0 && plannedCount === 0
+
+  /** Where the empty state's CTA plans: today, or the 1st of the month on screen. */
+  const defaultPlanIso = isCurrentMonth
+    ? localISODate(new Date())
+    : localISODate(plan.monthStart)
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -202,7 +305,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
             style={{
               marginHorizontal: 2,
               fontSize: 15,
-              fontWeight: '700',
+              fontWeight: WEIGHT.bold,
               color: colors.textMuted,
               minWidth: 42,
               textAlign: 'center',
@@ -237,8 +340,8 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
           >
             <Text
               style={{
-                fontSize: 13,
-                fontWeight: '700',
+                fontSize: TYPE.small,
+                fontWeight: WEIGHT.bold,
                 color: isCurrentMonth ? colors.onAccent : colors.textMuted,
               }}
             >
@@ -252,7 +355,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
           <Animated.Text
             key={monthOffset}
             entering={FadeIn.duration(220)}
-            style={{ flex: 1, fontSize: 34, fontWeight: '800', color: colors.text }}
+            style={{ flex: 1, fontSize: 34, fontWeight: WEIGHT.heavy, color: colors.text }}
             numberOfLines={1}
           >
             {monthName}
@@ -272,13 +375,25 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
 
         {/* Month summary — the only aggregate on the screen, kept to one line. */}
         <Text style={{ marginTop: 2, fontSize: 12.5, color: colors.textSubtle }}>
-          {sessionCount === 0
-            ? 'No sessions logged'
-            : `${sessionCount} session${sessionCount === 1 ? '' : 's'} · ${totalHours.toFixed(
-                1,
-              )} h · ${formatThousands(totalLoad)} AU`}
+          {monthSummary(sessionCount, totalHours, totalLoad, plannedCount)}
         </Text>
       </View>
+
+      {/* --- The week, summarised ------------------------------------- */}
+      {/* Pinned under the header rather than dropped below the grid: the grid
+          claims every spare pixel of the page, so anything after it is off the
+          bottom of a tall month — and a summary you have to scroll to find is
+          not a summary. It tracks the selected week, so tapping around the
+          calendar re-reads it. */}
+      {!plan.loading ? (
+        <View style={{ paddingHorizontal: 20 }}>
+          <PlannedConflictSummary
+            conflicts={weekPlannedConflicts}
+            plannedCount={weekPlannedCount}
+            onPress={setPlannedSheet}
+          />
+        </View>
+      ) : null}
 
       {/* --- Calendar -------------------------------------------------- */}
       <GestureDetector gesture={monthSwipe}>
@@ -314,10 +429,14 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
 
           {!plan.loading && monthIsEmpty ? (
             <EmptyState
-              tone="quiet"
-              emoji="🗓️"
-              title="Nothing logged this month"
-              message="Sessions you log appear here as coloured dots — one per sport."
+              icon="calendar"
+              title="Plan your week"
+              message="Plan your week and we'll flag conflicts before they cost you — a hard Combat session and a hard run on back-to-back days get caught here, not in your legs."
+              actionLabel="Plan a session"
+              onAction={() => {
+                haptics.light()
+                setPlanningIso(defaultPlanIso)
+              }}
               style={{ marginTop: SPACING.lg, marginHorizontal: 12 }}
             />
           ) : null}
@@ -328,9 +447,10 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
       <SelectedDayBar
         day={selectedDay}
         onPress={() => selectedDay && handleDayPress(selectedDay)}
+        onPlan={() => setPlanningIso(selectedDay?.isoDate ?? defaultPlanIso)}
       />
 
-      {/* Day list. Rendered before the modals below on purpose — it's a plain
+      {/* Day card. Rendered before the modals below on purpose — it's a plain
           overlay, so the real <Modal>s stack above it and closing one drops the
           user back onto the day they came from. */}
       <DaySessionsSheet
@@ -339,6 +459,9 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
         onSessionPress={setSelectedSession}
         onSessionDelete={handleDelete}
         onConflictPress={setConflictSheet}
+        onPlannedConflictPress={setPlannedSheet}
+        onPlanSession={setPlanningIso}
+        onPlannedDelete={handleDeletePlan}
       />
 
       <SessionDetailModal
@@ -368,33 +491,64 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
           setConflictSheet(null)
         }}
       />
+
+      <PlannedConflictSheet conflicts={plannedSheet} onClose={() => setPlannedSheet(null)} />
+
+      <AddPlannedSessionSheet
+        isoDate={planningIso}
+        sports={sports ?? []}
+        onClose={() => setPlanningIso(null)}
+        onSave={handleAddPlan}
+      />
     </SafeAreaView>
   )
+}
+
+/** "4 sessions · 5.2 h · 1,840 AU · 3 planned" — whichever halves exist. */
+function monthSummary(
+  sessionCount: number,
+  totalHours: number,
+  totalLoad: number,
+  plannedCount: number,
+): string {
+  const parts: string[] = []
+  if (sessionCount > 0) {
+    parts.push(
+      `${sessionCount} session${sessionCount === 1 ? '' : 's'}`,
+      `${totalHours.toFixed(1)} h`,
+      `${formatThousands(totalLoad)} AU`,
+    )
+  }
+  if (plannedCount > 0) parts.push(`${plannedCount} planned`)
+  return parts.length > 0 ? parts.join(' · ') : 'Nothing logged or planned'
 }
 
 /* ------------------------------------------------------------------ */
 /* Selected day summary                                                */
 /* ------------------------------------------------------------------ */
 /**
- * The strip under the grid. It's where an empty day gets its answer — tapping
- * one can't open anything, so the "no sessions" state has to live somewhere
- * visible — and it doubles as the way back into a day whose sheet was closed.
+ * The strip under the grid. It is the way back into a day whose card was closed,
+ * and — for a day with nothing on it — the shortest route to planning one.
  */
-function SelectedDayBar({ day, onPress }: { day: CalendarDay | null; onPress: () => void }) {
+function SelectedDayBar({
+  day,
+  onPress,
+  onPlan,
+}: {
+  day: CalendarDay | null
+  onPress: () => void
+  onPlan: () => void
+}) {
   const { colors } = useTheme()
 
-  const count = day?.sessions.length ?? 0
-
   return (
-    <Pressable
-      onPress={count > 0 ? onPress : undefined}
-      disabled={count === 0}
-      accessibilityRole={count > 0 ? 'button' : undefined}
+    <View
       style={{
         // Fixed height whatever it's showing, so tapping around the grid never
         // makes the calendar above it jump.
         height: 54,
-        justifyContent: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
         paddingHorizontal: 20,
         backgroundColor: colors.surface,
         borderTopWidth: 1,
@@ -402,29 +556,74 @@ function SelectedDayBar({ day, onPress }: { day: CalendarDay | null; onPress: ()
       }}
     >
       {day == null ? (
-        <Text style={{ fontSize: 13, color: colors.textSubtle }}>
-          Tap a day to see what you trained.
+        <Text style={{ fontSize: TYPE.small, color: colors.textSubtle }}>
+          Tap a day to see it, or to plan a session on it.
         </Text>
       ) : (
         <>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
-            {day.date.toLocaleDateString(undefined, {
-              weekday: 'short',
-              day: 'numeric',
-              month: 'long',
-            })}
-          </Text>
-          <Text style={{ marginTop: 1, fontSize: 12.5, color: colors.textMuted }}>
-            {count === 0
-              ? 'No sessions'
-              : `${count} session${count === 1 ? '' : 's'} · ${day.dayHours.toFixed(
-                  1,
-                )} h · ${day.dayLoad} AU`}
-          </Text>
+          <Pressable
+            onPress={onPress}
+            accessibilityRole="button"
+            style={{ flex: 1, minWidth: 0 }}
+          >
+            <Text style={{ fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: colors.text }}>
+              {day.date.toLocaleDateString(undefined, {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'long',
+              })}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{ marginTop: 1, fontSize: 12.5, color: colors.textMuted }}
+            >
+              {dayBarSummary(day)}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              haptics.light()
+              onPlan()
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Plan a session on the selected day"
+            style={{
+              marginLeft: SPACING.md,
+              minHeight: MIN_TOUCH - 12,
+              justifyContent: 'center',
+              paddingHorizontal: 14,
+              borderRadius: RADIUS.pill,
+              borderWidth: 1.5,
+              borderStyle: 'dashed',
+              borderColor: colors.accentBorder,
+              backgroundColor: colors.accentSoft,
+            }}
+          >
+            <Text
+              style={{ fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: colors.accentText }}
+            >
+              + Plan
+            </Text>
+          </Pressable>
         </>
       )}
-    </Pressable>
+    </View>
   )
+}
+
+function dayBarSummary(day: CalendarDay): string {
+  const parts: string[] = []
+  if (day.sessions.length > 0) {
+    parts.push(
+      `${day.sessions.length} session${day.sessions.length === 1 ? '' : 's'}`,
+      `${day.dayHours.toFixed(1)} h`,
+      `${day.dayLoad} AU`,
+    )
+  }
+  if (day.planned.length > 0) parts.push(`${day.planned.length} planned`)
+  if (day.plannedConflicts.length > 0) parts.push('planned conflict')
+  return parts.length > 0 ? parts.join(' · ') : 'Nothing yet'
 }
 
 /* ------------------------------------------------------------------ */
@@ -465,7 +664,7 @@ function Chevron({
       <Text
         style={{
           fontSize: subtle ? 18 : 21,
-          fontWeight: '700',
+          fontWeight: WEIGHT.bold,
           color: subtle ? colors.textSubtle : colors.textBody,
           marginTop: -3,
         }}

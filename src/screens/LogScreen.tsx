@@ -26,6 +26,7 @@ import Animated, {
 import Slider from '@react-native-community/slider'
 import { haptics } from '../utils/haptics'
 import ConflictModal from '../components/log/ConflictModal'
+import FirstSessionModal from '../components/log/FirstSessionModal'
 import { stopLiveNotification } from '../services/liveNotification'
 import LiveTracker, {
   type LiveResult,
@@ -53,13 +54,14 @@ import {
   checkAndNotifyStreak,
   sendConflictNotification,
 } from '../services/notificationService'
+import { updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
 import { useSessionHistory } from '../hooks/useSessionHistory'
 import { useIsMounted, useSafeTimeout } from '../hooks/useSafeTimeout'
 import { CALIBRATION_SESSION_TARGET } from '../utils/calibration'
 import { withPreferenceDefaults } from '../types/notifications'
 import type { Conflict } from '../types/conflict'
-import type { SportType } from '../types/session'
+import type { Session, SportType } from '../types/session'
 import type { LogScreenProps } from '../navigation/types'
 import { useTheme } from '../theme/ThemeProvider'
 import { useTabContentPadding } from '../hooks/useTabContentPadding'
@@ -132,6 +134,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
 
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
+  const setProfile = useAuthStore((s) => s.setProfile)
   // Count-based calibration gate: a user with < 7 sessions gets gentler conflict
   // detection (no volume warnings, sensitivity one notch softer).
   const { sessions } = useSessionHistory()
@@ -175,6 +178,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
    */
   const [liveSaved, setLiveSaved] = useState(false)
   const [conflicts, setConflicts] = useState<Conflict[] | null>(null)
+  /** The session behind the one-time first-save celebration, while it is up. */
+  const [celebrated, setCelebrated] = useState<Session | null>(null)
   const [savedSessionId, setSavedSessionId] = useState<string | null>(null)
   const [undoing, setUndoing] = useState(false)
 
@@ -332,6 +337,30 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     else resetForm()
   }
 
+  /**
+   * Retire the one-time first-session gate, and say whether the moment is
+   * actually due.
+   *
+   * Two conditions, doing two different jobs. The profile flag is the "only ever
+   * once" guarantee and is cleared on the first save either way — that is what
+   * quietly retires the gate for an athlete who already had months of history
+   * when this shipped. The empty-window check is what makes it *their first
+   * session* rather than merely their first since the feature existed.
+   *
+   * The write is fire-and-forget: a celebration is not worth blocking a
+   * successful save on, and the local `setProfile` (which mirrors to the profile
+   * cache) is what the rest of this session reads.
+   */
+  const claimFirstSessionMoment = (firstInWindow: boolean): boolean => {
+    if (!user || !profile || profile.firstSessionCelebrated) return false
+    setProfile({ ...profile, firstSessionCelebrated: true })
+    void updateUserProfile(user.uid, { firstSessionCelebrated: true }).catch(() => {
+      // Worst case the flag is only local and a reinstall replays the moment
+      // once. Not worth an error toast on an otherwise successful save.
+    })
+    return firstInWindow
+  }
+
   // Shared write path for both Quick Log and Live Tracking. Persists the
   // session, then either surfaces conflicts or shows the success toast + resets.
   const logAndHandle = async (input: LogSessionInput) => {
@@ -381,6 +410,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       }
       void checkAndNotifyStreak(withNew, prefs)
 
+      // Captured before the modal branches below, because `sessions` is the
+      // pre-save snapshot: empty means nothing had been logged until now.
+      const isFirstEver = claimFirstSessionMoment(sessions.length === 0)
+
       if (detected.length > 0) {
         setSavedSessionId(session.id)
         setConflicts(detected)
@@ -391,6 +424,19 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       toast.success('Session saved', {
         description: `${session.loadScore} AU · ${session.estimatedCalories} kcal`,
       })
+
+      // The first-ever save gets its moment, and owns the navigation that
+      // follows: the auto-return below would unmount the modal under the reader.
+      // A first session cannot clash with anything (there is nothing to clash
+      // with), so this can never be competing with the conflict modal above.
+      if (isFirstEver) {
+        // Live saves acknowledge the write on the Save button itself; hold that
+        // "✓ Saved" state behind the modal so the summary underneath still reads
+        // as finished rather than as though the tap did nothing.
+        if (input.trackingMode === 'live') setLiveSaved(true)
+        setCelebrated(session)
+        return
+      }
 
       if (input.trackingMode === 'live') {
         // Hold the summary on screen with the button in its "Saved" state, then
@@ -418,6 +464,20 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
           : 'Something went wrong. Please try again.',
       })
     }
+  }
+
+  /** Close the first-session moment and run the navigation it deferred. */
+  const handleCelebrationDone = () => {
+    const wasLive = celebrated?.trackingMode === 'live'
+    setCelebrated(null)
+    if (wasLive) {
+      setLiveSaved(false)
+      setMode('quick')
+      resetForm()
+      navigation.navigate('Dashboard')
+      return
+    }
+    goBackToPlannerOrReset()
   }
 
   const handleSave = () => {
@@ -563,6 +623,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
           onKeep={handleKeepSession}
           onUndo={handleUndoSession}
         />
+        <FirstSessionModal session={celebrated} onDismiss={handleCelebrationDone} />
       </>
     )
   }
@@ -1029,6 +1090,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         onKeep={handleKeepSession}
         onUndo={handleUndoSession}
       />
+
+      <FirstSessionModal session={celebrated} onDismiss={handleCelebrationDone} />
     </SafeAreaView>
   )
 }

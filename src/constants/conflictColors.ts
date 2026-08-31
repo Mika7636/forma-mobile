@@ -122,3 +122,57 @@ export function interactionLevels(colors: Palette): InteractionLevel[] {
     },
   ]
 }
+
+/* ------------------------------------------------------------------ */
+/* Planned conflicts                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How a **planned** conflict is drawn, as a delta on its logged sibling.
+ *
+ * ## The problem this solves
+ *
+ * The two things mean different things and must not be confused. "Training
+ * conflict" is a report on training the athlete has already done — it is a fact,
+ * and the only thing left to do is manage the recovery. "Planned conflict" is a
+ * prediction about a week that hasn't happened, and it is *free to fix*: drag
+ * one session, and it's gone. Painting them identically would make the second
+ * read as an accusation about something the athlete hasn't even done yet.
+ *
+ * ## Why it keeps the severity hue
+ *
+ * The obvious move is a third colour, and it is the wrong one. Severity is the
+ * information the colour carries everywhere else in the app — amber is "watch
+ * this", red is "this one hurts" — and a planned danger is still a danger. Give
+ * planned conflicts their own hue and severity stops being legible in half the
+ * places it appears.
+ *
+ * So the hue stays and the *chrome* changes: a dashed edge rather than a solid
+ * one (the visual language of "provisional" everywhere from Figma to Gantt
+ * charts), a calendar glyph rather than a warning triangle, and a title that
+ * says the word. Three non-colour channels, which is also what keeps it working
+ * for a colour-blind athlete and in greyscale.
+ *
+ * The redundancy is load-bearing rather than belt-and-braces: Android silently
+ * renders `borderStyle: 'dashed'` as solid whenever the view also has a border
+ * radius, which is every surface here. The glyph and the word are what survive
+ * that, so no planned-conflict surface may rely on the dashes alone.
+ */
+export interface PlannedSeverityStyle extends SeverityStyle {
+  /** Dash pattern for borders and strokes. Solid conflicts pass no dashes. */
+  dash: readonly [number, number]
+}
+
+export function plannedSeverityStyle(
+  severity: ConflictSeverity | undefined,
+  colors: Palette,
+): PlannedSeverityStyle {
+  const base = severityStyle(severity, colors)
+  return {
+    ...base,
+    // 📅 rather than ⚠️/🚨: the glyph itself says "this is about the calendar".
+    icon: '📅',
+    title: base.severity === 'danger' ? 'Planned Conflict — High Risk' : 'Planned Conflict',
+    dash: [4, 3],
+  }
+}

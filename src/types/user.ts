@@ -37,6 +37,17 @@ export interface User {
   /** Max heart rate (bpm). Defaults to 190 in estimates when unset. */
   maxHR?: number
   /**
+   * True once the one-time "first session" celebration has been shown.
+   *
+   * Lives on the profile rather than in AsyncStorage so it is the *account's*
+   * fact, not the handset's: a reinstall, a new phone, or a second device must
+   * not replay a moment that only makes sense once. Absent on every account
+   * created before the celebration existed, which is why it is optional and
+   * why the Log screen retires it on the next save without showing anything to
+   * an athlete who already has history.
+   */
+  firstSessionCelebrated?: boolean
+  /**
    * Local-notification settings. `undefined` means we have never asked for
    * permission — RootNavigator uses exactly that to decide whether to show the
    * one-time permission screen, so don't default it at read time.

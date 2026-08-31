@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import Slider from '@react-native-community/slider'
 import { haptics } from '../utils/haptics'
+import ConflictMatrixPayoff from '../components/onboarding/ConflictMatrixPayoff'
 import ProgressBar from '../components/onboarding/ProgressBar'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
@@ -33,6 +34,7 @@ import {
   calculateBaselineWeeklyLoad,
   getBudgetTier,
 } from '../constants/training'
+import { requestLandingTab } from '../navigation/landingTab'
 import { updateUserProfile } from '../services/userService'
 import { useAuthStore } from '../store/authStore'
 import { useSafeTimeout } from '../hooks/useSafeTimeout'
@@ -42,7 +44,16 @@ import { useTheme } from '../theme/ThemeProvider'
 import { onColor } from '../theme/tokens'
 import { sportVisual } from '../utils/sportMeta'
 
-const TOTAL_STEPS = 5
+/**
+ * Six steps, the last of which gives something back.
+ *
+ * The wizard used to end on "Experience → Finish", which meant every screen took
+ * something from the athlete and none gave anything in return until the
+ * dashboard — where the headline numbers need a fortnight of logging to mean
+ * anything. Step 6 closes that: their own sports, run through their own
+ * interaction matrix, as advice they can use today. See `ConflictMatrixPayoff`.
+ */
+const TOTAL_STEPS = 6
 const LB_PER_KG = 2.20462
 
 // Step 2 offers the six headline sports; standalone "strength" is folded into
@@ -114,6 +125,15 @@ export default function OnboardingScreen() {
     return Math.round(weightUnit === 'lb' ? num / LB_PER_KG : num)
   }
 
+  /**
+   * Write the profile, then send the athlete to the Planner.
+   *
+   * The Planner rather than the Dashboard because it is the one screen that is
+   * useful with nothing logged: the conflict engine runs forward over planned
+   * sessions, so the advice they just read on the previous step is immediately
+   * actionable there. `requestLandingTab` is how that survives the navigator
+   * swap — this screen is unmounted the instant `onboardingCompleted` flips.
+   */
   const handleFinish = async () => {
     if (!user || !experience || saving) return
     setError(null)
@@ -163,6 +183,7 @@ export default function OnboardingScreen() {
       await updateUserProfile(user.uid, nextProfile)
       console.log('[Onboarding] Firestore write succeeded')
       haptics.success()
+      requestLandingTab('Planner')
       setDone(true)
       // Show the "You're all set!" beat, then commit the profile —
       // RootNavigator flips to MainTabs once onboardingCompleted is true.
@@ -206,7 +227,7 @@ export default function OnboardingScreen() {
             You're all set!
           </Text>
           <Text style={{ marginTop: 8, fontSize: 15, color: colors.textMuted }}>
-            Building your dashboard…
+            Opening your planner…
           </Text>
           <View
             style={{
@@ -228,8 +249,9 @@ export default function OnboardingScreen() {
                 textAlign: 'center',
               }}
             >
-              💡 Tip: Log your workouts for the first 2 weeks and FORMA will calibrate to
-              your training level. The more you log, the smarter your insights become.
+              💡 Plan a few sessions and FORMA will flag the clashes straight away. Log
+              them as you go, and after about 2 weeks your Form Score becomes meaningful
+              too.
             </Text>
           </View>
         </Animated.View>
@@ -304,7 +326,19 @@ export default function OnboardingScreen() {
                     setError(null)
                     setExperience(e)
                   }}
-                  onFinish={handleFinish}
+                  onNext={goNext}
+                />
+              ) : null}
+
+              {step === 5 ? (
+                <ConflictMatrixPayoff
+                  sports={sports}
+                  // The matrix that is about to be written to the profile: the
+                  // athlete's own if they already have one (a re-run of the
+                  // wizard), otherwise the seeded default this account will get.
+                  interactions={profile?.sportInteractions ?? DEFAULT_SPORT_INTERACTIONS}
+                  ctaLabel="Plan your first week"
+                  onContinue={handleFinish}
                   saving={saving}
                   error={error}
                 />
@@ -626,15 +660,11 @@ function MetricsStep({
 function ExperienceStep({
   selected,
   onSelect,
-  onFinish,
-  saving,
-  error,
+  onNext,
 }: {
   selected: ExperienceLevel | null
   onSelect: (e: ExperienceLevel) => void
-  onFinish: () => void
-  saving: boolean
-  error: string | null
+  onNext: () => void
 }) {
   const { colors } = useTheme()
 
@@ -688,23 +718,9 @@ function ExperienceStep({
       </View>
 
       <View style={{ flex: 1 }} />
-      {error ? (
-        <Text
-          style={{
-            color: colors.dangerText,
-            fontSize: 14,
-            fontWeight: '600',
-            textAlign: 'center',
-            marginBottom: 12,
-          }}
-        >
-          {error}
-        </Text>
-      ) : null}
       <PrimaryButton
-        label="Finish"
-        onPress={onFinish}
-        loading={saving}
+        label="Continue"
+        onPress={onNext}
         disabled={!selected}
         style={{ marginTop: 12 }}
       />

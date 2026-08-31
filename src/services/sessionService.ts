@@ -459,16 +459,21 @@ export async function resolveConflict(userId: string, conflictId: string): Promi
 }
 
 /**
- * Wipe every session and conflict for a user (Settings → "Clear All Training
- * Data"). Leaves the profile intact.
+ * Wipe every session, conflict and planned session for a user (Settings →
+ * "Clear All Training Data"). Leaves the profile intact.
+ *
+ * The plan is included because "clear my training data" that leaves next week
+ * still pencilled in has not cleared the user's training data — and the plans
+ * left behind would keep raising planned conflicts against a now-empty history.
  */
 export async function clearTrainingData(userId: string): Promise<void> {
-  const [sessions, conflicts] = await Promise.all([
+  const [sessions, conflicts, planned] = await Promise.all([
     getDocs(sessionsCol(userId)),
     getDocs(conflictsCol(userId)),
+    getDocs(collection(db, 'users', userId, 'plannedSessions')),
   ])
   await Promise.all(
-    [...sessions.docs, ...conflicts.docs].map((d) => deleteDoc(d.ref)),
+    [...sessions.docs, ...conflicts.docs, ...planned.docs].map((d) => deleteDoc(d.ref)),
   )
 }
 

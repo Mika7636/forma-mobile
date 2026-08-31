@@ -18,6 +18,7 @@ import {
 } from '../store/liveTrackingStore'
 import { useToastStore } from '../store/toastStore'
 import { haptics } from '../utils/haptics'
+import { consumeLandingTab } from './landingTab'
 import type { AppStackParamList, MainTabsParamList } from './types'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useTheme } from '../theme/ThemeProvider'
@@ -77,9 +78,17 @@ export default function MainTabs() {
     void (async () => {
       await ensureLiveTrackingHydrated()
       if (cancelled) return
+      // An in-progress run outranks everything: see the note above.
       if (hasActiveSession(useLiveTrackingStore.getState())) {
         navigation.navigate('MainTabs', { screen: 'Log' })
+        return
       }
+      // Otherwise honour a tab requested from outside the navigator — currently
+      // onboarding's "Plan your first week", which finishes setup and wants the
+      // user to land on the Planner rather than on a Dashboard that has nothing
+      // to show them yet. Consumed once; see `landingTab`.
+      const landing = consumeLandingTab()
+      if (landing) navigation.navigate('MainTabs', { screen: landing })
     })()
     return () => {
       cancelled = true

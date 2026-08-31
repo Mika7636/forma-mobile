@@ -3,18 +3,40 @@
 // A cell is deliberately quiet — a date number, and under it one dot per
 // session tinted by sport. That's the whole language of the screen: scan the
 // grid and you can see which days you trained and roughly what you did.
+//
+// A day now carries two kinds of thing, and the cell has to keep them apart
+// without a second colour system. The rule is **filled means it happened,
+// hollow means it's planned**: a logged session is a solid dot, a plan is a ring
+// in the same sport hue; a logged conflict is a solid mark, a planned conflict a
+// ring. That reads at a glance, survives greyscale, and needs no legend — and it
+// leaves colour saying exactly what it already said (which sport, how serious).
 import { memo } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import { severityStyle, worstSeverity } from '../../constants/conflictColors'
+import {
+  plannedSeverityStyle,
+  severityStyle,
+  worstSeverity,
+} from '../../constants/conflictColors'
 import { WEEKDAY_INITIALS, type CalendarDay } from '../../hooks/useMonthPlan'
 import { sportVisual } from '../../utils/sportMeta'
+import type { PlannedSession } from '../../types/planned'
+import type { Session } from '../../types/session'
 import { RADIUS } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 /** Dots rendered before the row collapses into "N dots + overflow count". */
 const MAX_DOTS = 3
-/** Diameter of a session dot. */
+/** Diameter of a logged session's filled dot. */
 const DOT = 6
+/**
+ * Diameter of a planned session's ring.
+ *
+ * A pixel larger than {@link DOT} on purpose. A 6px circle with a 1.5px border
+ * leaves a 3px hole, which at arm's length is a slightly soft dot rather than a
+ * visibly hollow one — and "hollow means planned" is the cell's entire grammar.
+ * The extra pixel buys a 4px hole, which reads.
+ */
+const PLANNED_DOT = 7
 /** The circle behind a date number — sized for a comfortable tap target. */
 const CIRCLE = 34
 
@@ -87,7 +109,7 @@ function DayCell({
 }) {
   const { colors } = useTheme()
 
-  const { isToday, inMonth, sessions, conflicts } = day
+  const { isToday, inMonth, sessions, planned, conflicts, plannedConflicts } = day
   const count = sessions.length
 
   // Today outranks selection: it is the one fixed landmark on the grid, so a
@@ -114,16 +136,24 @@ function DayCell({
     month: 'long',
   })
 
+  // Spoken as one sentence: what happened, what's planned, what clashes. A
+  // screen reader user gets the same three facts the dots and marks carry.
+  const spoken = [
+    label,
+    count === 0 ? 'no sessions' : `${count} session${count === 1 ? '' : 's'}`,
+    planned.length > 0 ? `${planned.length} planned` : null,
+    conflicts.length > 0 ? 'training conflict' : null,
+    plannedConflicts.length > 0 ? 'planned conflict' : null,
+  ]
+    .filter(Boolean)
+    .join(', ')
+
   return (
     <Pressable
       onPress={() => onPress(day)}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={
-        count === 0
-          ? `${label}, no sessions`
-          : `${label}, ${count} session${count === 1 ? '' : 's'}`
-      }
+      accessibilityLabel={spoken}
       style={{
         flex: 1,
         alignItems: 'center',
@@ -167,7 +197,7 @@ function DayCell({
         </Text>
       </View>
 
-      <SessionDots sessions={sessions} dimmed={!inMonth} />
+      <SessionDots sessions={sessions} planned={planned} dimmed={!inMonth} />
 
       {/* Unresolved conflict marker, tucked into the corner so it never
           competes with the date number. */}
@@ -185,6 +215,25 @@ function DayCell({
           }}
         />
       ) : null}
+
+      {/* Planned clash. Same severity hue, opposite corner, and a *ring* rather
+          than a disc — the cell's one rule for "this hasn't happened yet". */}
+      {plannedConflicts.length > 0 ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 4,
+            left: 6,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            borderWidth: 1.5,
+            borderColor: plannedSeverityStyle(worstSeverity(plannedConflicts), colors).solid,
+            backgroundColor: 'transparent',
+            opacity: inMonth ? 1 : 0.4,
+          }}
+        />
+      ) : null}
     </Pressable>
   )
 }
@@ -192,14 +241,31 @@ function DayCell({
 /* ------------------------------------------------------------------ */
 /* Sport dots                                                          */
 /* ------------------------------------------------------------------ */
-function SessionDots({ sessions, dimmed }: { sessions: CalendarDay['sessions']; dimmed: boolean }) {
+function SessionDots({
+  sessions,
+  planned,
+  dimmed,
+}: {
+  sessions: Session[]
+  planned: PlannedSession[]
+  dimmed: boolean
+}) {
   const { colors } = useTheme()
 
   // The row keeps its height even when empty — see the minHeight note above.
-  if (sessions.length === 0) return <View style={{ height: DOT, marginTop: 4 }} />
+  if (sessions.length === 0 && planned.length === 0) {
+    return <View style={{ height: DOT, marginTop: 4 }} />
+  }
 
-  const shown = sessions.slice(0, MAX_DOTS)
-  const overflow = sessions.length - shown.length
+  // Logged first, then plans: the cell reads left-to-right as past → future, and
+  // when a busy day overflows it is the plans that get collapsed into the count,
+  // never the training that actually happened.
+  const marks: { key: string; sport: Session['sport']; planned: boolean }[] = [
+    ...sessions.map((s) => ({ key: s.id, sport: s.sport, planned: false })),
+    ...planned.map((p) => ({ key: `p-${p.id}`, sport: p.sport, planned: true })),
+  ]
+  const shown = marks.slice(0, MAX_DOTS)
+  const overflow = marks.length - shown.length
 
   return (
     <View
@@ -207,22 +273,30 @@ function SessionDots({ sessions, dimmed }: { sessions: CalendarDay['sessions']; 
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 4,
-        height: DOT,
+        height: PLANNED_DOT,
         opacity: dimmed ? 0.35 : 1,
       }}
     >
-      {shown.map((session, i) => (
-        <View
-          key={session.id}
-          style={{
-            width: DOT,
-            height: DOT,
-            borderRadius: DOT / 2,
-            marginLeft: i === 0 ? 0 : 3,
-            backgroundColor: sportVisual(session.sport, colors).color,
-          }}
-        />
-      ))}
+      {shown.map((mark, i) => {
+        const color = sportVisual(mark.sport, colors).color
+        const size = mark.planned ? PLANNED_DOT : DOT
+        return (
+          <View
+            key={mark.key}
+            style={{
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              marginLeft: i === 0 ? 0 : 3,
+              // Hollow = planned. The hue still says which sport; the fill says
+              // whether it is a record or an intention.
+              backgroundColor: mark.planned ? 'transparent' : color,
+              borderWidth: mark.planned ? 1.5 : 0,
+              borderColor: color,
+            }}
+          />
+        )
+      })}
       {overflow > 0 ? (
         <Text
           style={{

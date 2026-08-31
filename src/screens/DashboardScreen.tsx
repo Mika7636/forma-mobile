@@ -20,9 +20,11 @@ import RecentActivity from '../components/dashboard/RecentActivity'
 import ZoneDistributionChart from '../components/dashboard/ZoneDistributionChart'
 import SessionDetailModal from '../components/session/SessionDetailModal'
 import PressableScale from '../components/ui/PressableScale'
-import { getCalibrationState } from '../utils/calibration'
+import { getBaselineState } from '../utils/calibration'
 import { haptics } from '../utils/haptics'
+import { localISODate } from '../utils/dates'
 import { useConflicts } from '../hooks/useConflicts'
+import { usePlannedSessions } from '../hooks/usePlannedSessions'
 import { useIsMounted } from '../hooks/useSafeTimeout'
 import { useMetrics } from '../hooks/useMetrics'
 import { useAuthStore } from '../store/authStore'
@@ -47,7 +49,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const tabPadding = useTabContentPadding()
 
   const displayName = useAuthStore((s) => s.user?.displayName)
-  const createdAt = useAuthStore((s) => s.profile?.createdAt)
   const {
     sessions,
     weekSessions,
@@ -63,15 +64,18 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     weeklyDistanceKm,
     budgetHours,
     sessionCount,
-    totalSessionCount,
     streak,
   } = useMetrics()
   const { conflicts, dismissConflict } = useConflicts()
+  const { byDay: plannedByDay, conflictsByDay: plannedConflictsByDay } = usePlannedSessions()
 
-  // While the user is still in their calibration window, the raw Form Score is
-  // statistically noise — show the "Building Your Baseline" hero instead of a
-  // potentially alarming red card. (Blended CTL keeps the number sane too.)
-  const calibration = getCalibrationState(totalSessionCount, createdAt)
+  /**
+   * Under two weeks of history, the Form Score is an artefact of the CTL/ATL
+   * ramp rather than a measurement — so the hero shows how far along the
+   * baseline is instead of publishing a number the app can't stand behind. See
+   * `getBaselineState` for why the window is counted in days, not sessions.
+   */
+  const baseline = getBaselineState(sessions)
 
   const [refreshing, setRefreshing] = useState(false)
   const isMounted = useIsMounted()
@@ -107,6 +111,27 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     navigation.navigate('Log')
   }, [navigation])
 
+  const goToPlanner = useCallback(() => {
+    navigation.navigate('Planner')
+  }, [navigation])
+
+  // What the "available now" panel shows a zero-session account: the plan for
+  // today, and any clash the engine has already found in the next two days. Both
+  // are real output on an account with no history — that is the point of them.
+  const todayIso = localISODate(now)
+  const tomorrowIso = localISODate(new Date(now.getTime() + 86_400_000))
+  const todayPlanned = useMemo(
+    () => plannedByDay.get(todayIso) ?? [],
+    [plannedByDay, todayIso],
+  )
+  const upcomingPlannedConflicts = useMemo(() => {
+    const seen = new Set<string>()
+    return [
+      ...(plannedConflictsByDay.get(todayIso) ?? []),
+      ...(plannedConflictsByDay.get(tomorrowIso) ?? []),
+    ].filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+  }, [plannedConflictsByDay, todayIso, tomorrowIso])
+
   const handleSelectSession = useCallback((session: Session) => {
     setSelectedSession(session)
   }, [])
@@ -127,7 +152,12 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     setRefreshing(false)
   }, [sessions, isMounted])
 
-  const sessionsLabel = `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} this week`
+  // Never "0 sessions this week": a zero is a fact about the app's storage, not
+  // about the athlete, and on a first run it is the first thing they read.
+  const sessionsLabel =
+    sessionCount === 0
+      ? 'Nothing logged this week yet'
+      : `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} this week`
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -226,16 +256,16 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           {loading ? (
             <DashboardSkeleton />
           ) : sessions.length === 0 ? (
-            <EmptyDashboardState onLogSession={goToLog} />
+            <EmptyDashboardState
+              todayPlanned={todayPlanned}
+              plannedConflicts={upcomingPlannedConflicts}
+              onLogSession={goToLog}
+              onPlanWeek={goToPlanner}
+            />
           ) : (
             <Animated.View entering={FadeIn.duration(280)} style={{ gap: 20 }}>
-              {calibration.isCalibrating ? (
-                <CalibratingFormCard
-                  form={formScore}
-                  ctl={ctl}
-                  atl={atl}
-                  sessionsLogged={calibration.sessionsLogged}
-                />
+              {baseline.building ? (
+                <CalibratingFormCard baseline={baseline} onLogSession={goToLog} />
               ) : (
                 <FormScoreCard form={formScore} ctl={ctl} atl={atl} />
               )}

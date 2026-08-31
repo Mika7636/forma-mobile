@@ -24,26 +24,31 @@ import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import ThemedStatusBar from '../components/ui/ThemedStatusBar'
 import AdvancedSection from '../components/progress/AdvancedSection'
+import BuildingBaselineBlock from '../components/progress/BuildingBaselineBlock'
 import ConflictDetailSheet from '../components/conflict/ConflictDetailSheet'
 import ConflictTimeline from '../components/progress/ConflictTimeline'
 import FitnessChart from '../components/progress/FitnessChart'
+import ProgressPrimer from '../components/progress/ProgressPrimer'
 import ProgressSkeleton from '../components/progress/ProgressSkeleton'
 import SportBalance from '../components/progress/SportBalance'
 import SportFilterChips from '../components/progress/SportFilterChips'
 import ThisWeekBlock from '../components/progress/ThisWeekBlock'
 import TrainingConsistency from '../components/progress/TrainingConsistency'
 import TrainingLoadChart from '../components/progress/TrainingLoadChart'
-import EmptyState from '../components/ui/EmptyState'
 import { useConflictHistory } from '../hooks/useConflictHistory'
 import { useProgressData } from '../hooks/useProgressData'
 import { useSessionHistory } from '../hooks/useSessionHistory'
-import { PROGRESS_UNLOCK_SESSIONS } from '../utils/calibration'
+import {
+  PROGRESS_UNLOCK_SESSIONS,
+  getBaselineState,
+  type BaselineState,
+} from '../utils/calibration'
 import { detectedAtDate } from '../utils/conflictInfo'
 import { haptics } from '../utils/haptics'
 import type { Conflict } from '../types/conflict'
 import type { SportFilter } from '../utils/progressMetrics'
 import type { ProgressScreenProps } from '../navigation/types'
-import { SPACING, TYPE, WEIGHT } from '../theme/tokens'
+import { RADIUS, SPACING, TYPE, WEIGHT } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
 import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
@@ -85,6 +90,7 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   // the reason those two sports are worth looking at together.
   const { conflicts: allConflicts } = useConflictHistory()
   const { sessions } = useSessionHistory()
+  const baseline = getBaselineState(sessions)
   const [openConflicts, setOpenConflicts] = useState<Conflict[] | null>(null)
 
   const rangeConflicts = useMemo(() => {
@@ -111,7 +117,7 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   // there's enough history to say something honest. Only after the first snapshot
   // (so we never flash the guard over data that's about to load).
   if (!loading && totalSessions < PROGRESS_UNLOCK_SESSIONS) {
-    return <ProgressLockedGuard logged={totalSessions} onLogSession={goToLog} />
+    return <ProgressPrimer logged={totalSessions} onLogSession={goToLog} />
   }
 
   return (
@@ -150,6 +156,15 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
           <>
             <ThisWeekBlock summary={data.thisWeek} />
 
+            {/* The band is CTL x 7, so on an account younger than the baseline
+                window it is still mostly the onboarding seed. The chart is worth
+                showing — the bars are real training — but the range it is read
+                against is not settled yet, and saying so is cheaper than letting
+                an athlete take a verdict from it and later find it moved. */}
+            {baseline.building ? (
+              <SettlingRangeNote baseline={baseline} />
+            ) : null}
+
             <TrainingLoadChart weeks={data.weeks} band={data.band} verdict={data.verdict} />
 
             <TrainingConsistency weeks={data.weeks} streak={data.streak} />
@@ -168,7 +183,16 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
               title="Advanced — training model"
               subtitle="Fitness, Fatigue and Form, the way the engine sees them"
             >
-              <FitnessChart daily={data.daily} />
+              {/* Same rule as the Dashboard hero: under two weeks of history
+                  the CTL/ATL/Form series is the ramp of its own averages rather
+                  than a picture of the athlete, so it is withheld and the
+                  window's progress shown in its place — behind the same expander,
+                  so one replaces the other where the reader went looking. */}
+              {baseline.building ? (
+                <BuildingBaselineBlock baseline={baseline} />
+              ) : (
+                <FitnessChart daily={data.daily} />
+              )}
             </AdvancedSection>
           </>
         )}
@@ -184,38 +208,48 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
 }
 
 /**
- * Cold-start guard shown until the user has logged {@link PROGRESS_UNLOCK_SESSIONS}
- * sessions — the same "keep logging" state introduced in the Week 5 fix, with an
- * "X of 5" unlock meter.
+ * The caveat above the load chart while the baseline window is still filling.
+ *
+ * Deliberately a note beside the chart rather than a flag threaded into
+ * `TrainingLoadChart`. That component's job is to draw a band and classify bars
+ * against it; teaching it a second mode in which the band is provisional would
+ * put "this might be wrong" inside the thing whose whole purpose is to be read
+ * as right. The bars stay exactly as they are — they are real training — and the
+ * qualification sits where the reader meets it, before the chart.
  */
-function ProgressLockedGuard({
-  logged,
-  onLogSession,
-}: {
-  logged: number
-  onLogSession: () => void
-}) {
+function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {
   const { colors } = useTheme()
 
-  const target = PROGRESS_UNLOCK_SESSIONS
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ThemedStatusBar />
-      <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
-        <EmptyState
-          icon="trending"
-          title="Keep logging!"
-          message={`Progress charts unlock after ${target} sessions, once there's enough history to show a meaningful trend.`}
-          progress={{
-            current: logged,
-            target,
-            label: `${logged} of ${target} sessions`,
-          }}
-          actionLabel="Log a Session"
-          onAction={onLogSession}
-        />
-      </View>
-    </SafeAreaView>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: SPACING.sm + 2,
+        paddingHorizontal: SPACING.md,
+        borderRadius: RADIUS.md,
+        backgroundColor: colors.infoSoft,
+        borderWidth: 1,
+        borderColor: colors.infoBorder,
+      }}
+    >
+      <Text style={{ fontSize: TYPE.body }}>🌱</Text>
+      <Text
+        style={{
+          flex: 1,
+          marginLeft: SPACING.sm,
+          fontSize: TYPE.small,
+          lineHeight: 18,
+          color: colors.textBody,
+        }}
+      >
+        <Text style={{ fontWeight: WEIGHT.heavy, color: colors.infoText }}>
+          Your range is still settling
+        </Text>{' '}
+        — {baseline.daysCovered} of {baseline.target} days. The bars are your real
+        training; the band they&apos;re measured against will shift as FORMA learns what
+        you absorb.
+      </Text>
+    </View>
   )
 }
