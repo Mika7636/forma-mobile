@@ -44,7 +44,47 @@ interface DaySessionsSheetProps {
   onConflictPress: (conflicts: Conflict[]) => void
   onPlannedConflictPress: (conflicts: PlannedConflict[]) => void
   onPlanSession: (isoDate: string) => void
+  /** Opens the Log tab with this day pre-filled. */
+  onLogSession: (isoDate: string) => void
   onPlannedDelete: (planned: PlannedSession) => void
+}
+
+/**
+ * What the day's add-button should offer, if anything.
+ *
+ * ## Why this is a function of the date
+ *
+ * The sheet used to offer "+ Plan a session" on every day, which on a Tuesday
+ * three weeks gone is an offer to plan the past. The two verbs are not
+ * interchangeable: you *plan* what hasn't happened and *log* what has, and the
+ * calendar already knows which side of that line a day falls on.
+ *
+ *  - **future** — plan it. Nothing has happened yet; this is the whole point of
+ *    the forward half of the planner.
+ *  - **today** — log it. A session today is either done or not yet done, and
+ *    "plan the next four hours" is not a thing anyone opens a calendar to do.
+ *  - **past, nothing logged** — log it, backdated. This is the day someone
+ *    trained and forgot to record, and it is the single most useful thing the
+ *    sheet can offer them.
+ *  - **past, already logged** — nothing. The day is accounted for; a button
+ *    here would only invite duplicates. The list is the answer.
+ *
+ * Keyed on logged sessions, not on plans: a past day holding only a stale plan
+ * is still a day with nothing recorded on it.
+ */
+function dayAction(day: CalendarDay): 'plan' | 'log' | null {
+  if (day.isFuture) return 'plan'
+  if (day.isToday) return 'log'
+  return day.sessions.length === 0 ? 'log' : null
+}
+
+/** The line shown when a day holds nothing at all, matched to its action. */
+function emptyCopy(day: CalendarDay): string {
+  if (day.isFuture) {
+    return "Nothing here yet. Plan a session and FORMA will check it against the rest of your week."
+  }
+  if (day.isToday) return 'Nothing logged today yet. Record the session you just finished.'
+  return "Nothing logged on this day. Add a session you did but didn't record."
 }
 
 export default function DaySessionsSheet({
@@ -55,6 +95,7 @@ export default function DaySessionsSheet({
   onConflictPress,
   onPlannedConflictPress,
   onPlanSession,
+  onLogSession,
   onPlannedDelete,
 }: DaySessionsSheetProps) {
   const { colors } = useTheme()
@@ -91,6 +132,7 @@ export default function DaySessionsSheet({
   const daySeverityStyle = severityStyle(worstSeverity(conflicts), colors)
   const plannedStyle = plannedSeverityStyle(worstSeverity(plannedConflicts), colors)
   const empty = sessions.length === 0 && planned.length === 0
+  const action = dayAction(day)
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -228,35 +270,46 @@ export default function DaySessionsSheet({
                 color: colors.textMuted,
               }}
             >
-              Nothing here yet. Plan a session and FORMA will check it against the rest of
-              your week.
+              {emptyCopy(day)}
             </Text>
           ) : null}
         </ScrollView>
 
-        <Pressable
-          onPress={() => {
-            haptics.light()
-            onPlanSession(day.isoDate)
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Plan a session on this day"
-          style={{
-            marginTop: SPACING.md,
-            minHeight: MIN_TOUCH,
-            borderRadius: RADIUS.md,
-            borderWidth: 1.5,
-            borderStyle: 'dashed',
-            borderColor: colors.accentBorder,
-            backgroundColor: colors.accentSoft,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ fontSize: TYPE.bodyLg, fontWeight: WEIGHT.bold, color: colors.accentText }}>
-            + Plan a session
-          </Text>
-        </Pressable>
+        {action ? (
+          <Pressable
+            onPress={() => {
+              haptics.light()
+              if (action === 'plan') onPlanSession(day.isoDate)
+              else onLogSession(day.isoDate)
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              action === 'plan'
+                ? 'Plan a session on this day'
+                : 'Log a session on this day'
+            }
+            style={{
+              marginTop: SPACING.md,
+              minHeight: MIN_TOUCH,
+              borderRadius: RADIUS.md,
+              borderWidth: 1.5,
+              // Dashed for a plan, solid for a log — the same "provisional vs
+              // recorded" grammar the chips and the grid dots use, applied to
+              // the button that produces each.
+              borderStyle: action === 'plan' ? 'dashed' : 'solid',
+              borderColor: action === 'plan' ? colors.accentBorder : colors.accent,
+              backgroundColor: colors.accentSoft,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text
+              style={{ fontSize: TYPE.bodyLg, fontWeight: WEIGHT.bold, color: colors.accentText }}
+            >
+              {action === 'plan' ? '+ Plan a session' : '+ Log a session'}
+            </Text>
+          </Pressable>
+        ) : null}
       </Animated.View>
     </View>
   )

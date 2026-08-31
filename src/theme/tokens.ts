@@ -201,8 +201,28 @@ export interface Palette {
    *    numerals measured about 2.6:1.
    */
   hero: Record<FormTone, HeroFill>
+  /**
+   * Which way the hero's fill runs.
+   *
+   * A value rather than a constant in the card, because the two themes want
+   * different axes for the same reason they want different fills. Dark's hero
+   * washes a hue *into the card surface*, and a diagonal is what makes that
+   * read as a wash rather than as a two-tone block. Light's is a single hue
+   * shading into a darker version of itself, which is a lighting model — and
+   * light comes from above, so it runs vertically.
+   */
+  heroGradient: { start: { x: number; y: number }; end: { x: number; y: number } }
   /** The band that sweeps across the hero in the Peaked state. */
   heroSheen: string
+  /**
+   * The static diagonal gloss laid over the hero, under its content.
+   *
+   * Separate from {@link heroSheen}, which is the *animated* band the Peaked
+   * state sweeps. This one never moves and is on every state: it is what stops
+   * a two-stop fill reading as a flat rectangle, and it is most of why the dark
+   * hero looks lit and the light one used to look printed.
+   */
+  heroGloss: readonly [string, string]
   /**
    * The hero's interior, which is the same for all six states.
    *
@@ -229,6 +249,23 @@ export interface Palette {
    * no room for a second and third hue inside it.
    */
   heroStat: { fitness: Tint; fatigue: Tint }
+  /**
+   * The label ink and top highlight for those tiles.
+   *
+   * Exists because the two themes put the tiles on opposite sides of their
+   * fill. On dark they are *darker* hued panels on a dark wash, so the page's
+   * muted grey is the right label and there is no highlight to draw. On light
+   * they are translucent white — a tile *lighter* than the fill, which is what
+   * makes it read as raised — and on that, muted grey is unreadable: a 45%
+   * white tile over `#DC2626` leaves `#334155` at 3.2:1. So light's label is
+   * near-black, and the hierarchy against the value comes from size and
+   * letter-spacing instead of from lightness.
+   *
+   * `highlight` is the one-pixel top edge that makes a translucent tile read as
+   * glass rather than as a hole. Fully transparent on dark, where the tile is
+   * opaque and needs none.
+   */
+  heroStatChrome: { label: string; highlight: string }
 
   /* ---- tinted surfaces ------------------------------------------- */
   tint: {
@@ -309,11 +346,26 @@ function darkHero(bg: string, ink: string, border: string): HeroFill {
   }
 }
 
-/** The scrimmed tile shared by both light-theme stat readouts. */
+/**
+ * The frosted tile shared by both light-theme stat readouts.
+ *
+ * Translucent *white* over the fill, so it sits a step **above** the hero
+ * rather than punched into it — which is what makes the two readouts read as
+ * layered objects instead of as two more paragraphs. The rest of the card's
+ * interior keeps the dark scrim ({@link HERO_SCRIM}), and the contrast between
+ * the two treatments is the point: one recessed plate carrying the headline
+ * number, two raised tiles carrying the supporting pair.
+ *
+ * The ink is near-black, not white, and that is forced rather than chosen. A
+ * tile lighter than its fill raises the local background, so white type on it
+ * spends its contrast twice — the note on {@link lightHero} is the long version.
+ * At 18% white over the darkest stop any hero uses (`#DC2626`) the composite is
+ * `#E24D4D`: white on it is 3.0:1, near-black is 4.8:1.
+ */
 const HERO_STAT_TILE: Tint = {
-  bg: 'rgba(11,18,32,0.52)',
-  border: 'rgba(255,255,255,0.22)',
-  text: '#FFFFFF',
+  bg: 'rgba(255,255,255,0.18)',
+  border: 'rgba(255,255,255,0.45)',
+  text: '#0B1220',
 }
 
 /** The dark scrim used for every panel, chip and tile inside the light hero. */
@@ -430,7 +482,15 @@ const dark: Palette = {
     green: darkHero('#10291F', '#4ADE80', '#1D5138'),
     brightgreen: darkHero('#10291F', '#4ADE80', '#1D5138'),
   },
+  // Diagonal: the dark hero washes a hue *into* the card surface, and an
+  // off-axis run is what makes that read as a wash rather than as two bands.
+  heroGradient: { start: { x: 0, y: 0 }, end: { x: 1, y: 1 } },
   heroSheen: 'rgba(74,222,128,0.10)',
+  // None. The dark hero is already a lit object — the wash itself is the
+  // lighting — and a white gloss over a near-black card is a grey smear. Fully
+  // transparent, so the card renders exactly as it did before the gloss
+  // existed, the same trick `heroPanel` plays below.
+  heroGloss: ['rgba(255,255,255,0)', 'rgba(255,255,255,0)'],
   heroLabel: '#94A3B8',
   heroBody: '#CBD5E1',
   // Two hues, so the reader can tell the two readouts apart at a glance. This
@@ -439,6 +499,9 @@ const dark: Palette = {
     fitness: { bg: '#111E33', border: '#25406B', text: '#93C5FD' },
     fatigue: { bg: '#2A1416', border: '#5B2326', text: '#FCA5A5' },
   },
+  // The tiles are opaque panels on a dark wash, so the page's muted grey is
+  // the right label and there is no glass edge to catch the light.
+  heroStatChrome: { label: '#94A3B8', highlight: 'rgba(0,0,0,0)' },
   // Nothing at all. The dark hero is a deep wash, so its readouts already have
   // all the contrast they need and need no scrim under them — and a fully
   // transparent panel at zero width and zero padding leaves the card
@@ -505,15 +568,31 @@ const dark: Palette = {
 /* ------------------------------------------------------------------ */
 
 const light: Palette = {
-  bg: '#FFFFFF',
-  // Pure white, not the slate `#F8FAFC` this used to be. A card a shade grey
-  // makes every card on the page read as a slightly dirty panel; the elevation
-  // is carried by the hairline and the shadow, which is what they are for.
+  // ## The three-step ladder, and why the page is no longer white
+  //
+  // `bg` and `surface` were both `#FFFFFF`. That is the root of the "light mode
+  // looks flat" problem and no amount of shadow fixes it: a white card on a
+  // white page has nothing to be elevated *above*, so the only thing marking
+  // its edge is a hairline, and a screen of hairline-bounded white rectangles
+  // reads as a form rather than as a set of objects. The dark theme never had
+  // this problem because its page (`#0B1220`) is genuinely darker than its
+  // cards (`#141E2E`) — the separation is in the values, not in the effects.
+  //
+  // So light now runs the same ladder, in the same direction: a tinted page,
+  // white cards lifted off it, and a wells step *below* the page for anything
+  // nested inside a card. Each rung is small (about 3% lightness) — enough to
+  // separate, not enough to read as grey.
+  bg: '#F5F7FA',
+  // Cards stay pure white. This is the one surface that should look like paper.
   surface: '#FFFFFF',
-  // The only surface with any tint left, and barely: nested wells still have to
-  // be tellable from the card they sit in.
-  surfaceAlt: '#F5F7FA',
-  border: '#E5E9EF',
+  // A step *below* the page, not equal to it. When `surfaceAlt` was `#F5F7FA`
+  // and the page went there too, every input well and nested tile in the app
+  // would have dissolved into the page behind it.
+  surfaceAlt: '#EDF1F6',
+  // Lightened a touch alongside the page: `#E5E9EF` against the old white page
+  // and against the new `#F5F7FA` are different jobs, and the hairline now has
+  // less work to do because the shadow carries the separation.
+  border: '#E2E8F0',
   borderStrong: '#CBD5E1',
   text: '#0F172A',
   textBody: '#334155',
@@ -524,10 +603,10 @@ const light: Palette = {
   // A step lighter than `textMuted` so the hierarchy survives, and warm for the
   // same reason. Still clears 4.5:1 on every surface (5.12:1 on `surfaceAlt`).
   textSubtle: '#5F6A78',
-  fieldBg: '#F5F7FA',
+  fieldBg: '#EDF1F6',
 
   // The brand green at full strength. `accent` was previously darkened all the
-  // way to `#15803D` so that a *white* button label would clear 4.5:1 — which
+  // way to `#157A3A` so that a *white* button label would clear 4.5:1 — which
   // worked, and cost the app its colour: every fill, bar, chip and rail on the
   // light theme went olive.
   //
@@ -542,7 +621,14 @@ const light: Palette = {
   // 200px bar, illegible as a 13pt caption — so anything under ~18px in the
   // brand green uses this instead. See the `accent` vs `accentText` note on
   // the Palette interface.
-  accentText: '#15803D',
+  // Nudged down from `#15803D` when the page gained its tint. That value cleared
+  // 4.5:1 on a white page by a whisker and on the old `#F5F7FA` wells by less
+  // than that; stepping the wells to `#EDF1F6` took it to 4.42:1. The hue is
+  // unchanged — this is two percent of lightness, not a different green — and
+  // the same nudge was applied to every token that shares it (`palette.green`,
+  // `sport.football`, `tint.green.text`, the RPE and zone ramps) so the app
+  // still speaks one green. `scripts/check-contrast.js` is what caught it.
+  accentText: '#157A3A',
   // The vibrant hue at low alpha over the page, rather than a pre-mixed pastel.
   // `#ECFDF5` is a mint that has lost its relationship to the green it is
   // supposed to be a wash of; this is literally that green, at 10%.
@@ -550,7 +636,7 @@ const light: Palette = {
   accentBorder: 'rgba(34,197,94,0.32)',
 
   warn: '#F59E0B',
-  warnText: '#B45309',
+  warnText: '#AB4E08',
   warnSoft: 'rgba(245,158,11,0.12)',
   warnBorder: 'rgba(245,158,11,0.38)',
 
@@ -568,7 +654,10 @@ const light: Palette = {
   // `onColor(accent)`, and on a vibrant fill that answer is dark.
   onAccent: '#0B1220',
 
-  bgFade: ['rgba(255,255,255,0.50)', 'rgba(255,255,255,0.92)'],
+  // The ground's own colour, which is no longer white — a ramp that ends at
+  // `#FFFFFF` over a `#F5F7FA` page leaves a pale seam exactly where the image
+  // is supposed to have disappeared into it.
+  bgFade: ['rgba(245,247,250,0.50)', 'rgba(245,247,250,0.92)'],
   shadow: '#000000',
   scrim: 'rgba(15,23,42,0.45)',
   skeleton: '#E9ECEF',
@@ -577,14 +666,17 @@ const light: Palette = {
   // surrounds it; they carry the elevation that the hairline carries on dark.
   // Hence far lower opacities than the dark palette above.
   shadowCard: {
-    shadowColor: '#000000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    // Slate rather than pure black. A neutral-black shadow over a faintly cool
+    // page goes muddy at the edges; tinting it toward the page's own hue keeps
+    // the falloff clean.
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   shadowFloating: {
-    shadowColor: '#000000',
+    shadowColor: '#0F172A',
     shadowOpacity: 0.16,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
@@ -603,7 +695,15 @@ const light: Palette = {
     green: lightHero('#22C55E', '#16A34A'),
     brightgreen: lightHero('#22C55E', '#16A34A'),
   },
+  // Vertical. Light's hero is one hue shading into a darker version of itself,
+  // which is a lighting model rather than a wash — and light falls from above.
+  heroGradient: { start: { x: 0, y: 0 }, end: { x: 0, y: 1 } },
   heroSheen: 'rgba(255,255,255,0.28)',
+  // A soft diagonal gloss across the whole card, on every state. This is the
+  // piece that was missing: two stops eight percent apart in lightness make a
+  // rectangle, not an object, and no border or shadow applied to the *outside*
+  // of the card fixes how flat the inside looks.
+  heroGloss: ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)'],
   // 0.80, not the 0.70 that reads as "a muted label": this is printed on the
   // scrim, and the scrim is only as dark as it needs to be.
   heroLabel: 'rgba(255,255,255,0.80)',
@@ -615,6 +715,12 @@ const light: Palette = {
     fitness: HERO_STAT_TILE,
     fatigue: HERO_STAT_TILE,
   },
+  // Near-black label — see {@link HERO_STAT_TILE} for why a muted grey is not
+  // available on a frosted tile. The hierarchy between label and value is
+  // carried by size and letter-spacing instead, which survives the constraint.
+  // `highlight` is the tile's top edge, the one pixel that makes translucent
+  // white read as glass catching the light rather than as a hole in the card.
+  heroStatChrome: { label: '#0B1220', highlight: 'rgba(255,255,255,0.38)' },
   heroPanel: {
     bg: HERO_SCRIM,
     border: HERO_SCRIM_EDGE,
@@ -630,45 +736,45 @@ const light: Palette = {
   // `*Text` value, because a caption on a 10% wash is still a caption on
   // near-white.
   tint: {
-    green: { bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.32)', text: '#15803D' },
-    amber: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.38)', text: '#B45309' },
+    green: { bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.32)', text: '#157A3A' },
+    amber: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.38)', text: '#AB4E08' },
     red: { bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.32)', text: '#B91C1C' },
     sky: { bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.32)', text: '#1D4ED8' },
-    orange: { bg: 'rgba(249,115,22,0.10)', border: 'rgba(249,115,22,0.32)', text: '#C2410C' },
+    orange: { bg: 'rgba(249,115,22,0.10)', border: 'rgba(249,115,22,0.32)', text: '#B93C0B' },
     teal: { bg: 'rgba(20,184,166,0.12)', border: 'rgba(20,184,166,0.36)', text: '#0F766E' },
     violet: { bg: 'rgba(139,92,246,0.10)', border: 'rgba(139,92,246,0.32)', text: '#6D28D9' },
   },
 
   palette: {
-    green: '#15803D',
+    green: '#157A3A',
     sky: '#0369A1',
     red: '#B91C1C',
-    amber: '#B45309',
+    amber: '#AB4E08',
     violet: '#6D28D9',
-    orange: '#C2410C',
+    orange: '#B93C0B',
     slate: '#475569',
     bronze: '#92400E',
   },
   sport: {
-    running: '#C2410C',
+    running: '#B93C0B',
     cycling: '#6D28D9',
     swimming: '#0369A1',
-    football: '#15803D',
+    football: '#157A3A',
     combat: '#B91C1C',
     gym: '#475569',
     strength: '#92400E',
   },
-  zone: ['#475569', '#0369A1', '#15803D', '#B45309', '#B91C1C'],
+  zone: ['#475569', '#0369A1', '#157A3A', '#AB4E08', '#B91C1C'],
   // Empty → full, so the ramp runs light → dark here and dark → light above.
-  heat: ['#F1F5F9', '#BBF7D0', '#4ADE80', '#15803D'],
+  heat: ['#F1F5F9', '#BBF7D0', '#4ADE80', '#157A3A'],
   rpe: [
-    '#15803D',
+    '#157A3A',
     '#3D8A2E',
     '#5E9222',
     '#7F9417',
     '#9A8B12',
     '#AC780E',
-    '#B45309',
+    '#AB4E08',
     '#B4400F',
     '#B72F16',
     '#B91C1C',

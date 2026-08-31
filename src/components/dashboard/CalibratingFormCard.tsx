@@ -63,11 +63,10 @@ export default function CalibratingFormCard({
           overflow: 'hidden',
           borderWidth: 1,
           borderColor: colors.tint.teal.border,
-          shadowColor: colors.shadow,
-          shadowOpacity: 0.45,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 8,
+          // Matches FormScoreCard, which this stands in for — and, like it, the
+          // elevation is the palette's rather than a hardcoded black at 45%,
+          // which on a light page is a smudge rather than a lift.
+          ...colors.shadowFloating,
         },
         cardStyle,
       ]}

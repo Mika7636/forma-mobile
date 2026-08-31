@@ -263,7 +263,11 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
               onPlanWeek={goToPlanner}
             />
           ) : (
-            <Animated.View entering={FadeIn.duration(280)} style={{ gap: 20 }}>
+            // 20pt between the hero and the grid under it. The hero is a
+            // saturated object and the stat cards are white ones; at the 16pt
+            // the rest of the page uses they crowd, and the grid reads as part
+            // of the card above it rather than as the next section.
+            <Animated.View entering={FadeIn.duration(280)} style={{ gap: SPACING.lg - 4 }}>
               {baseline.building ? (
                 <CalibratingFormCard baseline={baseline} onLogSession={goToLog} />
               ) : (

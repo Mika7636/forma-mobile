@@ -205,7 +205,7 @@ function literalsOf(text) {
  */
 function topLevel(text) {
   let flat = text
-  for (const name of ['tint', 'palette', 'sport', 'hero', 'heroStat', 'heroPanel', 'shadowCard', 'shadowFloating']) {
+  for (const name of ['tint', 'palette', 'sport', 'hero', 'heroStat', 'heroStatChrome', 'heroPanel', 'shadowCard', 'shadowFloating']) {
     flat = flat.replace(block(text, name), '')
   }
   // `literalsOf`, not `flatHexes`: `heroLabel` and `heroBody` are rgba on the
@@ -410,6 +410,12 @@ function audit(name) {
   const stat = nestedLiterals(block(src, 'heroStat'))
   const panel = literalsOf(block(src, 'heroPanel')).bg
   if (!panel) throw new Error(name + ': heroPanel has no bg')
+  // The stat tiles carry their own label ink, because light's tiles are
+  // translucent *white* over the fill and `heroLabel` — a muted grey picked for
+  // the dark scrim the rest of the card uses — is unreadable on them. Checking
+  // `heroLabel` here would audit a colour that is no longer rendered.
+  const statLabel = literalsOf(block(src, 'heroStatChrome')).label
+  if (!statLabel) throw new Error(name + ': heroStatChrome has no label')
   for (const [n, h] of Object.entries(hero)) {
     for (const [which, stop] of [['1st', h.gradient[0]], ['2nd', h.gradient[1]]]) {
       const on = ' on ' + n + ' ' + which + ' stop'
@@ -424,7 +430,7 @@ function audit(name) {
       check('heroBody' + on, color.heroBody, face, AA)
       for (const [sn, sv] of Object.entries(stat)) {
         check('heroStat.' + sn + '.text' + on, sv.text, [stop, sv.bg], AA)
-        check('heroLabel on heroStat.' + sn + on, color.heroLabel, [stop, sv.bg], AA)
+        check('heroStatChrome.label on heroStat.' + sn + on, statLabel, [stop, sv.bg], AA)
       }
     }
   }

@@ -24,6 +24,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import Slider from '@react-native-community/slider'
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker'
 import { haptics } from '../utils/haptics'
 import ConflictModal from '../components/log/ConflictModal'
 import FirstSessionModal from '../components/log/FirstSessionModal'
@@ -70,20 +73,38 @@ import { sportVisual } from '../utils/sportMeta'
 
 type LogMode = 'quick' | 'live'
 
+/** Local midnight of a date — the day, with the clock stripped off it. */
+function startOfDay(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 /**
  * The timestamp to persist for a session.
  *
- * A Quick/Live log defaults to *now* (real date + time). A session logged for a
- * specific Planner day keeps that calendar day but stamps the actual wall-clock
- * time (from `at`, defaulting to now) — otherwise every planner-logged session
- * would land at the noon we parse the planner date to, which is why they all
- * read "12:00 PM". `at` lets a live session pass its true start time instead.
+ * The chosen calendar day, stamped with an actual wall-clock time (from `at`,
+ * defaulting to now). The time matters even though the athlete never picks one:
+ * without it every backdated session would land at the noon we parse a day
+ * string to, and a day holding three of them would show three workouts all at
+ * "12:00 PM". `at` lets a live session pass its true start time instead.
+ *
+ * For today — the default — this is simply now.
  */
-function resolveSessionDate(plannerDay: Date | null, at: Date = new Date()): Date {
-  if (!plannerDay) return at
-  const d = new Date(plannerDay)
+function resolveSessionDate(day: Date, at: Date = new Date()): Date {
+  const d = startOfDay(day)
   d.setHours(at.getHours(), at.getMinutes(), at.getSeconds(), at.getMilliseconds())
   return d
+}
+
+/** "Mon, 25 Aug 2026" — the date as the field and the save button show it. */
+function formatSessionDay(day: Date): string {
+  return day.toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
 /* --- RPE zones -------------------------------------------------------- */
@@ -139,21 +160,33 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   // detection (no volume warnings, sensitivity one notch softer).
   const { sessions } = useSessionHistory()
 
-  // A date handed over from the Planner: pre-fill it and send the user back
-  // there after saving. Parse at local noon so the calendar day never slips.
+  // A date handed over from the Planner seeds the field and sends the user back
+  // there after saving. Parse at local noon so the calendar day never slips
+  // (a `YYYY-MM-DD` read as UTC midnight lands on the day before, west of
+  // Greenwich).
   const paramDate = route.params?.date
-  const logDate = useMemo(
-    () => (paramDate ? new Date(`${paramDate}T12:00:00`) : null),
-    [paramDate],
+  const fromPlanner = paramDate != null
+
+  /**
+   * The day this session happened, as a calendar day.
+   *
+   * State rather than a prop derived from the route, because the athlete can now
+   * change it — which is the whole point of the field. Someone who has been
+   * training for months should not have to wait a fortnight for a Form Score
+   * when they can enter the fortnight they already trained.
+   */
+  const [sessionDay, setSessionDay] = useState<Date>(() =>
+    paramDate ? new Date(`${paramDate}T12:00:00`) : new Date(),
   )
-  const fromPlanner = logDate != null
-  const bannerLabel = logDate
-    ? logDate.toLocaleDateString(undefined, {
-        weekday: 'long',
-        month: 'short',
-        day: 'numeric',
-      })
-    : null
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  // Re-seed when the Planner hands over a *different* day. Guarded on the param
+  // itself so it cannot clobber a date the athlete picked by hand: the blur
+  // listener below clears the param on the way out, and an unguarded effect
+  // would read that as "go back to today" on the next focus.
+  useEffect(() => {
+    if (paramDate) setSessionDay(new Date(`${paramDate}T12:00:00`))
+  }, [paramDate])
 
   const sports = useMemo<SportOption[]>(
     () => SPORT_OPTIONS.filter((o) => profile?.sports?.includes(o.value)),
@@ -234,11 +267,18 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
 
   // A tab's params outlive the visit that set them, so a date handed over by the
   // Planner would still be pinned here days later — the user would tap the Log
-  // tab and be told they're logging for last Tuesday. Drop it on the way out.
+  // tab and be told they're logging for last Tuesday. Drop it on the way out,
+  // *and* put the field back to today: clearing the param alone no longer
+  // undoes the handoff now that the date lives in state, and the seeding effect
+  // above deliberately ignores an absent param so it cannot clobber a manual
+  // pick. Scoped to a param-sourced visit, so a date the athlete chose by hand
+  // during an ordinary visit is not what this resets.
   useEffect(
     () =>
       navigation.addListener('blur', () => {
-        if (paramDate) navigation.setParams({ date: undefined })
+        if (!paramDate) return
+        navigation.setParams({ date: undefined })
+        setSessionDay(new Date())
       }),
     [navigation, paramDate],
   )
@@ -247,7 +287,20 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const distanceNum = distance ? parseFloat(distance) : undefined
   const avgBpmNum = avgBpm ? parseInt(avgBpm, 10) : undefined
   const showDistance = isDistanceSport(sport)
-  const canSave = sport != null && durationNum >= 1 && durationNum <= DURATION_MAX
+
+  // Recomputed per render rather than memoised on mount: the screen can sit
+  // open across midnight, and a "today" cached yesterday would start rejecting
+  // a session logged this morning as being in the future.
+  const today = startOfDay(new Date())
+  const isToday = startOfDay(sessionDay).getTime() === today.getTime()
+  // The picker's `maximumDate` already makes this unreachable by tapping. It is
+  // still checked, because the state can also arrive from the Planner's route
+  // param — which is how a future day *can* land here, since planning ahead is
+  // exactly what that screen is for.
+  const isFutureDay = startOfDay(sessionDay).getTime() > today.getTime()
+
+  const canSave =
+    sport != null && durationNum >= 1 && durationNum <= DURATION_MAX && !isFutureDay
 
   const zone = rpeZone(rpe, colors)
 
@@ -277,12 +330,31 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const resetForm = () => {
     setSport(null)
     setMode('quick')
+    // Back to today: the next session logged from a cleared form is almost
+    // always the one happening now, and a date left pinned to last Tuesday is
+    // the bug the Planner param's blur handler already exists to prevent.
+    setSessionDay(new Date())
     setDuration('')
     setDistance('')
     setRpe(5)
     setNotes('')
     setAvgBpm('')
     setAdvancedOpen(false)
+  }
+
+  /**
+   * Android fires this for both a pick and a dismissal, and keeps the dialog
+   * mounted until it is unmounted from here — hence closing on every event
+   * rather than only on a selection.
+   */
+  const handleDateChange = (event: DateTimePickerEvent, picked?: Date) => {
+    setPickerOpen(false)
+    if (event.type !== 'set' || !picked) return
+    haptics.selection()
+    // Clamp rather than trust: `maximumDate` is enforced by the OS dialog, and
+    // the OS is not this app's input validator.
+    const day = startOfDay(picked)
+    setSessionDay(day.getTime() > today.getTime() ? today : day)
   }
 
   const handleSelectSport = (value: SportType) => {
@@ -484,7 +556,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     if (!canSave || !sport) return
     logAndHandle({
       sport,
-      date: resolveSessionDate(logDate),
+      date: resolveSessionDate(sessionDay),
       durationMinutes: durationNum,
       rpe,
       distanceKm: showDistance ? distanceNum : undefined,
@@ -501,7 +573,7 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       // Live sessions are stamped with when tracking actually started, not when
       // the summary was saved (which can be many minutes later).
       date: resolveSessionDate(
-        logDate,
+        sessionDay,
         result.startedAt != null ? new Date(result.startedAt) : new Date(),
       ),
       durationMinutes: result.durationMinutes,
@@ -649,25 +721,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               <Text style={{ marginTop: 4, fontSize: 15, color: colors.textMuted }}>
                 Record a workout to track your training load
               </Text>
-
-              {bannerLabel ? (
-                <View
-                  style={{
-                    marginTop: 14,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.accentSoft,
-                    borderRadius: 12,
-                    paddingVertical: 10,
-                    paddingHorizontal: 14,
-                  }}
-                >
-                  <Text style={{ fontSize: 16, marginRight: 8 }}>🗓️</Text>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.accentPressed }}>
-                    Logging for {bannerLabel}
-                  </Text>
-                </View>
-              ) : null}
             </View>
 
             {/* Sport selector */}
@@ -703,6 +756,79 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 )}
               />
             )}
+
+            {/* Date. Directly under Sport and above everything the session is
+                *made* of, because it answers a different question — not "what
+                did you do" but "when" — and because a backdated session has to
+                announce itself before the athlete has filled the form in. */}
+            <View style={{ paddingHorizontal: 20 }}>
+              <SectionLabel style={{ marginTop: 24 }}>Date</SectionLabel>
+              <Pressable
+                onPress={() => {
+                  haptics.light()
+                  setPickerOpen(true)
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Session date: ${formatSessionDay(sessionDay)}. Tap to change.`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  minHeight: 52,
+                  paddingHorizontal: 14,
+                  backgroundColor: colors.fieldBg,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  // The field carries the error, not a toast or an alert: the
+                  // thing that is wrong is *this value*, and the correction is
+                  // one tap away inside this row.
+                  borderColor: isFutureDay ? colors.danger : colors.border,
+                }}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
+                    {formatSessionDay(sessionDay)}
+                  </Text>
+                  {!isToday && !isFutureDay ? (
+                    <Text style={{ marginTop: 1, fontSize: 12, color: colors.accentText }}>
+                      Backdated — counts toward that week, not this one
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={{ fontSize: 18, marginLeft: 10 }}>🗓️</Text>
+              </Pressable>
+
+              {isFutureDay ? (
+                <Animated.Text
+                  entering={FadeIn.duration(160)}
+                  style={{
+                    marginTop: 6,
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: colors.dangerText,
+                  }}
+                >
+                  You can&apos;t log a session in the future
+                </Animated.Text>
+              ) : (
+                <Text style={{ marginTop: 6, fontSize: 12, color: colors.textSubtle }}>
+                  {isToday
+                    ? 'Defaults to today. Tap to log a workout you did earlier.'
+                    : 'Load, form and conflicts are all calculated as of this date.'}
+                </Text>
+              )}
+            </View>
+
+            {pickerOpen ? (
+              <DateTimePicker
+                value={sessionDay}
+                mode="date"
+                display="calendar"
+                // The OS dialog refuses tomorrow outright, which is a better
+                // answer than letting it be picked and then complaining.
+                maximumDate={today}
+                onChange={handleDateChange}
+              />
+            ) : null}
 
             {/* Mode toggle — Quick Log vs Track Live (distance sports only) */}
             {showDistance ? (
@@ -1071,7 +1197,20 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
             {/* Save */}
             <View style={{ paddingHorizontal: 20, marginTop: 28 }}>
               <PrimaryButton
-                label="Save Session"
+                // Names the day whenever it isn't today, so a backdated save
+                // can't happen by accident — the button is the last thing read
+                // before the write, and it is where a wrong date is cheapest to
+                // catch. Short form ("Save to Mon, 25 Aug"): the year is in the
+                // field above and would push this to two lines.
+                label={
+                  isToday
+                    ? 'Save Session'
+                    : `Save to ${sessionDay.toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })}`
+                }
                 onPress={handleSave}
                 loading={saving}
                 disabled={!canSave}

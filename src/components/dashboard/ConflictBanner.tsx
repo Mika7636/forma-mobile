@@ -5,6 +5,7 @@ import { severityStyle } from '../../constants/conflictColors'
 import { detectedAtDate } from '../../utils/conflictInfo'
 import { formatTimeAgo } from '../../utils/formatting'
 import type { Conflict } from '../../types/conflict'
+import { RADIUS } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 interface ConflictBannerProps {
   conflict: Conflict
@@ -53,18 +54,20 @@ export default function ConflictBanner({
       // colour at full strength where it costs nothing; the surface behind the
       // text stays a deep wash.
       style={{
-        borderRadius: 18,
+        borderRadius: RADIUS.lg,
         overflow: 'hidden',
         backgroundColor: style.softBg,
         borderWidth: 1,
         borderColor: style.softBorder,
-        borderLeftWidth: 4,
+        // 3px, down from 4. On light the rail now sits against a tinted page
+        // rather than a white one and reads heavier at the same width; on dark
+        // the difference is invisible.
+        borderLeftWidth: 3,
         borderLeftColor: style.solid,
-        shadowColor: colors.shadow,
-        shadowOpacity: 0.4,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 6,
+        // The palette's card elevation, not a hardcoded 40% black — which on a
+        // light page put a grey bruise under a banner whose whole job is to
+        // look like a note, not a hole.
+        ...colors.shadowCard,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14 }}>
@@ -75,14 +78,17 @@ export default function ConflictBanner({
           accessibilityLabel={`${style.title}. ${conflict.message}. Tap for details.`}
           style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 }}
         >
+          {/* The disc is tinted with the severity, not with `surfaceAlt`. A
+              page-grey circle inside an amber banner reads as a hole punched in
+              it; the hue's own wash makes the icon look seated. */}
           <View
             style={{
               width: 42,
               height: 42,
-              borderRadius: 21,
-              backgroundColor: colors.surfaceAlt,
+              borderRadius: RADIUS.pill,
+              backgroundColor: style.softBg,
               borderWidth: 1,
-              borderColor: style.softBorder,
+              borderColor: style.solid,
               alignItems: 'center',
               justifyContent: 'center',
               marginRight: 12,

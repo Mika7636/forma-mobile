@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Pressable, Text, View, type ViewStyle } from 'react-native'
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, {
   Easing,
@@ -13,7 +13,7 @@ import CountUp from './CountUp'
 import FormInfoModal from './FormInfoModal'
 import { getFormStatus } from '../../algorithms/formScore'
 import { useTheme } from '../../theme/ThemeProvider'
-import type { FormTone, HeroPanel, Tint } from '../../theme/tokens'
+import { RADIUS, type FormTone, type HeroPanel, type Tint } from '../../theme/tokens'
 /**
  * The emoji for each form state.
  *
@@ -80,28 +80,40 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
     <Animated.View
       style={[
         {
-          borderRadius: 24,
+          borderRadius: RADIUS.xl,
           overflow: 'hidden',
-          // The hairline is what separates this card from the page now. On dark
-          // a drop shadow has almost nothing to fall on, so it is kept mainly
-          // for Android's elevation ordering rather than for visible depth.
           borderWidth: 1,
           borderColor: style.border,
-          shadowColor: colors.shadow,
-          shadowOpacity: 0.45,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 8,
+          // The palette's own floating elevation, not a hardcoded one. This was
+          // `shadowOpacity: 0.45` in black — right on dark, where a shadow has
+          // almost nothing to fall on and is mostly there for Android's z
+          // ordering, and a visible smudge under the card on light. The two
+          // themes need different numbers here, which is exactly what the token
+          // is for.
+          ...colors.shadowFloating,
         },
         cardStyle,
       ]}
     >
       <LinearGradient
         colors={[style.gradient[0], style.gradient[1]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={colors.heroGradient.start}
+        end={colors.heroGradient.end}
         style={{ padding: 22 }}
       >
+        {/* The static gloss: a diagonal wash of light across the whole card,
+            under everything else. Two gradient stops a few percent apart make a
+            rectangle; this is what makes the card read as a lit surface. Fully
+            transparent on dark, where the fill is already a wash and a white
+            gloss would only grey it — see `heroGloss`. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={[colors.heroGloss[0], colors.heroGloss[1]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+
         {shimmer ? (
           <Animated.View
             pointerEvents="none"
@@ -195,8 +207,13 @@ export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
             </Panel>
           </View>
 
-          {/* Right: stacked fitness / fatigue mini-cards. */}
-          <View style={{ marginLeft: 14, justifyContent: 'center' }}>
+          {/* Right: stacked fitness / fatigue mini-cards.
+              Top-aligned below the info affordance rather than vertically
+              centred. Centring put the first tile's corner underneath the
+              absolutely-positioned ℹ️ — invisible while the tiles were a dark
+              scrim, and unmistakable now that they are frosted white. The
+              offset is the button's own footprint plus its inset. */}
+          <View style={{ marginLeft: 14, marginTop: 30 }}>
             <MiniStat label="FITNESS" sublabel="CTL" value={ctl} tone={colors.heroStat.fitness} />
             <MiniStat label="FATIGUE" sublabel="ATL" value={atl} tone={colors.heroStat.fatigue} />
           </View>
@@ -274,20 +291,39 @@ function MiniStat({
       style={{
         width: 104,
         backgroundColor: tone.bg,
-        borderRadius: 16,
+        borderRadius: RADIUS.md,
         borderWidth: 1,
         borderColor: tone.border,
         paddingHorizontal: 12,
         paddingVertical: 10,
         marginVertical: 4,
+        overflow: 'hidden',
       }}
     >
+      {/* The inner highlight: a single lit pixel along the top edge, which is
+          what separates a translucent tile from a hole cut in the card. RN has
+          no inset shadow, so it is drawn as a hairline child. Transparent on
+          dark, where the tile is an opaque panel with nothing to catch. */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 1,
+          backgroundColor: colors.heroStatChrome.highlight,
+        }}
+      />
       <Text
         style={{
           fontSize: 10,
           fontWeight: '800',
           letterSpacing: 1.1,
-          color: colors.heroLabel,
+          // Not `heroLabel`: that grey is picked for the dark scrim the rest of
+          // the card uses, and these tiles are translucent white on light. See
+          // `heroStatChrome`.
+          color: colors.heroStatChrome.label,
         }}
       >
         {label}
@@ -296,7 +332,11 @@ function MiniStat({
         value={value}
         style={{ fontSize: 26, fontWeight: '800', color: tone.text, marginTop: 1 }}
       />
-      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.heroLabel }}>
+      {/* Full strength, deliberately. Dimming this to 70% would look right and
+          measure 3.3:1 on the frosted tile — the audited token is the colour,
+          and an opacity applied on top of it is outside what the gate can see.
+          The label / value hierarchy is carried by size and weight instead. */}
+      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.heroStatChrome.label }}>
         {sublabel}
       </Text>
     </View>

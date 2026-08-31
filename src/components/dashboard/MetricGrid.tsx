@@ -4,7 +4,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated'
 import CountUp from './CountUp'
 import { formatDistance, formatThousands } from '../../utils/formatting'
 import { useTheme } from '../../theme/ThemeProvider'
-import type { Palette } from '../../theme/tokens'
+import { RADIUS, SPACING, type Palette } from '../../theme/tokens'
 
 interface MetricGridProps {
   weeklyLoad: number
@@ -173,15 +173,17 @@ function MetricCard({
         flexBasis: '47%',
         flexGrow: 1,
         backgroundColor: colors.surface,
-        borderRadius: 16,
-        padding: 16,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.base,
+        // The shadow does the separating now that the page is tinted, so the
+        // hairline drops to the softer `border` and mostly disappears —
+        // it is there to define the edge on a display with the contrast turned
+        // down, not to draw the card. The elevation itself comes from the
+        // palette rather than from numbers inlined here, so light and dark each
+        // get the treatment that works on their own ground.
         borderWidth: 1,
         borderColor: colors.border,
-        shadowColor: colors.shadow,
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 2,
+        ...colors.shadowCard,
       }}
     >
       {children}

@@ -66,9 +66,7 @@ const SLIDE_DISTANCE = 60
 /** Months in a year — the step the year chevrons take. */
 const YEAR = 12
 
-// Navigation props are unused: everything this screen opens is a sheet rendered
-// in place.
-export default function PlannerScreen(_props: PlannerScreenProps) {
+export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   const { colors } = useTheme()
   // Reserve room for the tab bar, which is drawn over the end of this list.
   const tabPadding = useTabContentPadding()
@@ -248,6 +246,27 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
       }
     },
     [uid],
+  )
+
+  /**
+   * Hand a day off to the Log tab.
+   *
+   * The Planner deliberately owns no logging UI — the Log screen is where a
+   * session's real inputs live, and duplicating that here would give the app two
+   * places to log from that could drift apart. It routes with the day as a
+   * param, which the Log screen already understands and now shows in an editable
+   * Date field.
+   *
+   * The sheet is closed first: it is a plain in-screen overlay rather than a
+   * modal, so it would otherwise still be sitting over the Planner when the user
+   * came back from logging.
+   */
+  const handleLogForDay = useCallback(
+    (isoDate: string) => {
+      setDayListOpen(false)
+      navigation.navigate('Log', { date: isoDate })
+    },
+    [navigation],
   )
 
   const handleDeletePlan = useCallback(
@@ -461,6 +480,7 @@ export default function PlannerScreen(_props: PlannerScreenProps) {
         onConflictPress={setConflictSheet}
         onPlannedConflictPress={setPlannedSheet}
         onPlanSession={setPlanningIso}
+        onLogSession={handleLogForDay}
         onPlannedDelete={handleDeletePlan}
       />
 
