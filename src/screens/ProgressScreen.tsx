@@ -35,6 +35,7 @@ import SportFilterChips from '../components/progress/SportFilterChips'
 import ThisWeekBlock from '../components/progress/ThisWeekBlock'
 import TrainingConsistency from '../components/progress/TrainingConsistency'
 import TrainingLoadChart from '../components/progress/TrainingLoadChart'
+import TrendRangeTabs from '../components/progress/TrendRangeTabs'
 import { useConflictHistory } from '../hooks/useConflictHistory'
 import { useProgressData } from '../hooks/useProgressData'
 import { useSessionHistory } from '../hooks/useSessionHistory'
@@ -47,7 +48,7 @@ import {
 import { detectedAtDate } from '../utils/conflictInfo'
 import { haptics } from '../utils/haptics'
 import type { Conflict } from '../types/conflict'
-import type { SportFilter } from '../utils/progressMetrics'
+import type { Granularity, SportFilter } from '../utils/progressMetrics'
 import type { ProgressScreenProps } from '../navigation/types'
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
@@ -82,6 +83,10 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   const tabPadding = useTabContentPadding()
 
   const [sport, setSport] = useState<SportFilter>('all')
+  // Weekly by default. A week is the unit training is planned and judged in, and
+  // it is the zoom at which the band and the verdict are computed — Daily is the
+  // detail view you drop into, not the one you should have to climb out of.
+  const [granularity, setGranularity] = useState<Granularity>('weekly')
   const { data, totalSessions, loading, refresh } = useProgressData(sport)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -157,16 +162,28 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
           <>
             <ThisWeekBlock summary={data.thisWeek} />
 
-            {/* The band is CTL x 7, so on an account younger than the baseline
-                window it is still mostly the onboarding seed. The chart is worth
-                showing — the bars are real training — but the range it is read
-                against is not settled yet, and saying so is cheaper than letting
-                an athlete take a verdict from it and later find it moved. */}
+            {/* The band is derived from CTL, so on an account younger than the
+                baseline window it is still mostly the onboarding seed. The chart
+                is worth showing — the line is real training — but the range it is
+                read against is not settled yet, and saying so is cheaper than
+                letting an athlete take a verdict from it and later find it
+                moved. */}
             {baseline.building ? (
               <SettlingRangeNote baseline={baseline} />
             ) : null}
 
-            <TrainingLoadChart weeks={data.weeks} band={data.band} verdict={data.verdict} />
+            <TrendRangeTabs value={granularity} onChange={setGranularity} />
+
+            <TrainingLoadChart
+              series={data.trends[granularity]}
+              // Weekly only, and only once the baseline has settled. The same
+              // rule the Advanced expander below applies to the very same
+              // series: while CTL is still mostly the onboarding seed fading
+              // out, a six-week "fitness up 14" is a description of the blend
+              // rather than of the athlete, and it is the one number here that
+              // would be quoted back.
+              model={granularity === 'weekly' && !baseline.building ? data.model : null}
+            />
 
             <TrainingConsistency weeks={data.weeks} streak={data.streak} />
 
@@ -212,10 +229,10 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
  * The caveat above the load chart while the baseline window is still filling.
  *
  * Deliberately a note beside the chart rather than a flag threaded into
- * `TrainingLoadChart`. That component's job is to draw a band and classify bars
- * against it; teaching it a second mode in which the band is provisional would
- * put "this might be wrong" inside the thing whose whole purpose is to be read
- * as right. The bars stay exactly as they are — they are real training — and the
+ * `TrainingLoadChart`. That component's job is to draw a band and classify
+ * points against it; teaching it a second mode in which the band is provisional
+ * would put "this might be wrong" inside the thing whose whole purpose is to be
+ * read as right. The line stays exactly as it is — it is real training — and the
  * qualification sits where the reader meets it, before the chart.
  */
 function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {

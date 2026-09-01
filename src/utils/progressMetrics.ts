@@ -12,10 +12,40 @@
 // nothing on screen could be compared with anything the athlete had seen a
 // moment earlier. Every reading was true and none of them were comparable.
 //
-// There is now exactly one window — the last twelve weeks, one bar per week —
-// and it never changes. A fixed axis is what makes a chart legible over time:
-// the athlete learns the shape of their own twelve weeks, and next week's chart
-// is the same chart with one more bar on it.
+// The engine's own window is still exactly one thing — the last twelve weeks,
+// one bucket per week — and it still never changes. That series is what the
+// consistency grid, the streak, the sport split and the conflict timeline are
+// built from, and it is what the verdict is computed over.
+//
+// ## The trend chart's two zoom levels are not that switch coming back
+//
+// `ProgressData.trends` carries two *views of the same measure*: the last seven
+// days a day at a time, and the last six weeks a week at a time. The difference
+// from the old control is that nothing else on the page moves when you touch
+// them — the band, the verdict, the consistency grid and the sport split are all
+// still computed over the twelve-week window — and both views plot the same
+// quantity (load) against the same reference (the sustainable range). They are a
+// magnifying glass on one chart, not three screens behind one tab bar.
+//
+// ## The band is the part that has to be scaled, and scaling it is subtle
+//
+// CTL is an average **daily** load, so a week's range is CTL x 7. Measuring a
+// single day against *that* would report "below" for all seven days of even an
+// excellent week, so the Daily view needs its own.
+//
+// The obvious answer — CTL x 1 — is also wrong, and wrong in a way that only
+// shows up on real data. CTL averages across rest days too, so on a day you
+// actually train you are necessarily *above* your daily average: that is what
+// makes the rest days affordable. Classified against CTL x 1, a healthy athlete
+// training five days a week at a sensible size gets five "above" dots and two
+// "below" dots and not one "in range" — the signal inverts into noise, while
+// looking entirely plausible.
+//
+// So the Daily band is the range for **one training day**: CTL x 7 spread over
+// however many days a week this athlete actually trains. See `bandFor` and
+// `trainingDaysPerWeek`. The verdict then follows the same rule as the dots
+// above it — mean of the training days, against the training-day band — so the
+// caption can never contradict the colours it is sitting under.
 //
 // ## What did not change
 //
@@ -24,7 +54,7 @@
 // changing it here would change what the coach warns about.
 import type { Session, SportType } from '../types/session'
 import { SPORT_META } from './sportMeta'
-import { addDays, startOfWeek, localISODate, daysBetween } from './dates'
+import { addDays, startOfWeek, localISODate, daysBetween, WEEKDAY_INITIALS } from './dates'
 
 /** CTL (Fitness) is a 42-day rolling average of daily load; ATL (Fatigue) 7-day. */
 const CTL_WINDOW = 42
@@ -44,6 +74,12 @@ const BLEND_DAYS = 21
  * still wide enough to read and to tap on a phone.
  */
 export const WEEKS = 12
+
+/** Days in the trend chart's Daily view. */
+export const TREND_DAYS = 7
+
+/** Weeks in the trend chart's Weekly view, and the model readout's lookback. */
+export const TREND_WEEKS = 6
 
 /**
  * The sustainable band, as multiples of the load the athlete's current fitness
@@ -128,6 +164,93 @@ export interface WeekBucket {
   partial: boolean
 }
 
+/** Which zoom level the trend chart is showing. */
+export type Granularity = 'daily' | 'weekly'
+
+/**
+ * One point on the trend line — a day on the Daily view, a week on the Weekly.
+ *
+ * Deliberately the same shape for both, so the chart has one renderer rather
+ * than a `granularity === 'daily' ? … : …` branch running through every path,
+ * tooltip and dot in it. Everything that differs between the two — how wide the
+ * bucket is, what the axis tick says, what the band is scaled to — is resolved
+ * here, where the data is, and the view just draws points.
+ */
+export interface TrendPoint {
+  /** Stable React key. */
+  key: string
+  /** The x-axis tick: a weekday initial, or the week's start date. */
+  tick: string
+  /** Tooltip heading — "Mon, Aug 18" or "Aug 18 – 24". */
+  label: string
+  load: number
+  sessions: number
+  /**
+   * Where this bucket sits against its band, or `null` while it is still
+   * running. Same rule as {@link WeekBucket.standing}: today is not a day that
+   * "went below the range", it is a day that has not finished, and colouring its
+   * dot grey every morning would be a statement about the clock rather than
+   * about the athlete.
+   */
+  standing: BucketStanding | null
+  /** True while this bucket still has time left to run. */
+  partial: boolean
+}
+
+/** One zoom level of the trend chart: its points, band, verdict and caption. */
+export interface TrendSeries {
+  points: TrendPoint[]
+  /**
+   * The sustainable range **for one bucket of this size** — CTL x 7 for a week,
+   * CTL x 7 / training-days-per-week for a day. See the note at the top of this
+   * file for why the daily one is not simply CTL.
+   */
+  band: LoadBand | null
+  /**
+   * The plain-English read on **this** window, computed against **this** band.
+   *
+   * Per-series rather than one figure for the whole screen. It used to average
+   * the full twelve weeks, which was fine while the chart *was* the full twelve
+   * weeks — but a caption that says "you're easing off" under six visible weeks
+   * of plainly enormous training is not a nuance, it is a caption that is wrong
+   * about the picture directly above it. It answers for what is on screen.
+   */
+  verdict: LoadVerdict
+  /** The window, spelled out under the chart — "Last 7 days". */
+  caption: string
+}
+
+/** One figure in the Weekly view's Fitness / Fatigue / Form readout. */
+export interface ModelStat {
+  /** The athlete-facing name — "Fitness". */
+  label: string
+  /** The model's name for it — "CTL". */
+  abbrev: string
+  /** Today's value, rounded. */
+  value: number
+  /** Change over the lookback window. Positive is up, whichever way is good. */
+  delta: number
+}
+
+/**
+ * The Fitness / Fatigue / Form readout under the Weekly chart.
+ *
+ * Six weeks is the shortest window over which these three say anything: CTL is a
+ * 42-day average, so a chart shorter than that is mostly showing the average's
+ * own inertia rather than the athlete's training. That is exactly why this block
+ * belongs to the Weekly view and is withheld on Daily — not to keep the Daily
+ * view tidy, but because the numbers would not yet mean what they appear to.
+ */
+export interface ModelReadout {
+  fitness: ModelStat
+  fatigue: ModelStat
+  form: ModelStat
+  /** How many weeks the deltas span. */
+  weeks: number
+  /** One plain-English sentence, generated from the three deltas. */
+  summary: string
+}
+
 /** The load range the athlete's current fitness implies for one week. */
 export interface LoadBand {
   low: number
@@ -182,7 +305,21 @@ export interface ProgressData {
   weeks: WeekBucket[]
   /** `null` when there is no fitness estimate yet to derive a range from. */
   band: LoadBand | null
-  verdict: LoadVerdict
+  /**
+   * The trend chart's two zoom levels, both always computed.
+   *
+   * Both, rather than only the selected one, because switching tabs must not
+   * cost a recompute of the whole screen: `computeProgress` runs inside a
+   * `useMemo` keyed on the sessions and the sport filter, and threading the
+   * granularity through it would blow that memo away on every tap. Two extra
+   * passes over an array the function has already built are free by comparison.
+   */
+  trends: Record<Granularity, TrendSeries>
+  /**
+   * Fitness / Fatigue / Form now, and six weeks ago. `null` when the window
+   * doesn't reach back far enough to have a comparison to make.
+   */
+  model: ModelReadout | null
   /** The last bucket, as the three figures the "This week" block shows. */
   thisWeek: WeekSummary
   /** Consecutive weeks, counting back from now, that landed inside the range. */
@@ -232,6 +369,58 @@ function blendBaseline(
   return Math.round(baseline * (1 - dataWeight) + calculated * dataWeight)
 }
 
+/**
+ * The sustainable range for a bucket `days` long, from a current fitness value.
+ *
+ * CTL is an average *daily* load, so the multiplier is the bucket width and
+ * nothing else: seven for a week, one for a day. This is the whole reason the
+ * two zoom levels can share a chart — the band moves with the bucket, so "above
+ * the range" means the same thing on both.
+ */
+function bandFor(ctl: number, days: number): LoadBand | null {
+  if (ctl <= 0) return null
+  return {
+    low: Math.round(ctl * BAND_LOW * days),
+    high: Math.round(ctl * BAND_HIGH * days),
+    ctl,
+  }
+}
+
+/** How far back the training-frequency estimate is willing to look. */
+const FREQUENCY_WINDOW = 28
+
+/**
+ * How many days a week this athlete actually trains — the Daily band's divisor.
+ *
+ * ## Why the denominator is the observed span and not a flat four weeks
+ *
+ * Dividing by four assumes four weeks of history exist. On an account five days
+ * old, three training days over four weeks reads as "trains once a week", which
+ * hands a single day the load range of a whole week and puts every day of a
+ * perfectly good first week below it — the exact inversion the training-day band
+ * was introduced to fix, reappearing at the other end of the scale.
+ *
+ * So it counts across the span it can actually see: from the earliest training
+ * day in the window up to today, floored at a week so one busy Tuesday cannot
+ * read as "trains seven days a week".
+ *
+ * Rounded and clamped to 1–7, because it is picking between seven possible bands
+ * and deserves no more precision than that.
+ */
+function trainingDaysPerWeek(byDay: Map<string, number>, today: Date): number {
+  let active = 0
+  let earliest = 0
+  for (let i = 0; i < FREQUENCY_WINDOW; i++) {
+    if ((byDay.get(localISODate(addDays(today, -i))) ?? 0) > 0) {
+      active += 1
+      earliest = i
+    }
+  }
+  if (active === 0) return 7
+  const spanDays = Math.max(7, earliest + 1)
+  return Math.min(7, Math.max(1, Math.round((active * 7) / spanDays)))
+}
+
 function classify(load: number, band: LoadBand | null): BucketStanding | null {
   if (!band) return null
   if (load > band.high) return 'above'
@@ -239,12 +428,29 @@ function classify(load: number, band: LoadBand | null): BucketStanding | null {
   return 'inside'
 }
 
-/** The plain-English read on the window as a whole. */
-function verdictFor(weeks: WeekBucket[], band: LoadBand | null): LoadVerdict {
-  // Only finished weeks. Averaging in a week that is one day old would say
+/**
+ * The plain-English read on one window, against that window's own band.
+ *
+ * `restCounts` is what separates the two zoom levels. A week with no training in
+ * it is a real week of not training and belongs in a weekly average. A *day* with
+ * no training in it is a rest day — an intended part of the week, and already
+ * accounted for in the training-day band the daily dots are classified against —
+ * so averaging rest days in would report "easing off" for every athlete who
+ * takes two days off, which is every athlete who trains well.
+ */
+function verdictFor(
+  buckets: { load: number; partial: boolean }[],
+  band: LoadBand | null,
+  restCounts = true,
+): LoadVerdict {
+  // Only finished buckets. Averaging in a week that is one day old would say
   // "easing off" every Tuesday.
-  const complete = weeks.filter((w) => !w.partial)
-  if (!band || complete.length === 0) {
+  const complete = buckets.filter((b) => !b.partial && (restCounts || b.load > 0))
+  // No band is the only genuinely unanswerable case. A *daily* window with no
+  // training days in it is not unanswerable — we know exactly what happened —
+  // so it falls through with a mean of zero and lands on "easing off", which is
+  // both true and the same thing its seven grey dots are already saying.
+  if (!band || (complete.length === 0 && restCounts)) {
     return {
       tone: 'unknown',
       headline: 'Still learning your range',
@@ -252,7 +458,8 @@ function verdictFor(weeks: WeekBucket[], band: LoadBand | null): LoadVerdict {
     }
   }
 
-  const mean = complete.reduce((sum, w) => sum + w.load, 0) / complete.length
+  const mean =
+    complete.length > 0 ? complete.reduce((sum, b) => sum + b.load, 0) / complete.length : 0
   const tone = classify(mean, band) ?? 'inside'
 
   if (tone === 'above') {
@@ -262,6 +469,116 @@ function verdictFor(weeks: WeekBucket[], band: LoadBand | null): LoadVerdict {
     return { tone, headline: "You're easing off", detail: 'fitness drifts down if it lasts' }
   }
   return { tone, headline: "You're building safely", detail: 'this is where progress comes from' }
+}
+
+/* ------------------------------------------------------------------ */
+/* The Fitness / Fatigue / Form sentence                               */
+/* ------------------------------------------------------------------ */
+
+type Direction = 'up' | 'down' | 'steady'
+
+/**
+ * Whether a six-week change is worth calling a change.
+ *
+ * A flat threshold would call a 2 AU drift on a CTL of 90 a decline; a purely
+ * proportional one would call a 2 AU drift on a CTL of 8 a collapse. The floor
+ * and the percentage together mean "moved enough that the athlete would have
+ * felt it", which is the only sense in which a sentence about it is true.
+ */
+function direction(delta: number, from: number): Direction {
+  const threshold = Math.max(3, Math.abs(from) * 0.06)
+  if (delta > threshold) return 'up'
+  if (delta < -threshold) return 'down'
+  return 'steady'
+}
+
+/** "fitness up 12" / "fatigue held steady" — the clause, uncapitalised. */
+function movementClause(noun: string, dir: Direction, delta: number): string {
+  if (dir === 'steady') return `${noun} held steady`
+  return `${noun} ${dir} ${Math.abs(delta)}`
+}
+
+/**
+ * What the two movements mean together, as the sentence's final clause.
+ *
+ * Deliberately exhaustive over the nine combinations rather than assembled from
+ * per-axis fragments. The *interaction* is the whole point — fitness up is good
+ * news or bad news depending entirely on what fatigue did underneath it — and a
+ * template that says "fitness rose" and "fatigue rose" in sequence never gets to
+ * the sentence the athlete actually needs, which is which of the two is winning.
+ */
+function interactionRead(
+  fitness: Direction,
+  fatigue: Direction,
+  fitnessDelta: number,
+  fatigueDelta: number,
+): string {
+  if (fitness === 'up' && fatigue === 'steady') return "that's a healthy build"
+  if (fitness === 'up' && fatigue === 'down') {
+    return "fitter and fresher, which is the best combination there is"
+  }
+  if (fitness === 'up' && fatigue === 'up') {
+    return fitnessDelta >= fatigueDelta
+      ? 'fitness is outpacing fatigue, which is the right way round'
+      : 'fatigue is climbing faster than fitness — an easier week would bank it'
+  }
+  if (fitness === 'steady' && fatigue === 'up') {
+    return "that's cost without much return"
+  }
+  if (fitness === 'steady' && fatigue === 'down') {
+    return "you're freshening up on the fitness you already had"
+  }
+  if (fitness === 'steady' && fatigue === 'steady') {
+    return "you're ticking over rather than building"
+  }
+  if (fitness === 'down' && fatigue === 'up') {
+    return 'fitness slipping while fatigue rises is the one combination worth acting on'
+  }
+  if (fitness === 'down' && fatigue === 'down') {
+    return "you've been easing off, and fitness has followed"
+  }
+  return 'fitness drifts down when the work eases off'
+}
+
+/**
+ * Today's Fitness / Fatigue / Form against the same three six weeks ago.
+ *
+ * Reads the *unfiltered* daily series, like the Advanced section does and for
+ * the same reason: the engine has no idea what the sport chips are set to, and
+ * fatigue from a swim is fatigue when you go running. A per-sport CTL would be a
+ * model nothing in the app actually runs.
+ */
+function buildModel(daily: DailyPoint[]): ModelReadout | null {
+  const lookback = TREND_WEEKS * 7
+  if (daily.length <= lookback) return null
+
+  const now = daily[daily.length - 1]
+  const then = daily[daily.length - 1 - lookback]
+
+  const fitnessDelta = now.ctl - then.ctl
+  const fatigueDelta = now.atl - then.atl
+
+  const fitnessDir = direction(fitnessDelta, then.ctl)
+  const fatigueDir = direction(fatigueDelta, then.atl)
+
+  const lead = movementClause('Fitness', fitnessDir, fitnessDelta)
+  const follow = movementClause('fatigue', fatigueDir, fatigueDelta)
+  const read = interactionRead(fitnessDir, fatigueDir, fitnessDelta, fatigueDelta)
+
+  // "Fitness up 12 over six weeks while fatigue held steady — that's a healthy
+  // build." The two-both-steady case says it once instead of twice.
+  const summary =
+    fitnessDir === 'steady' && fatigueDir === 'steady'
+      ? `Fitness and fatigue both held steady over six weeks — ${read}.`
+      : `${lead} over six weeks while ${follow} — ${read}.`
+
+  return {
+    fitness: { label: 'Fitness', abbrev: 'CTL', value: now.ctl, delta: fitnessDelta },
+    fatigue: { label: 'Fatigue', abbrev: 'ATL', value: now.atl, delta: fatigueDelta },
+    form: { label: 'Form', abbrev: 'CTL - ATL', value: now.form, delta: now.form - then.form },
+    weeks: TREND_WEEKS,
+    summary,
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -372,14 +689,11 @@ export function computeProgress(
       ? (daily.length ? daily[daily.length - 1].ctl : 0)
       : Math.round(rollingMean(viewLoads, todayIdx, CTL_WINDOW))
 
-  const band: LoadBand | null =
-    currentCTL > 0
-      ? {
-          low: Math.round(currentCTL * BAND_LOW * 7),
-          high: Math.round(currentCTL * BAND_HIGH * 7),
-          ctl: currentCTL,
-        }
-      : null
+  // A week's worth of range, and one training day's worth of it. See `bandFor`,
+  // `trainingDaysPerWeek`, and the note at the top of this file for why the
+  // daily divisor is the athlete's own training frequency and not seven.
+  const band = bandFor(currentCTL, 7)
+  const dailyBand = bandFor(currentCTL, 7 / trainingDaysPerWeek(view.load, today))
 
   // ---- The twelve weekly buckets ----
   const acc = Array.from({ length: WEEKS }, () => ({
@@ -443,7 +757,67 @@ export function computeProgress(
     }
   })
 
-  const verdict = verdictFor(weeks, band)
+  // ---- The trend chart's two zoom levels ----
+  //
+  // Weekly is a straight slice of the twelve buckets just built, not a second
+  // aggregation of the same sessions. That is the point: the six weeks on the
+  // chart are literally the last six dots of the consistency grid, so the two
+  // cards can never disagree about whether a week landed in range.
+  const weekly: TrendPoint[] = []
+  for (let i = Math.max(0, WEEKS - TREND_WEEKS); i < WEEKS; i++) {
+    const bucket = weeks[i]
+    const start = addDays(rangeStart, i * 7)
+    weekly.push({
+      key: bucket.key,
+      // The week's start date. Six ticks have room for a real date, where twelve
+      // did not — which is why the bar chart's axis could only carry a month.
+      tick: shortDate(start),
+      label: bucket.label,
+      load: bucket.load,
+      sessions: bucket.sessions,
+      standing: bucket.standing,
+      partial: bucket.partial,
+    })
+  }
+
+  // Daily reads the filtered day map directly. Note `view`, not `all`: the chart
+  // follows the sport chips, and its band was derived from the same filtered
+  // rolling load above.
+  const dailyTrend: TrendPoint[] = []
+  for (let i = TREND_DAYS - 1; i >= 0; i--) {
+    const date = addDays(today, -i)
+    const key = localISODate(date)
+    const load = view.load.get(key) ?? 0
+    // Today is the only bucket still running, and it is judged by exactly the
+    // rule the weekly buckets use: drawn, but not classified.
+    const partial = i === 0
+    const standingSoFar = classify(load, dailyBand)
+    dailyTrend.push({
+      key,
+      tick: WEEKDAY_INITIALS[date.getDay()],
+      label: tooltipDate(date),
+      load,
+      sessions: view.count.get(key) ?? 0,
+      standing: partial ? null : standingSoFar,
+      partial,
+    })
+  }
+
+  const trends: Record<Granularity, TrendSeries> = {
+    daily: {
+      points: dailyTrend,
+      band: dailyBand,
+      // Rest days excluded: they are what the training-day band already assumes.
+      verdict: verdictFor(dailyTrend, dailyBand, false),
+      caption: `Last ${TREND_DAYS} days`,
+    },
+    weekly: {
+      points: weekly,
+      band,
+      verdict: verdictFor(weekly, band),
+      caption: `Last ${TREND_WEEKS} weeks`,
+    },
+  }
 
   const last = weeks[weeks.length - 1]
   const thisWeek: WeekSummary = {
@@ -506,7 +880,8 @@ export function computeProgress(
     rangeEnd,
     weeks,
     band,
-    verdict,
+    trends,
+    model: buildModel(daily),
     thisWeek,
     streak,
     sports,

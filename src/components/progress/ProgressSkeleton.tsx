@@ -12,6 +12,16 @@ function StatSkeleton() {
   )
 }
 
+/** One Fitness/Fatigue/Form column under the chart — smaller than a stat tile. */
+function MiniStatSkeleton() {
+  return (
+    <View style={{ flex: 1, paddingRight: SPACING.sm }}>
+      <Skeleton width="70%" height={9} />
+      <Skeleton width="50%" height={16} style={{ marginTop: 5 }} />
+    </View>
+  )
+}
+
 /**
  * First-load placeholder while `computeProgress` and the first Firestore snapshot
  * settle.
@@ -29,18 +39,30 @@ export default function ProgressSkeleton() {
       <SkeletonCard>
         <Skeleton width="35%" height={16} />
         <View style={{ flexDirection: 'row', marginTop: SPACING.base }}>
+          <MiniStatSkeleton />
+          <MiniStatSkeleton />
+          <MiniStatSkeleton />
+        </View>
+      </SkeletonCard>
+
+      {/* The Daily / Weekly tabs, which sit outside the chart's card. */}
+      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+        <Skeleton width={78} height={33} radius={RADIUS.pill} />
+        <Skeleton width={86} height={33} radius={RADIUS.pill} />
+      </View>
+
+      {/* The chart: one-line legend, the 236pt plot, the window caption, the
+          verdict, then the Fitness/Fatigue/Form row the Weekly default shows. */}
+      <SkeletonCard>
+        <Skeleton width="55%" height={12} />
+        <Skeleton height={236} radius={RADIUS.md} style={{ marginTop: SPACING.md }} />
+        <Skeleton width="30%" height={12} style={{ marginTop: SPACING.md }} />
+        <Skeleton width="80%" height={14} style={{ marginTop: SPACING.md }} />
+        <View style={{ flexDirection: 'row', marginTop: SPACING.base }}>
           <StatSkeleton />
           <StatSkeleton />
           <StatSkeleton />
         </View>
-      </SkeletonCard>
-
-      {/* The chart: caption, one-line legend, the 236pt plot, then the verdict */}
-      <SkeletonCard>
-        <Skeleton width="30%" height={12} />
-        <Skeleton width="55%" height={12} style={{ marginTop: SPACING.md }} />
-        <Skeleton height={236} radius={RADIUS.md} style={{ marginTop: SPACING.md }} />
-        <Skeleton width="80%" height={14} style={{ marginTop: SPACING.base }} />
       </SkeletonCard>
 
       {/* Consistency: the big numeral beside the dot grid */}

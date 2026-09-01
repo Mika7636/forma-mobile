@@ -1,10 +1,27 @@
 import { useMemo, useState } from 'react'
 import { Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native'
-import Svg, { G, Line, Path, Rect, Text as SvgText } from 'react-native-svg'
-import { formatCompact, paddedScale, roundedTopBar } from './chartUtils'
+import Svg, {
+  Circle,
+  Defs,
+  G,
+  Line,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg'
+import { formatCompact, linePath, paddedScale, type Point } from './chartUtils'
+import ModelReadout from './ModelReadout'
 import TabIcon, { type TabIconName } from '../ui/TabIcon'
 import { formatThousands } from '../../utils/formatting'
-import type { BucketStanding, LoadBand, LoadVerdict, WeekBucket } from '../../utils/progressMetrics'
+import type {
+  BucketStanding,
+  LoadBand,
+  LoadVerdict,
+  ModelReadout as ModelReadoutData,
+  TrendSeries,
+} from '../../utils/progressMetrics'
 import { useTheme } from '../../theme/ThemeProvider'
 import { RADIUS, SPACING, TYPE, WEIGHT, cardStyle, type Palette } from '../../theme/tokens'
 
@@ -24,17 +41,25 @@ const PAD_R = 8
  * The plot's horizontal inset inside a card — the room the y-axis takes on the
  * left and the trailing gap on the right.
  *
- * Exported because anything that claims to share this chart's time axis has to
- * share its gutters too: the conflict timeline's bucket `i` only sits under bar
- * `i` if both are divided across the *same* span. Both cards have identical
+ * Exported because anything that claims to share this chart's gutters has to
+ * share them exactly: the conflict timeline's strip is only on the same axis as
+ * this plot if both are divided across the same span. Both cards have identical
  * width and padding, so matching the inset is all the alignment needs.
+ *
+ * Held at its original values through the switch from bars to a line — the
+ * timeline is drawn from the twelve-week series and is not part of this change,
+ * and moving the gutter would have silently shifted it.
  */
 export const PLOT_INSET = { left: PAD_L, right: PAD_R } as const
 
 /** The tooltip's fixed width; its height is measured, since the copy varies. */
 const TIP_W = 152
 
-/** What each bar colour means. One word each — the chips under the caption. */
+/** Radius of a point marker, and of the selected one. */
+const DOT_R = 3.6
+const DOT_R_ACTIVE = 5.5
+
+/** What each dot colour means. One word each — the chips under the caption. */
 const LEGEND: { standing: BucketStanding; chip: string }[] = [
   { standing: 'above', chip: 'Above' },
   { standing: 'inside', chip: 'In range' },
@@ -42,11 +67,13 @@ const LEGEND: { standing: BucketStanding; chip: string }[] = [
 ]
 
 /**
- * The colour a bar takes from where it sits against the band.
+ * The colour a bucket takes from where it sits against the band.
  *
- * The one place this mapping lives, so the legend chips, the bars, the verdict
- * line and the consistency dots can never disagree — which is the whole basis on
- * which the screen is read.
+ * The one place this mapping lives, so the legend chips, the dots, the verdict
+ * line and the consistency grid can never disagree — which is the whole basis on
+ * which the screen is read. It outlived the bars it was written for: the signal
+ * moved from the fill of a bar to the fill of a dot, and the mapping did not
+ * change at all.
  */
 export function standingColor(standing: BucketStanding, colors: Palette): string {
   if (standing === 'above') return colors.warn
@@ -55,26 +82,43 @@ export function standingColor(standing: BucketStanding, colors: Palette): string
 }
 
 interface TrainingLoadChartProps {
-  weeks: WeekBucket[]
-  band: LoadBand | null
-  verdict: LoadVerdict
+  /** The active zoom level's points, band, verdict and caption. */
+  series: TrendSeries
+  /**
+   * The Fitness / Fatigue / Form readout, rendered under the verdict line.
+   *
+   * Passed in rather than derived here, because whether it belongs on screen is
+   * a question about the *tab* and about how settled the athlete's baseline is,
+   * and this component knows about neither. `null` renders nothing at all — see
+   * `ModelReadout` for why it is a Weekly-only block.
+   */
+  model?: ModelReadoutData | null
 }
 
 /**
- * The screen's primary chart: how much training went in each of the last twelve
- * weeks, against how much this athlete can currently absorb.
+ * The screen's primary chart: how much training went in, against how much this
+ * athlete can currently absorb.
  *
- * It replaced a three-line Fitness/Fatigue/Form plot. That chart is a good
- * picture of the model and a poor picture of the athlete's week — reading it
- * required knowing what CTL and ATL are, and what their difference means. This
- * asks one question instead ("am I doing about the right amount?") and answers
- * it with a bar and a shaded band, which needs no vocabulary at all.
+ * ## Why it is a line now
  *
- * The model itself is unchanged and still runs underneath: the band *is* CTL x
- * 7. It moved from being the subject of the chart to being the reference the
- * chart is read against.
+ * It was twelve bars. Bars are the right mark for twelve discrete weeks that are
+ * each a completed quantity, and the wrong one the moment the chart has to work
+ * at two zoom levels: seven daily bars with three rest days in them is a chart of
+ * gaps, and the eye reads the gaps as missing data rather than as zeros. A line
+ * with a dot on every point says "this is a continuous measure, and here is what
+ * it did" — a rest day is a point on the floor, visibly part of the shape rather
+ * than an absence from it.
+ *
+ * The trade the line makes is that a bar could carry the above/in/below signal in
+ * its own fill, and a line cannot: one line is one colour. So the signal moved to
+ * the dots, which is the only mark on a line chart that belongs to a single
+ * bucket. The mapping itself is untouched — see {@link standingColor} — so the
+ * legend, the consistency grid and this chart still agree by construction.
+ *
+ * The model underneath is unchanged and still runs: the band *is* CTL x the
+ * bucket width.
  */
-export default function TrainingLoadChart({ weeks, band, verdict }: TrainingLoadChartProps) {
+export default function TrainingLoadChart({ series, model = null }: TrainingLoadChartProps) {
   const { colors } = useTheme()
 
   const [width, setWidth] = useState(0)
@@ -87,19 +131,38 @@ export default function TrainingLoadChart({ weeks, band, verdict }: TrainingLoad
 
   return (
     <View style={cardStyle(colors)}>
-      <Text style={{ fontSize: TYPE.small, fontWeight: WEIGHT.semibold, color: colors.textMuted }}>
-        Past 12 weeks
-      </Text>
-
-      <View style={{ marginTop: SPACING.md }}>
-        <LegendChips />
-      </View>
+      <LegendChips />
 
       <View style={{ marginTop: SPACING.md }} onLayout={onLayout}>
-        {width > 0 ? <LoadPlot weeks={weeks} band={band} width={width} /> : null}
+        {width > 0 ? (
+          <LoadPlot
+            // Remounting on a tab switch drops any open tooltip, which would
+            // otherwise survive into a series it does not describe and float
+            // over the wrong point.
+            key={series.caption}
+            points={series.points}
+            band={series.band}
+            width={width}
+          />
+        ) : null}
       </View>
 
-      <VerdictLine verdict={verdict} />
+      {/* The window, under the plot, following the active tab. The tabs say
+          which zoom you picked; this says what that actually spans. */}
+      <Text
+        style={{
+          marginTop: SPACING.md,
+          fontSize: TYPE.small,
+          fontWeight: WEIGHT.semibold,
+          color: colors.textMuted,
+        }}
+      >
+        {series.caption}
+      </Text>
+
+      <VerdictLine verdict={series.verdict} />
+
+      {model ? <ModelReadout model={model} /> : null}
     </View>
   )
 }
@@ -114,7 +177,7 @@ function verdictStyle(tone: LoadVerdict['tone'], colors: Palette) {
     return { rail: colors.warn, ink: colors.warnText, icon: 'alert-triangle' as TabIconName }
   }
   if (tone === 'below') {
-    // The muted grey the *bars* already use for a below-range week, so the
+    // The muted grey the *dots* already use for a below-range bucket, so the
     // caption and the chart above it agree by construction. Easing off is not a
     // warning and not a success, and a tint borrowed from either would say
     // otherwise.
@@ -132,8 +195,16 @@ function verdictStyle(tone: LoadVerdict['tone'], colors: Palette) {
  * It used to be a tinted hero banner above everything, which gave the screen two
  * headlines competing before the reader had seen any data — and it answered a
  * question about the chart while sitting where the chart wasn't. As a caption it
- * does the job it was always doing: it says out loud what the bars have just
- * shown, in the same three colours they were drawn in.
+ * does the job it was always doing: it says out loud what the chart has just
+ * shown, in the same three colours it was drawn in.
+ *
+ * It answers for the window on screen, against that window's own band, and so
+ * it does change when the tabs do. It used to average the full twelve weeks,
+ * which was right while the chart *was* twelve weeks — but leave it there and a
+ * chart of six plainly enormous weeks gets captioned "you're easing off",
+ * because the six older weeks doing the averaging are not on screen to explain
+ * themselves. A caption that contradicts the picture it sits under is worse than
+ * no caption. See `verdictFor`.
  */
 function VerdictLine({ verdict }: { verdict: LoadVerdict }) {
   const { colors } = useTheme()
@@ -146,7 +217,7 @@ function VerdictLine({ verdict }: { verdict: LoadVerdict }) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: SPACING.base,
+        marginTop: SPACING.md,
         paddingLeft: SPACING.md,
         borderLeftWidth: 3,
         borderLeftColor: style.rail,
@@ -172,8 +243,11 @@ function VerdictLine({ verdict }: { verdict: LoadVerdict }) {
  * The legend as one row of chips.
  *
  * Three colours and three words. The words are the *state*, not an explanation
- * of it: a legend's job is to let you decode a bar you are already looking at,
+ * of it: a legend's job is to let you decode a mark you are already looking at,
  * and for that "Above" is as good as a sentence and takes a tenth of the room.
+ *
+ * The swatches are discs rather than the rounded squares they were, because the
+ * mark they now stand for is a dot.
  */
 function LegendChips() {
   const { colors } = useTheme()
@@ -191,7 +265,7 @@ function LegendChips() {
             style={{
               width: 9,
               height: 9,
-              borderRadius: 2.5,
+              borderRadius: 4.5,
               backgroundColor: standingColor(entry.standing, colors),
               marginRight: 6,
             }}
@@ -208,11 +282,11 @@ function LegendChips() {
 /* ------------------------------------------------------------------ */
 
 function LoadPlot({
-  weeks,
+  points,
   band,
   width,
 }: {
-  weeks: WeekBucket[]
+  points: TrendSeries['points']
   band: LoadBand | null
   width: number
 }) {
@@ -221,53 +295,51 @@ function LoadPlot({
   const [active, setActive] = useState<number | null>(null)
   const [tipH, setTipH] = useState(0)
 
-  const n = weeks.length
+  const n = points.length
   const plotW = width - PAD_L - PAD_R
   const plotH = PLOT_H - PAD_T - PAD_B
 
   const geom = useMemo(() => {
-    const maxLoad = weeks.reduce((m, w) => Math.max(m, w.load), 0)
-    // The axis fits the *window*, not a round number above it. 1.15x the tallest
-    // bar leaves it a little air at the top; the band's own ceiling only has to
-    // be in frame, so it is admitted at 1.06x rather than dragging the whole
-    // axis up with it. Rounding the domain up over both is how a chart of 800 AU
-    // weeks ended up with a 4k y-axis and every bar pinned to the floor.
-    const ceiling = Math.max(maxLoad * 1.15, (band?.high ?? 0) * 1.06, 1)
-    const scale = paddedScale(ceiling, 1, 4)
+    const maxLoad = points.reduce((m, p) => Math.max(m, p.load), 0)
+    // 1.15x the tallest thing in frame. The band counts as in frame: it is drawn
+    // content, and a ceiling that clipped it would cut the reference the whole
+    // chart is read against rather than merely cropping some white space.
+    const ceiling = Math.max(maxLoad, band?.high ?? 0, 1) * 1.15
+    // Headroom 1 — the ceiling above *is* the domain. `paddedScale` is used only
+    // for its tick placement, since the axis now carries labels without lines.
+    const scale = paddedScale(ceiling, 1, 3)
     const span = scale.max - scale.min || 1
     const yAt = (v: number) => PAD_T + plotH - ((v - scale.min) / span) * plotH
+    // Points sit at slot centres rather than edge to edge, so the first and last
+    // dots keep their full radius inside the plot instead of being half-clipped
+    // by the gutter.
     const slot = n > 0 ? plotW / n : plotW
-    // Wide bars: this is a chart of twelve values, not a histogram, and at a
-    // narrow fraction of the slot they read as rules rather than as quantities.
-    const barW = Math.max(6, Math.min(30, slot * 0.62))
-    const bars = weeks.map((week, i) => {
-      const cx = PAD_L + (i + 0.5) * slot
-      return { week, cx, x: cx - barW / 2, top: yAt(week.load), barW }
-    })
-    return { scale, bars, slot, maxLoad, yBase: yAt(0), yAt }
-  }, [weeks, band, n, plotW, plotH])
+    const xAt = (i: number) => PAD_L + (i + 0.5) * slot
+    const coords: Point[] = points.map((p, i) => ({ x: xAt(i), y: yAt(p.load) }))
+    return { scale, yAt, xAt, slot, maxLoad, coords, yBase: yAt(0) }
+  }, [points, band, n, plotW, plotH])
 
   // Nothing logged *and* no band to measure it against: there is no axis worth
-  // drawing, and forcing one gives a ceiling of 1 AU with gridlines at 0.2
-  // intervals — several ticks all rounding to "0". A sentence is the honest
-  // render.
+  // drawing, and forcing one gives a ceiling of 1 AU with ticks at 0.2 intervals
+  // — several labels all rounding to "0". A sentence is the honest render.
   if (n === 0 || (geom.maxLoad === 0 && !band)) {
     return (
       <View style={{ height: PLOT_H, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: TYPE.small, color: colors.textSubtle }}>
-          No training in these 12 weeks
+          No training in this window
         </Text>
       </View>
     )
   }
 
   /**
-   * Tap-to-select, over the whole column rather than the bar itself.
+   * Tap-to-select, over the whole column rather than the dot itself.
    *
    * Done on the wrapping `View`'s responder rather than with `onPress` on each
-   * `Path`, for two reasons: a zero-load week has no bar to press, and a tap
-   * that lands anywhere *else* has to clear the selection — which is the
-   * behaviour that makes this a tooltip rather than a permanent fixture.
+   * `Circle`, for two reasons: a 3.6pt dot is far below the touch minimum and
+   * nobody would ever hit one, and a tap that lands anywhere *else* has to clear
+   * the selection — which is the behaviour that makes this a tooltip rather than
+   * a permanent fixture.
    *
    * `onStartShouldSetResponder` only, never `onMoveShouldSetResponder`: the
    * latter makes the chart greedy and hijacks any page scroll whose finger
@@ -289,61 +361,43 @@ function LoadPlot({
   }
 
   const activeIndex = active != null && active < n ? active : null
-  const activeBar = activeIndex != null ? geom.bars[activeIndex] : null
+  const activePoint = activeIndex != null ? points[activeIndex] : null
+  const activeCoord = activeIndex != null ? geom.coords[activeIndex] : null
+
   const bandTop = band ? geom.yAt(band.high) : 0
   const bandBottom = band ? geom.yAt(band.low) : 0
-  // The caption sits above the upper edge, unless the edge is near the top of
-  // the frame — then it drops inside the band, which always has room for it.
+  // The caption sits above the band's upper edge, unless that edge is near the
+  // top of the frame — then it drops inside the band, which always has room.
   const captionY = bandTop - 5 < PAD_T + 9 ? bandTop + 12 : bandTop - 5
-  const currentIndex = weeks.findIndex((w) => w.partial)
+
+  const line = linePath(geom.coords)
+  // The area is the line, closed down the two ends to the baseline.
+  const area =
+    geom.coords.length > 0
+      ? `${line} L ${geom.coords[geom.coords.length - 1].x.toFixed(2)} ${geom.yBase.toFixed(2)} ` +
+        `L ${geom.coords[0].x.toFixed(2)} ${geom.yBase.toFixed(2)} Z`
+      : ''
 
   return (
     <View onStartShouldSetResponder={() => true} onResponderRelease={onTap}>
       <Svg width={width} height={PLOT_H}>
-        {/* Gridlines first, so the band washes over them rather than under. */}
-        {geom.scale.ticks.map((t) => (
-          <G key={t}>
-            <Line
-              x1={PAD_L}
-              y1={geom.yAt(t)}
-              x2={width - PAD_R}
-              y2={geom.yAt(t)}
-              stroke={colors.border}
-              strokeWidth={1}
-            />
-            <SvgText
-              x={PAD_L - 6}
-              y={geom.yAt(t) + 3.5}
-              fontSize={10}
-              fill={colors.textMuted}
-              textAnchor="end"
-            >
-              {formatCompact(t)}
-            </SvgText>
-          </G>
-        ))}
+        <Defs>
+          {/* The soft wash under the line. Fades to nothing at the baseline
+              rather than stopping on a hard edge, so the fill reads as the
+              line's own weight rather than as a second filled series. */}
+          <LinearGradient id="loadArea" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={colors.accent} stopOpacity={0.3} />
+            <Stop offset="1" stopColor={colors.accent} stopOpacity={0.02} />
+          </LinearGradient>
+        </Defs>
 
-        {/* Where the week in progress begins. A rule on the boundary rather than
-            a highlight on the bar: it says "everything right of this has not
-            finished yet" without recolouring data. Drawn before the band so the
-            band's wash and its "your range" caption paint over it — a hairline
-            slicing through the caption reads as a rendering fault. */}
-        {currentIndex > 0 ? (
-          <Line
-            x1={PAD_L + currentIndex * geom.slot}
-            y1={PAD_T}
-            x2={PAD_L + currentIndex * geom.slot}
-            y2={PAD_T + plotH}
-            stroke={colors.borderStrong}
-            strokeWidth={1}
-          />
-        ) : null}
-
-        {/* The sustainable band. Drawn behind the bars so it reads as the ground
-            they stand on rather than as another series competing with them —
-            but drawn *properly*: a tint you can see, dashed accent edges top and
-            bottom, and the upper edge labelled in place so the band does not
-            need the legend to be understood. */}
+        {/* The sustainable band, as a soft tinted region and nothing else.
+            It had dashed accent edges, which at a tenth of the chart's height
+            put four near-parallel accent rules across the plot and competed with
+            the line for exactly the attention the line should have. A band is a
+            *region* — the edge is where the tint stops, and drawing it twice
+            only made the reference louder than the data. The caption is what
+            names it now. Drawn first, so everything else paints over it. */}
         {band ? (
           <G>
             <Rect
@@ -352,27 +406,13 @@ function LoadPlot({
               width={plotW}
               height={Math.max(1, bandBottom - bandTop)}
               fill={colors.accent}
-              opacity={0.16}
+              opacity={0.1}
             />
-            {[bandTop, bandBottom].map((y, i) => (
-              <Line
-                key={i}
-                x1={PAD_L}
-                y1={y}
-                x2={width - PAD_R}
-                y2={y}
-                stroke={colors.accent}
-                strokeWidth={1.5}
-                strokeDasharray="5 4"
-                opacity={0.9}
-              />
-            ))}
             <SvgText
               x={width - PAD_R}
               y={captionY}
               fontSize={10}
-              fontWeight="600"
-              fill={colors.accentText}
+              fill={colors.textMuted}
               textAnchor="end"
             >
               your range
@@ -380,61 +420,100 @@ function LoadPlot({
           </G>
         ) : null}
 
-        {geom.bars.map((bar, i) => {
-          const { week } = bar
-          const fill = week.standing ? standingColor(week.standing, colors) : colors.accent
-          return (
-            <G key={week.key}>
-              {week.load > 0 ? (
-                <Path
-                  d={roundedTopBar(bar.x, bar.top, bar.barW, geom.yBase, 4)}
-                  fill={fill}
-                  // An unfinished week is drawn at half strength: it is real
-                  // data, but it is not a result yet, and at full weight a
-                  // three-day-old week reads as a bad week.
-                  opacity={
-                    (week.partial ? 0.45 : 1) * (activeIndex == null || activeIndex === i ? 1 : 0.4)
-                  }
-                />
-              ) : null}
-              {/* One tick per month, under the first week that starts in it. */}
-              {week.monthTick ? (
-                <SvgText
-                  x={bar.cx}
-                  y={PLOT_H - 5}
-                  fontSize={10}
-                  fontWeight="600"
-                  fill={colors.textMuted}
-                  textAnchor="middle"
-                >
-                  {week.monthTick}
-                </SvgText>
-              ) : null}
-            </G>
-          )
-        })}
+        {/* Axis labels without gridlines. The gutter still has to say what the
+            line's height is worth, but a chart of one line does not need four
+            rules through it to be read — the baseline below is the only
+            reference the shape actually rests on. */}
+        {geom.scale.ticks.map((t) => (
+          <SvgText
+            key={t}
+            x={PAD_L - 6}
+            y={geom.yAt(t) + 3.5}
+            fontSize={10}
+            fill={colors.textMuted}
+            textAnchor="end"
+          >
+            {formatCompact(t)}
+          </SvgText>
+        ))}
+
+        {/* The one rule that stays: zero. Every point's height is read against
+            it, and without it a line floating in a blank frame has no floor. */}
+        <Line
+          x1={PAD_L}
+          y1={geom.yBase}
+          x2={width - PAD_R}
+          y2={geom.yBase}
+          stroke={colors.border}
+          strokeWidth={1}
+        />
+
+        {area ? <Path d={area} fill="url(#loadArea)" /> : null}
+
+        <Path
+          d={line}
+          stroke={colors.accent}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
 
         {/* The selected column, marked on the axis itself so the tooltip is
-            anchored to something even when the bar under it is a flat zero. */}
-        {activeBar ? (
+            anchored to something even when the point under it is a flat zero. */}
+        {activeCoord ? (
           <Line
-            x1={activeBar.cx}
+            x1={activeCoord.x}
             y1={PAD_T}
-            x2={activeBar.cx}
+            x2={activeCoord.x}
             y2={PAD_T + plotH}
             stroke={colors.borderStrong}
             strokeWidth={1}
             strokeDasharray="3 3"
           />
         ) : null}
+
+        {points.map((point, i) => {
+          const coord = geom.coords[i]
+          const fill = point.standing ? standingColor(point.standing, colors) : colors.accent
+          return (
+            <G key={point.key}>
+              <Circle
+                cx={coord.x}
+                cy={coord.y}
+                r={activeIndex === i ? DOT_R_ACTIVE : DOT_R}
+                fill={fill}
+                // A ring in the card's own colour separates a dot from the line
+                // and the wash behind it, which matters most where the line is
+                // steep and a bare dot merges into the stroke.
+                stroke={colors.surface}
+                strokeWidth={1.5}
+                // An unfinished bucket is drawn at half strength: it is real
+                // data, but it is not a result yet, and at full weight a
+                // three-hour-old day reads as a bad day.
+                opacity={point.partial ? 0.5 : 1}
+              />
+              <SvgText
+                x={coord.x}
+                y={PLOT_H - 5}
+                fontSize={10}
+                fontWeight="600"
+                fill={colors.textMuted}
+                textAnchor="middle"
+              >
+                {point.tick}
+              </SvgText>
+            </G>
+          )
+        })}
       </Svg>
 
-      {activeBar ? (
+      {activePoint && activeCoord ? (
         <Tooltip
-          week={activeBar.week}
+          point={activePoint}
           band={band}
-          cx={activeBar.cx}
-          barTop={activeBar.top}
+          cx={activeCoord.x}
+          anchorY={activeCoord.y}
           width={width}
           height={tipH}
           onMeasure={setTipH}
@@ -445,29 +524,29 @@ function LoadPlot({
 }
 
 /**
- * The floating read-out for one week.
+ * The floating read-out for one bucket.
  *
- * Appears only on a tap and hangs directly above the bar it belongs to, which is
- * the only position that makes an unlabelled bar chart legible without a
+ * Appears only on a tap and hangs directly above the point it belongs to, which
+ * is the only position that makes an unlabelled trend line legible without a
  * permanent table beside it.
  *
  * The height is measured rather than assumed: the card is two or three lines
- * depending on whether the week has a standing, and a hard-coded height would
- * either float it or overlap the bar in one of those cases.
+ * depending on whether the bucket has a standing, and a hard-coded height would
+ * either float it or overlap the point in one of those cases.
  */
 function Tooltip({
-  week,
+  point,
   band,
   cx,
-  barTop,
+  anchorY,
   width,
   height,
   onMeasure,
 }: {
-  week: WeekBucket
+  point: TrendSeries['points'][number]
   band: LoadBand | null
   cx: number
-  barTop: number
+  anchorY: number
   width: number
   height: number
   onMeasure: (h: number) => void
@@ -475,15 +554,15 @@ function Tooltip({
   const { colors } = useTheme()
 
   const left = Math.max(0, Math.min(width - TIP_W, cx - TIP_W / 2))
-  const top = Math.max(0, Math.min(PLOT_H - height, barTop - height - 10))
+  const top = Math.max(0, Math.min(PLOT_H - height, anchorY - height - 12))
 
-  const standingText = week.partial
+  const standingText = point.partial
     ? 'Still in progress'
-    : week.standing === 'above'
+    : point.standing === 'above'
       ? 'Above your range'
-      : week.standing === 'below'
+      : point.standing === 'below'
         ? 'Below your range'
-        : week.standing === 'inside'
+        : point.standing === 'inside'
           ? 'In your range'
           : null
 
@@ -521,20 +600,20 @@ function Tooltip({
           marginBottom: 2,
         }}
       >
-        {week.label}
+        {point.label}
       </Text>
       <Text style={{ color: colors.textBody, fontSize: TYPE.caption }}>
         <Text style={{ color: colors.text, fontWeight: WEIGHT.bold }}>
-          {formatThousands(week.load)}
+          {formatThousands(point.load)}
         </Text>{' '}
         AU{'  ·  '}
-        <Text style={{ color: colors.text, fontWeight: WEIGHT.bold }}>{week.sessions}</Text>{' '}
-        {week.sessions === 1 ? 'session' : 'sessions'}
+        <Text style={{ color: colors.text, fontWeight: WEIGHT.bold }}>{point.sessions}</Text>{' '}
+        {point.sessions === 1 ? 'session' : 'sessions'}
       </Text>
       {standingText ? (
         <Text style={{ marginTop: 3, color: colors.textSubtle, fontSize: TYPE.caption }}>
           {standingText}
-          {band && !week.partial
+          {band && !point.partial
             ? ` (${formatThousands(band.low)}–${formatThousands(band.high)})`
             : ''}
         </Text>
