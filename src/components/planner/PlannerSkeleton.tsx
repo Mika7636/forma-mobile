@@ -1,7 +1,7 @@
 import { View } from 'react-native'
 import { Skeleton } from '../ui/Skeleton'
 import { SPACING } from '../../theme/tokens'
-import { WEEKDAY_INITIALS } from '../../hooks/useMonthPlan'
+import { WEEKDAY_INITIALS } from '../../utils/dates'
 
 /**
  * Placeholder month grid, matching MonthGrid's real geometry (weekday header,

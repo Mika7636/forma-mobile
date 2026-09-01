@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TAB_BAR_HEIGHT, TYPE } from '../theme/tokens'
+import AdminScreen from '../screens/AdminScreen'
 import DashboardScreen from '../screens/DashboardScreen'
 import LogScreen from '../screens/LogScreen'
 import PlannerScreen from '../screens/PlannerScreen'
@@ -16,6 +17,7 @@ import {
   hasActiveSession,
   useLiveTrackingStore,
 } from '../store/liveTrackingStore'
+import { useAuthStore } from '../store/authStore'
 import { useToastStore } from '../store/toastStore'
 import { haptics } from '../utils/haptics'
 import { consumeLandingTab } from './landingTab'
@@ -33,6 +35,7 @@ const LogTab = withScreenBoundary(LogScreen, 'Log Session')
 const PlannerTab = withScreenBoundary(PlannerScreen, 'Planner')
 const ProgressTab = withScreenBoundary(ProgressScreen, 'Progress')
 const SettingsTab = withScreenBoundary(SettingsScreen, 'Settings')
+const AdminTab = withScreenBoundary(AdminScreen, 'Admin')
 
 // Drawn, not emoji — see components/ui/TabIcon.
 const TAB_ICON: Record<string, TabIconName> = {
@@ -41,10 +44,19 @@ const TAB_ICON: Record<string, TabIconName> = {
   Planner: 'calendar',
   Progress: 'trending',
   Settings: 'sliders',
+  Admin: 'shield',
 }
 
 export default function MainTabs() {
   const { colors } = useTheme()
+
+  // The Admin tab is registered only for an admin, so for everyone else the
+  // route genuinely does not exist and nothing — a deep link, a stray
+  // `navigate('Admin')` — can reach it. That is a UI convenience on top of the
+  // real gate: `firestore.rules` denies every query the screen makes to a
+  // non-admin, and `AdminScreen` guards itself as well. `isAdmin` is read from
+  // the Firestore profile and defaults to false when the field is absent.
+  const isAdmin = useAuthStore((s) => s.profile?.isAdmin === true)
 
   const insets = useSafeAreaInsets()
   const setBottomOffset = useToastStore((s) => s.setBottomOffset)
@@ -150,6 +162,7 @@ export default function MainTabs() {
       <Tab.Screen name="Planner" component={PlannerTab} />
       <Tab.Screen name="Progress" component={ProgressTab} />
       <Tab.Screen name="Settings" component={SettingsTab} />
+      {isAdmin ? <Tab.Screen name="Admin" component={AdminTab} /> : null}
     </Tab.Navigator>
   )
 }

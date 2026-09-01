@@ -17,7 +17,8 @@ import {
   severityStyle,
   worstSeverity,
 } from '../../constants/conflictColors'
-import { WEEKDAY_INITIALS, type CalendarDay } from '../../hooks/useMonthPlan'
+import { type CalendarDay } from '../../hooks/useMonthPlan'
+import { WEEKDAY_INITIALS } from '../../utils/dates'
 import { sportVisual } from '../../utils/sportMeta'
 import type { PlannedSession } from '../../types/planned'
 import type { Session } from '../../types/session'

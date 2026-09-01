@@ -12,7 +12,7 @@ import { db } from '../config/firebase'
 import { toSession } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
 import { usePlannedSessions } from './usePlannedSessions'
-import { localISODate } from '../utils/dates'
+import { localISODate, WEEKDAY_INITIALS } from '../utils/dates'
 import type { Conflict, PlannedConflict } from '../types/conflict'
 import type { PlannedSession } from '../types/planned'
 import type { Session } from '../types/session'
@@ -67,9 +67,6 @@ export interface MonthPlan {
   /** Pull-to-refresh handle (see the note on {@link useMonthPlan}). */
   refresh: () => Promise<void>
 }
-
-/** Sunday-first column headers, matching the grid's day order. */
-export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 /**
  * Subscribes to the signed-in user's sessions and unresolved conflicts and

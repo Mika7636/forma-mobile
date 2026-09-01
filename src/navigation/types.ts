@@ -19,18 +19,25 @@ export type RegisterScreenProps = NativeStackScreenProps<
 // The main app is a bottom-tab navigator. The Log tab can receive a `date`
 // (ISO YYYY-MM-DD) when opened from the Planner, pre-filling the session date
 // and telling the screen to navigate back to the Planner after saving.
+//
+// `Admin` is registered only for a profile whose Firestore document carries
+// `isAdmin: true`, so for everyone else the route does not exist and
+// `navigate('Admin')` is a no-op. It stays in the param list because the type
+// describes the navigator's full vocabulary, not one session's slice of it.
 export type MainTabsParamList = {
   Dashboard: undefined
   Log: { date?: string } | undefined
   Planner: undefined
   Progress: undefined
   Settings: undefined
+  Admin: undefined
 }
 
 export type LogScreenProps = BottomTabScreenProps<MainTabsParamList, 'Log'>
 export type DashboardScreenProps = BottomTabScreenProps<MainTabsParamList, 'Dashboard'>
 export type ProgressScreenProps = BottomTabScreenProps<MainTabsParamList, 'Progress'>
 export type PlannerScreenProps = BottomTabScreenProps<MainTabsParamList, 'Planner'>
+export type AdminScreenProps = BottomTabScreenProps<MainTabsParamList, 'Admin'>
 
 // The whole tab UI is wrapped in a native stack so full-screen detail pages
 // (currently Conflict History, reached from Settings) can push over the tabs.

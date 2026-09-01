@@ -3,6 +3,7 @@
 // Settings) push on top with a native slide + back gesture.
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { withScreenBoundary } from '../components/ui/withScreenBoundary'
+import { useLastActiveHeartbeat } from '../hooks/useLastActiveHeartbeat'
 import ConflictHistoryScreen from '../screens/ConflictHistoryScreen'
 import MainTabs from './MainTabs'
 import type { AppStackParamList } from './types'
@@ -14,6 +15,13 @@ const ConflictHistoryTab = withScreenBoundary(ConflictHistoryScreen, 'Conflict H
 
 export default function AppStack() {
   const { colors } = useTheme()
+
+  // Records that this athlete is using the app, at most once an hour, on their
+  // own profile document. Mounted here rather than in `App` because this is the
+  // first thing rendered for a signed-in, onboarded user — which is exactly the
+  // population "last active" means anything about. It backs the Admin screen's
+  // user list; nothing in the athlete's own UI reads it.
+  useLastActiveHeartbeat()
 
   return (
     <Stack.Navigator

@@ -1,3 +1,13 @@
+/**
+ * Weekday initials, Sunday-first — index with `Date.getDay()`.
+ *
+ * Lives here rather than beside the Planner grid that first needed it: the
+ * Admin screen's seven-day chart labels its axis with the same letters, and a
+ * second copy is how two parts of one app end up disagreeing about whether the
+ * week starts on Sunday.
+ */
+export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+
 export function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
   return d.toISOString().slice(0, 10)

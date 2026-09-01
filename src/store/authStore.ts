@@ -22,6 +22,7 @@ import {
   warmProfileCache,
   writeProfileCache,
 } from '../services/profileCache'
+import { clearLastActiveThrottle } from '../services/lastActive'
 import { cancelAllNotifications } from '../services/notificationService'
 import { clearTrainingData } from '../services/sessionService'
 import { friendlyAuthError } from '../utils/authErrors'
@@ -301,6 +302,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // accounts, but leaving a signed-out user's profile on disk is not
     // something to do by accident.
     await clearProfileCache(uid)
+    // The lastActiveAt throttle is per-uid bookkeeping with no reason to
+    // outlive the session; clearing it also means signing back in records the
+    // return straight away rather than up to an hour later.
+    await clearLastActiveThrottle(uid)
     set({ user: null, profile: null, profileStatus: 'unknown', error: null })
   },
 
@@ -328,6 +333,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     cancelRetry()
     loadToken += 1
     await clearProfileCache(current.uid)
+    await clearLastActiveThrottle(current.uid)
     set({ user: null, profile: null, profileStatus: 'unknown', error: null })
   },
 

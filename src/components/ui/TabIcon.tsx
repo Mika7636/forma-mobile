@@ -44,6 +44,7 @@ export type TabIconName =
   | 'check-circle'
   | 'trending-down'
   | 'chevron-right'
+  | 'shield'
 
 interface TabIconProps {
   name: TabIconName
@@ -133,6 +134,13 @@ export default function TabIcon({ name, color, size = 24, focused = false }: Tab
       ) : null}
 
       {name === 'chevron-right' ? <Path d="M9 18l6-6-6-6" {...common} /> : null}
+
+      {/* Feather's `shield`. The admin tab: a boundary you are inside of rather
+          than a key or a cog, both of which read as "settings" — and there is
+          already a `sliders` tab that genuinely is. */}
+      {name === 'shield' ? (
+        <Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" {...common} />
+      ) : null}
 
       {/* Feather's `more-vertical`. Filled rather than stroked: at r=1 a hollow
           ring is mush on a 720p panel, and dots are the one glyph where the

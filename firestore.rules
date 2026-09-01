@@ -1,0 +1,128 @@
+rules_version = '2';
+
+// FORMA — Cloud Firestore security rules.
+//
+// ## The data shape these rules are written against
+//
+// Everything an athlete owns hangs off their own user document:
+//
+//   /users/{uid}
+//   /users/{uid}/sessions/{sessionId}
+//   /users/{uid}/conflicts/{conflictId}
+//   /users/{uid}/plannedSessions/{plannedId}
+//
+// Sessions are therefore a SUBCOLLECTION, never a top-level collection. The
+// admin screen's "all users' sessions" figures are collection group queries on
+// `sessions`, and a collection group query is NOT matched by a rule written at
+// /users/{uid}/sessions/{id} — it is matched only by a recursive-wildcard rule
+// of the form /{path=**}/sessions/{id}. That is why the admin read appears
+// twice below and why the second one looks redundant. It is not.
+//
+// ## The rule that matters most
+//
+// `isAdmin` is a server-owned field. The client may read it (that is how the
+// Admin tab appears) but may never write it — see `adminFlagUnchanged()`.
+// Without that check any signed-in user could merge `{ isAdmin: true }` into
+// their own profile and promote themselves, and every rule below that trusts
+// `isAdmin` would be trusting a value the attacker set. Hiding the tab in the
+// UI is a convenience; this file is the enforcement.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* -------------------------------------------------------------- */
+    /* Helpers                                                         */
+    /* -------------------------------------------------------------- */
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    /**
+     * True when the CALLER's own profile document carries isAdmin == true.
+     *
+     * The `get()` is a document read charged against the request, and its
+     * result is cached for the rest of the evaluation, so a query that touches
+     * many documents still pays for it once.
+     *
+     * `.data.get('isAdmin', false)` rather than `.data.isAdmin`: the field is
+     * absent on every account that predates this feature, and reading a missing
+     * field is an evaluation *error*. An error denies the request either way,
+     * so the security outcome is identical — but a clean `false` keeps the
+     * rules-engine logs readable instead of filling them with errors every time
+     * an ordinary user opens the app.
+     */
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+             .data.get('isAdmin', false) == true;
+    }
+
+    /**
+     * The self-write guard: a client update may not change `isAdmin`.
+     *
+     * `request.resource.data` is the document AS IT WOULD BE AFTER the write —
+     * for a merge write that is the merged result, so an update that simply
+     * doesn't mention `isAdmin` compares equal and passes. An update that sets
+     * it to anything other than its current value fails, whichever direction it
+     * goes in. Admins are promoted from the console or a trusted backend, never
+     * from a phone.
+     */
+    function adminFlagUnchanged() {
+      return request.resource.data.get('isAdmin', false)
+          == resource.data.get('isAdmin', false);
+    }
+
+    /* -------------------------------------------------------------- */
+    /* Admin: read any session, anywhere                               */
+    /*                                                                 */
+    /* Recursive wildcard, so it matches the collection group query the */
+    /* Admin screen runs (`collectionGroup(db, 'sessions')`). Read-only */
+    /* by construction: there is no `allow write` here, so an admin can */
+    /* count and inspect another athlete's training but can never touch */
+    /* it. The owner's own read/write comes from the /users block below.*/
+    /* -------------------------------------------------------------- */
+
+    match /{path=**}/sessions/{sessionId} {
+      allow read: if isAdmin();
+    }
+
+    /* -------------------------------------------------------------- */
+    /* User profiles                                                   */
+    /* -------------------------------------------------------------- */
+
+    match /users/{userId} {
+      // A user reads their own profile; an admin may read any profile.
+      allow get: if isOwner(userId) || isAdmin();
+
+      // Listing /users is an admin-only capability — it is what backs the
+      // admin user list and the total-users count() aggregation. A normal
+      // athlete has no reason to enumerate the collection and cannot.
+      allow list: if isAdmin();
+
+      // Registration seeds the profile. A brand-new document may not arrive
+      // already claiming admin.
+      allow create: if isOwner(userId)
+                    && request.resource.data.get('isAdmin', false) == false;
+
+      // Every ordinary profile write — onboarding, settings, the lastActiveAt
+      // heartbeat — comes through here, and none of them may move `isAdmin`.
+      allow update: if isOwner(userId) && adminFlagUnchanged();
+
+      // Account deletion. Admins are read-only and get no say here.
+      allow delete: if isOwner(userId);
+
+      // Sessions, conflicts and planned sessions: the owner, as today. Admins
+      // reach sessions through the collection group rule above and have no
+      // access at all to conflicts or plannedSessions.
+      match /{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}

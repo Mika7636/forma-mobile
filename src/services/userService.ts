@@ -1,7 +1,15 @@
 // Firestore user-profile CRUD. Profiles live at /users/{uid} and back the
 // FORMA training model (sports, budget, experience, conflict matrix). Ported &
 // adapted from the web app for React Native (same Firestore project, forma-sp1).
-import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  type DocumentData,
+} from 'firebase/firestore'
 import { db } from '../config/firebase'
 import {
   DEFAULT_BUDGET_HOURS,
@@ -49,11 +57,55 @@ export async function createUserProfile(
   })
 }
 
+/**
+ * Fields the client never authors. They are stripped from every outgoing
+ * profile write.
+ *
+ * `isAdmin` is the security-relevant one: `firestore.rules` rejects a self-write
+ * that changes it, and since almost every profile save in the app is a partial
+ * merge of an object the UI got *back* from Firestore, an unstripped write would
+ * fail the rule and take an unrelated settings save down with it. Stripping is
+ * belt-and-braces, not the enforcement — the rule is.
+ *
+ * `lastActiveAt` is here for a plainer reason: it is a server timestamp owned by
+ * the heartbeat, and a client echoing back the ISO string it happens to be
+ * holding would quietly overwrite a fresher server value with a stale one.
+ */
+const SERVER_OWNED_FIELDS = ['isAdmin', 'lastActiveAt'] as const
+
+/**
+ * Normalise a Firestore user document into the in-memory {@link User} model.
+ *
+ * The counterpart of `toSession`, and it exists for the same two reasons.
+ * Firestore stores `lastActiveAt` as a Timestamp while the app — and the
+ * AsyncStorage profile mirror, which is plain JSON — works in ISO strings, so an
+ * unconverted value would reach the mirror as `{seconds, nanoseconds}` and come
+ * back as an unparseable date. And `isAdmin` is absent on every account created
+ * before it existed, so it is defaulted here, once, rather than at each of the
+ * places that ask.
+ */
+export function toUser(data: DocumentData): User {
+  const toISO = (value: unknown): string | undefined => {
+    if (value && typeof (value as Timestamp).toDate === 'function') {
+      return (value as Timestamp).toDate().toISOString()
+    }
+    return typeof value === 'string' ? value : undefined
+  }
+
+  return {
+    ...(data as User),
+    // `=== true` rather than a truthy check: this decides whether a tab appears,
+    // and a stray "false" string or a 0 should not be able to open it.
+    isAdmin: data.isAdmin === true,
+    lastActiveAt: toISO(data.lastActiveAt),
+  }
+}
+
 /** Reads a user profile; returns null if the document doesn't exist yet. */
 export async function getUserProfile(uid: string): Promise<User | null> {
   const snapshot = await getDoc(userDoc(uid))
   if (!snapshot.exists()) return null
-  return snapshot.data() as User
+  return toUser(snapshot.data())
 }
 
 /**
@@ -88,7 +140,7 @@ export type ProfileRead =
  */
 export async function readUserProfile(uid: string): Promise<ProfileRead> {
   const snapshot = await getDoc(userDoc(uid))
-  if (snapshot.exists()) return { status: 'found', profile: snapshot.data() as User }
+  if (snapshot.exists()) return { status: 'found', profile: toUser(snapshot.data()) }
   return { status: snapshot.metadata.fromCache ? 'unknown' : 'missing' }
 }
 
@@ -104,7 +156,11 @@ export async function updateUserProfile(
   uid: string,
   updates: Partial<User>,
 ): Promise<void> {
-  await setDoc(userDoc(uid), updates, { merge: true })
+  // See SERVER_OWNED_FIELDS: never let a client-held copy of `isAdmin` or
+  // `lastActiveAt` ride along on an ordinary profile save.
+  const safe: Record<string, unknown> = { ...updates }
+  for (const field of SERVER_OWNED_FIELDS) delete safe[field]
+  await setDoc(userDoc(uid), safe, { merge: true })
 }
 
 /** Delete the user's profile document (used by full account deletion). */
