@@ -266,12 +266,14 @@ function Panel({
  * A fitness/fatigue readout, sitting *inside* the hero's fill.
  *
  * Takes its whole tone from `colors.heroStat` rather than reaching for a page
- * token, because what is behind it is the hero, not the page. On dark that tone
- * is an opaque hue (the two readouts stay distinguishable against a wash); on
- * light it is translucent white over the saturated fill.
+ * token, because what is behind it is the hero, not the page. In both themes
+ * the tile is opaque and carries its own hue — sky for fitness, red for
+ * fatigue — which is what lets the pair be told apart at a glance rather than
+ * by reading their labels. Dark's is a darker panel on a dark wash, light's is
+ * white paper on a vibrant one.
  *
- * The labels use `heroLabel` for the same reason — `textMuted` here was a grey
- * chosen to sit on a white page, printed on green.
+ * The labels come from `heroStatChrome`, not `heroLabel`: `heroLabel` is picked
+ * for the scrim the rest of the card sits on, and these tiles are not on it.
  */
 function MiniStat({
   label,
@@ -301,9 +303,11 @@ function MiniStat({
       }}
     >
       {/* The inner highlight: a single lit pixel along the top edge, which is
-          what separates a translucent tile from a hole cut in the card. RN has
-          no inset shadow, so it is drawn as a hairline child. Transparent on
-          dark, where the tile is an opaque panel with nothing to catch. */}
+          what separates a *translucent* tile from a hole cut in the card. RN
+          has no inset shadow, so it is drawn as a hairline child. Both themes
+          run opaque tiles now, so `highlight` is transparent in both and this
+          renders as nothing — it stays because the frosted treatment is a
+          plausible thing to want back, and then the pixel is not optional. */}
       <View
         pointerEvents="none"
         style={{
@@ -320,9 +324,9 @@ function MiniStat({
           fontSize: 10,
           fontWeight: '800',
           letterSpacing: 1.1,
-          // Not `heroLabel`: that grey is picked for the dark scrim the rest of
-          // the card uses, and these tiles are translucent white on light. See
-          // `heroStatChrome`.
+          // Not `heroLabel`: that ink is picked for the dark scrim the rest of
+          // the card sits on, and these tiles are an opaque surface of their
+          // own. See `heroStatChrome`.
           color: colors.heroStatChrome.label,
         }}
       >
@@ -333,9 +337,9 @@ function MiniStat({
         style={{ fontSize: 26, fontWeight: '800', color: tone.text, marginTop: 1 }}
       />
       {/* Full strength, deliberately. Dimming this to 70% would look right and
-          measure 3.3:1 on the frosted tile — the audited token is the colour,
-          and an opacity applied on top of it is outside what the gate can see.
-          The label / value hierarchy is carried by size and weight instead. */}
+          drop it under the floor — the audited token is the colour, and an
+          opacity applied on top of it is outside what the gate can see. The
+          label / value hierarchy is carried by size and weight instead. */}
       <Text style={{ fontSize: 10, fontWeight: '600', color: colors.heroStatChrome.label }}>
         {sublabel}
       </Text>

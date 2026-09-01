@@ -5,14 +5,25 @@ import { useTheme } from '../../theme/ThemeProvider'
 interface FormInfoModalProps {
   visible: boolean
   onClose: () => void
+  /**
+   * Opened from the calibrating hero rather than the real one.
+   *
+   * Adds the paragraph explaining *why* there is no number yet. That text used
+   * to be printed on the calibration card itself, under the progress bar,
+   * where it was a block of hedging between the reader and the one button that
+   * moves the bar. It belongs behind the affordance whose whole job is
+   * answering "why", which is this one.
+   */
+  building?: boolean
 }
 
 /**
  * Explainer for the Form Score card. Reachable from the ℹ️ on both the normal
  * and the calibrating hero, so a new user understands why their score reads
- * "estimated" during the first weeks. Scaffold forked from ConflictModal.
+ * "estimated" — or is missing entirely — during the first weeks. Scaffold
+ * forked from ConflictModal.
  */
-export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) {
+export default function FormInfoModal({ visible, onClose, building }: FormInfoModalProps) {
   const { colors } = useTheme()
 
   return (
@@ -65,7 +76,7 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
               marginBottom: 12,
             }}
           >
-            About your Form Score
+            {building ? 'Why there’s no score yet' : 'About your Form Score'}
           </Text>
 
           <Text
@@ -80,6 +91,24 @@ export default function FormInfoModal({ visible, onClose }: FormInfoModalProps) 
             more accurate as you log more sessions. The first 2–3 weeks are a calibration
             period where FORMA learns your training baseline.
           </Text>
+
+          {building ? (
+            <Text
+              style={{
+                marginTop: 12,
+                fontSize: 15,
+                lineHeight: 22,
+                color: colors.textBody,
+                textAlign: 'center',
+              }}
+            >
+              Fitness and fatigue are rolling averages over 42 and 7 days, so the score
+              needs both time and training days behind it: about two weeks since your
+              first session, and at least six separate days you actually trained. Until
+              both are there, FORMA holds the number back rather than showing you one it
+              can&apos;t stand behind.
+            </Text>
+          ) : null}
 
           <Pressable
             onPress={() => {

@@ -216,11 +216,12 @@ function topLevel(text) {
 /**
  * `{ name: { … }, … }` → object of objects, keeping rgba values.
  *
- * An entry may also be a bare identifier — the light palette gives both stat
- * tiles the same `HERO_STAT_TILE` — so a name is looked up as a module-level
- * const before being given up on. Returning `{}` for those would have made the
- * stat-tile checks silently vanish rather than fail, which is the worst thing a
- * gate can do.
+ * An entry may also be a bare identifier — the light palette shares one
+ * `HERO_SCRIM` across its panel, chips and plates, and has previously shared a
+ * single tile const across both stat readouts — so a name is looked up as a
+ * module-level const before being given up on. Returning `{}` for those would
+ * have made the checks silently vanish rather than fail, which is the worst
+ * thing a gate can do.
  */
 function nestedLiterals(text) {
   const out = {}

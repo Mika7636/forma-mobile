@@ -40,6 +40,7 @@ import { useProgressData } from '../hooks/useProgressData'
 import { useSessionHistory } from '../hooks/useSessionHistory'
 import {
   PROGRESS_UNLOCK_SESSIONS,
+  baselineMeters,
   getBaselineState,
   type BaselineState,
 } from '../utils/calibration'
@@ -219,6 +220,9 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
  */
 function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {
   const { colors } = useTheme()
+  // Whichever of the gate's two conditions is further behind — the same one the
+  // Dashboard hero headlines, so the two screens never quote different numbers.
+  const { headline } = baselineMeters(baseline)
 
   return (
     <View
@@ -246,7 +250,7 @@ function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {
         <Text style={{ fontWeight: WEIGHT.heavy, color: colors.infoText }}>
           Your range is still settling
         </Text>{' '}
-        — {baseline.daysCovered} of {baseline.target} days. The bars are your real
+        — {headline.value} of {headline.target} {headline.noun}. The bars are your real
         training; the band they&apos;re measured against will shift as FORMA learns what
         you absorb.
       </Text>

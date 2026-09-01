@@ -243,27 +243,33 @@ export interface Palette {
   /**
    * The FITNESS / FATIGUE tiles.
    *
-   * Typed as a full {@link Tint} each, because on dark they carry their own
-   * hues (sky and red, so the two readouts stay distinguishable against a wash)
-   * while on light they are both plain translucent white — a saturated fill has
-   * no room for a second and third hue inside it.
+   * Typed as a full {@link Tint} each because each carries its own hue: sky for
+   * fitness, red for fatigue, in both themes. Two quantities that are read
+   * against each other should not look alike, and this is the one place inside
+   * the hero where a second and third hue is affordable — the tiles are opaque,
+   * so their numerals sit on the tile rather than on the fill and the fill's
+   * saturation costs them nothing.
+   *
+   * Dark's tiles are darker hued panels on a dark wash; light's are white paper
+   * on a vibrant one. Same arrangement, opposite direction, one code path.
    */
   heroStat: { fitness: Tint; fatigue: Tint }
   /**
    * The label ink and top highlight for those tiles.
    *
-   * Exists because the two themes put the tiles on opposite sides of their
-   * fill. On dark they are *darker* hued panels on a dark wash, so the page's
-   * muted grey is the right label and there is no highlight to draw. On light
-   * they are translucent white — a tile *lighter* than the fill, which is what
-   * makes it read as raised — and on that, muted grey is unreadable: a 45%
-   * white tile over `#DC2626` leaves `#334155` at 3.2:1. So light's label is
-   * near-black, and the hierarchy against the value comes from size and
-   * letter-spacing instead of from lightness.
+   * The labels are muted grey in both themes, because in both the tile is an
+   * opaque surface and the page's own muted grey is what a label on a surface
+   * is. This used to differ: light's tiles were translucent white, a tile
+   * *lighter* than the fill, and muted grey on one of those is unreadable — a
+   * 45% white tile over `#DC2626` leaves `#334155` at 3.2:1 — so light ran a
+   * near-black label instead. Making the tiles opaque removed the constraint
+   * rather than working around it.
    *
-   * `highlight` is the one-pixel top edge that makes a translucent tile read as
-   * glass rather than as a hole. Fully transparent on dark, where the tile is
-   * opaque and needs none.
+   * `highlight` is the one-pixel top edge that makes a *translucent* tile read
+   * as glass rather than as a hole. Both themes are opaque now, so it is fully
+   * transparent in both and renders as nothing — kept as a value rather than
+   * deleted because it is the difference between the two treatments, and the
+   * frosted one is a plausible thing to want back.
    */
   heroStatChrome: { label: string; highlight: string }
 
@@ -344,28 +350,6 @@ function darkHero(bg: string, ink: string, border: string): HeroFill {
     chipBorder: border,
     chipInk: ink,
   }
-}
-
-/**
- * The frosted tile shared by both light-theme stat readouts.
- *
- * Translucent *white* over the fill, so it sits a step **above** the hero
- * rather than punched into it — which is what makes the two readouts read as
- * layered objects instead of as two more paragraphs. The rest of the card's
- * interior keeps the dark scrim ({@link HERO_SCRIM}), and the contrast between
- * the two treatments is the point: one recessed plate carrying the headline
- * number, two raised tiles carrying the supporting pair.
- *
- * The ink is near-black, not white, and that is forced rather than chosen. A
- * tile lighter than its fill raises the local background, so white type on it
- * spends its contrast twice — the note on {@link lightHero} is the long version.
- * At 18% white over the darkest stop any hero uses (`#DC2626`) the composite is
- * `#E24D4D`: white on it is 3.0:1, near-black is 4.8:1.
- */
-const HERO_STAT_TILE: Tint = {
-  bg: 'rgba(255,255,255,0.18)',
-  border: 'rgba(255,255,255,0.45)',
-  text: '#0B1220',
 }
 
 /** The dark scrim used for every panel, chip and tile inside the light hero. */
@@ -707,20 +691,29 @@ const light: Palette = {
   // 0.80, not the 0.70 that reads as "a muted label": this is printed on the
   // scrim, and the scrim is only as dark as it needs to be.
   heroLabel: 'rgba(255,255,255,0.80)',
-  heroBody: 'rgba(255,255,255,0.92)',
-  // Both tiles identical, and deliberately so: on a saturated fill a blue tile
-  // and a red tile are two more colours competing inside a card that already
-  // has one. They are told apart by their labels, which is enough.
+  heroBody: 'rgba(255,255,255,0.90)',
+  // Opaque white tiles carrying a blue and a red numeral, which is the same
+  // arrangement the dark theme uses and for the same reason: FITNESS and
+  // FATIGUE are two different quantities, and a reader glancing at the card
+  // should be able to tell which is which before reading either label.
+  //
+  // They were both frosted white — translucent, identical, near-black ink —
+  // because a saturated fill has no room for a second and third hue *on* it.
+  // That is still true, and it is why these are opaque: the numerals are not on
+  // the green at all. `#1D4ED8` and `#B91C1C` are `infoText` and `dangerText`,
+  // the palette's own type-safe blue and red, and on a white tile they measure
+  // 8.6:1 and 7.0:1 — nowhere near the 3.2:1 a hue on a frosted tile was pinned
+  // to. The border is the tile's own white, so the edge is the tile.
   heroStat: {
-    fitness: HERO_STAT_TILE,
-    fatigue: HERO_STAT_TILE,
+    fitness: { bg: '#FFFFFF', border: '#FFFFFF', text: '#1D4ED8' },
+    fatigue: { bg: '#FFFFFF', border: '#FFFFFF', text: '#B91C1C' },
   },
-  // Near-black label — see {@link HERO_STAT_TILE} for why a muted grey is not
-  // available on a frosted tile. The hierarchy between label and value is
-  // carried by size and letter-spacing instead, which survives the constraint.
-  // `highlight` is the tile's top edge, the one pixel that makes translucent
-  // white read as glass catching the light rather than as a hole in the card.
-  heroStatChrome: { label: '#0B1220', highlight: 'rgba(255,255,255,0.38)' },
+  // `textMuted`, now that the tile is white: these labels are on paper, not on
+  // the fill, so the page's own muted grey is exactly right and the near-black
+  // that a frosted tile forced is no longer needed. No highlight either — a
+  // glass edge is what makes a *translucent* tile read as raised, and an opaque
+  // white one on green needs no help.
+  heroStatChrome: { label: '#5B6675', highlight: 'rgba(0,0,0,0)' },
   heroPanel: {
     bg: HERO_SCRIM,
     border: HERO_SCRIM_EDGE,
