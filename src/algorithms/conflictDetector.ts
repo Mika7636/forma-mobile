@@ -26,6 +26,22 @@ function thresholds(sensitivity: ConflictSensitivity) {
   }
 }
 
+/**
+ * The RPE the *earlier* session must reach before a sport-overlap clash counts,
+ * at a given sensitivity.
+ *
+ * Exported so the Admin screen's cross-sport frequency grid can re-run this
+ * exact check over stored sessions. Admins have no read access to
+ * `/users/{uid}/conflicts`, so that grid has to recompute rather than read — and
+ * a recomputation that carried its own copy of these numbers would drift from
+ * the engine the moment either was tuned, leaving a back-office chart quietly
+ * describing a product that no longer behaves that way. Reading the threshold
+ * from {@link thresholds} is what stops that.
+ */
+export function sportOverlapThreshold(sensitivity: ConflictSensitivity): number {
+  return thresholds(sensitivity).sport
+}
+
 // One notch gentler, used during the calibration period so a new user isn't
 // buried in warnings before FORMA knows their baseline.
 const SOFTER_SENSITIVITY: Record<ConflictSensitivity, ConflictSensitivity> = {

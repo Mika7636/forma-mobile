@@ -10,47 +10,106 @@
 // it. See `firestore.indexes.README.md`; a missing index surfaces here as
 // {@link MissingIndexError}, carrying the console link Firestore hands back.
 //
-// ## Why nothing here downloads a session
-//
-// Every figure on the screen is a count, and `getCountFromServer` answers a
-// count without transferring the matching documents — billed per 1,000 index
-// entries scanned rather than per document read. On a database with a few
-// thousand sessions that is the difference between a screen costing a fraction
-// of a read and one costing thousands, on every pull-to-refresh. The
-// most-popular-sport figure follows the same rule: one count per sport, not one
-// download of the week.
-//
-// ## Why every window is counted twice
+// ## Why every window is asked for twice
 //
 // `date` is a Timestamp on documents this app wrote and an ISO **string** on
 // documents the FORMA web app wrote. Both shapes are live in the same
 // collection, and Firestore orders values by type before value: a range query
 // bounded by Timestamps cannot match a string, and vice versa — silently, with
-// no error and no warning, just a count that is quietly too low. So each window
-// is asked twice, once with each bound type, and the two are added. A document's
-// `date` is one type or the other, never both, so nothing is double-counted.
+// no error and no warning, just a result that is quietly too small. So each
+// window is asked twice, once with each bound type, and the two are merged. A
+// document's `date` is one type or the other, never both, so nothing is
+// double-counted. `users.createdAt` has exactly the same split, for the same
+// reason, and gets the same treatment.
+//
+// ## Counting vs. fetching, and why this screen now does both
+//
+// It used to do only the first. Every figure was a `count()` aggregation, which
+// answers without transferring the matching documents — billed per 1,000 index
+// entries scanned rather than per document read — and on a database with a few
+// thousand sessions that is the difference between a screen costing a fraction
+// of a read and one costing thousands, on every pull-to-refresh.
+//
+// The charts added since cannot be answered that way. A sport's *share* of
+// total load, the hour of day people train at, which pairs of sports clash: none
+// of those are a count of a filtered set, and asking for them as counts would
+// mean one aggregation per sport per bucket per window — hundreds of round
+// trips to reconstruct what one bounded read already contains.
+//
+// So the split is by what the question needs, not by habit:
+//
+//   * **Counted** — total users, new signups, and the seven daily columns. Each
+//     is exactly one filtered count, they stay exact regardless of how much
+//     history exists, and they are the figures the screen had before.
+//   * **Fetched** — one bounded page of the last {@link ADMIN_WINDOW_DAYS} days
+//     of sessions, capped at {@link ADMIN_SESSION_CAP} documents, newest first.
+//     Everything else is aggregated from it in `utils/adminMetrics`.
+//
+// The cap is a real limit, not a formality, and {@link AdminOverview.truncated}
+// says when it bit so the screen can show it rather than quietly presenting a
+// partial picture as the whole one.
 import {
   collection,
   collectionGroup,
   getCountFromServer,
   getDocs,
   limit,
+  orderBy,
   query,
   Timestamp,
   where,
+  type DocumentData,
+  type QueryDocumentSnapshot,
   type QueryConstraint,
 } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { toUser } from './userService'
-import { SPORT_OPTIONS } from '../constants/training'
-import { addDays, startOfWeek, WEEKDAY_INITIALS } from '../utils/dates'
-import type { SportType } from '../types/session'
+import { addDays, WEEKDAY_INITIALS } from '../utils/dates'
+import {
+  activeUsersByWeek,
+  activityHeatmap,
+  conflictMatrix,
+  engagementKpis,
+  loadBySport,
+  sportDistribution,
+  startOfDay,
+  topUsers,
+  type ActiveWeekPoint,
+  type ActivityHeatmap,
+  type AdminProfileRow,
+  type AdminSessionRow,
+  type ConflictMatrix,
+  type EngagementKpis,
+  type SportLoadBar,
+  type SportSlice,
+  type TopUser,
+} from '../utils/adminMetrics'
 
 /** How many user rows the list will show. */
 export const ADMIN_USER_CAP = 100
 
-/** Days in the activity chart. */
+/** Days in the sessions-per-day chart. */
 export const ADMIN_CHART_DAYS = 7
+
+/**
+ * How far back the one bounded fetch reaches.
+ *
+ * Twelve weeks, because that is the longest window anything on the screen asks
+ * for: the weekly-actives line is twelve buckets, and the retention figure needs
+ * the month before this one as its denominator. Everything shorter — the
+ * thirty-day KPIs, the top-users list — is a slice of the same rows.
+ */
+export const ADMIN_WINDOW_DAYS = 84
+
+/**
+ * The hard ceiling on documents pulled in that window.
+ *
+ * Sessions are ordered newest-first and truncated from the far end, so a
+ * database that overflows this loses its *oldest* history rather than its most
+ * recent — the twelve-week line loses its left edge while the thirty-day KPIs,
+ * which is what the row at the top of the screen actually reports, stay whole.
+ */
+export const ADMIN_SESSION_CAP = 4000
 
 /* ------------------------------------------------------------------ */
 /* Shapes                                                              */
@@ -76,18 +135,41 @@ export interface AdminDay {
 }
 
 export interface AdminOverview {
-  totalUsers: number
-  /** All users, current week (Monday-start, matching the rest of the app). */
-  sessionsThisWeek: number
-  /** Most-logged sport this week, or null when nobody trained. */
-  topSport: { sport: SportType; count: number } | null
+  /** Section 1. */
+  kpis: EngagementKpis
+  /** Section 2 — oldest → newest. */
+  activeWeeks: ActiveWeekPoint[]
+  /** Section 3. */
+  sportSlices: SportSlice[]
+  /** Section 4. */
+  sportLoad: SportLoadBar[]
+  /** Section 5. */
+  heatmap: ActivityHeatmap
+  /** Section 6. */
+  conflicts: ConflictMatrix
+  /** Section 7. */
+  topUsers: TopUser[]
+
   /** Oldest → newest, exactly {@link ADMIN_CHART_DAYS} entries. */
   days: AdminDay[]
   /** Sum of `days`. The chart's caption figure. */
   windowTotal: number
+
   users: AdminUserRow[]
-  /** True when {@link ADMIN_USER_CAP} hid somebody. */
+  /** True when {@link ADMIN_USER_CAP} hid somebody from the list. */
   truncated: boolean
+
+  /** Days of history behind every chart — {@link ADMIN_WINDOW_DAYS}. */
+  windowDays: number
+  /** Sessions actually aggregated. */
+  sessionsAnalysed: number
+  /** True when {@link ADMIN_SESSION_CAP} clipped the oldest end of the window. */
+  sessionsTruncated: boolean
+  /**
+   * True when profiles were capped, so the per-athlete aggregates — the conflict
+   * grid and the leaderboard's names — saw only part of the userbase.
+   */
+  profilesTruncated: boolean
 }
 
 /* ------------------------------------------------------------------ */
@@ -131,6 +213,11 @@ function firestoreCode(err: unknown): string | null {
  * `failed-precondition` is Firestore's code for "build this index first". It
  * covers a few unrelated preconditions too, so the message is checked as well
  * rather than assumed.
+ *
+ * Every new query added for the charts funnels through here as well: they run
+ * inside the same `try` as the original ones, so a section that needs an index
+ * nobody has built yet produces the same one-click console link rather than a
+ * generic failure, whichever query it was that tripped.
  */
 function toAdminError(err: unknown): Error {
   const code = firestoreCode(err)
@@ -154,7 +241,7 @@ function toAdminError(err: unknown): Error {
  * How many sessions across all users fall in [start, end), optionally for one
  * sport. Two aggregations, one per stored `date` type — see the header note.
  */
-async function countSessions(start: Date, end: Date, sport?: SportType): Promise<number> {
+async function countSessions(start: Date, end: Date, sport?: string): Promise<number> {
   const sportFilter: QueryConstraint[] = sport ? [where('sport', '==', sport)] : []
 
   const asTimestamp = query(
@@ -179,11 +266,126 @@ async function countSessions(start: Date, end: Date, sport?: SportType): Promise
   return timestamps.data().count + strings.data().count
 }
 
-/** Local midnight at the start of `date`'s day. */
-function startOfDay(date: Date): Date {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  return d
+/**
+ * Accounts created on or after `start`.
+ *
+ * `createdAt` carries the same Timestamp-or-string split as a session's `date`
+ * — the mobile app writes an ISO string, the web app a Timestamp — so it is
+ * counted twice on the same reasoning. Counted rather than derived from the
+ * fetched profiles, which are capped: a signup figure that silently stopped at
+ * {@link ADMIN_USER_CAP} would contradict the exact total sitting next to it.
+ */
+async function countSignupsSince(start: Date): Promise<number> {
+  const asTimestamp = query(
+    collection(db, 'users'),
+    where('createdAt', '>=', Timestamp.fromDate(start)),
+  )
+  const asString = query(collection(db, 'users'), where('createdAt', '>=', start.toISOString()))
+
+  const [timestamps, strings] = await Promise.all([
+    getCountFromServer(asTimestamp),
+    getCountFromServer(asString),
+  ])
+  return timestamps.data().count + strings.data().count
+}
+
+/* ------------------------------------------------------------------ */
+/* The bounded fetch                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Epoch ms from whichever of the two shapes `date` was stored in. */
+function toMillis(value: unknown): number | null {
+  if (value && typeof (value as Timestamp).toDate === 'function') {
+    return (value as Timestamp).toDate().getTime()
+  }
+  if (typeof value === 'string') {
+    const ms = Date.parse(value)
+    return Number.isNaN(ms) ? null : ms
+  }
+  return null
+}
+
+/**
+ * The owning account for a session document.
+ *
+ * Taken from the document's own path — `/users/{uid}/sessions/{id}`, so the
+ * grandparent is the account — rather than from the `userId` field. The path is
+ * structural and cannot disagree with where the document actually lives; the
+ * field is data, and an older or web-written document may not carry it. It is
+ * still read as a fallback for anything stored somewhere unexpected.
+ */
+function ownerUid(snapshot: QueryDocumentSnapshot<DocumentData>): string | null {
+  const fromPath = snapshot.ref.parent.parent?.id
+  if (fromPath) return fromPath
+  const fromField = snapshot.data().userId
+  return typeof fromField === 'string' && fromField ? fromField : null
+}
+
+function toRow(snapshot: QueryDocumentSnapshot<DocumentData>): AdminSessionRow | null {
+  const data = snapshot.data()
+  const uid = ownerUid(snapshot)
+  const dateMs = toMillis(data.date)
+  if (!uid || dateMs === null) return null
+  if (typeof data.sport !== 'string' || !data.sport) return null
+
+  return {
+    uid,
+    sport: data.sport,
+    dateMs,
+    // A session with no `loadScore` contributes nothing to the load chart rather
+    // than a NaN that would poison every total it touches.
+    load: typeof data.loadScore === 'number' && Number.isFinite(data.loadScore) ? data.loadScore : 0,
+    rpe: typeof data.rpe === 'number' && Number.isFinite(data.rpe) ? data.rpe : 0,
+  }
+}
+
+/**
+ * One page of every athlete's sessions since `start`, newest first.
+ *
+ * Two queries again, one per `date` shape, each capped at
+ * {@link ADMIN_SESSION_CAP}. The halves are merged, re-sorted and cut to the cap
+ * as a whole, so the ceiling applies to the result rather than to each half —
+ * otherwise a database that is half web-written and half mobile-written would
+ * quietly return twice as much as the cap promises.
+ *
+ * `orderBy('date', 'desc')` is what makes the cap safe: dropping the oldest
+ * sessions costs the left edge of a twelve-week line, while dropping the newest
+ * would corrupt the thirty-day KPIs the screen leads with. It is also the one
+ * new index this file needs — a descending, collection-group-scoped single-field
+ * index on `sessions.date`. See `firestore.indexes.README.md`.
+ */
+async function fetchWindowSessions(
+  start: Date,
+): Promise<{ rows: AdminSessionRow[]; truncated: boolean }> {
+  const asTimestamp = query(
+    collectionGroup(db, 'sessions'),
+    where('date', '>=', Timestamp.fromDate(start)),
+    orderBy('date', 'desc'),
+    limit(ADMIN_SESSION_CAP),
+  )
+  const asString = query(
+    collectionGroup(db, 'sessions'),
+    where('date', '>=', start.toISOString()),
+    orderBy('date', 'desc'),
+    limit(ADMIN_SESSION_CAP),
+  )
+
+  const [timestamps, strings] = await Promise.all([getDocs(asTimestamp), getDocs(asString)])
+
+  const rows: AdminSessionRow[] = []
+  for (const snapshot of [...timestamps.docs, ...strings.docs]) {
+    const row = toRow(snapshot)
+    if (row) rows.push(row)
+  }
+  rows.sort((a, b) => b.dateMs - a.dateMs)
+
+  // Either half hitting its own limit means Firestore had more to give.
+  const hitLimit =
+    timestamps.size >= ADMIN_SESSION_CAP ||
+    strings.size >= ADMIN_SESSION_CAP ||
+    rows.length > ADMIN_SESSION_CAP
+
+  return { rows: rows.slice(0, ADMIN_SESSION_CAP), truncated: hitLimit }
 }
 
 /* ------------------------------------------------------------------ */
@@ -194,22 +396,44 @@ function startOfDay(date: Date): Date {
  * Everything the Admin screen shows, in one round of parallel queries.
  *
  * One call rather than several hooks because the screen has a single loading
- * state and a single retry: a page that resolved its three summary figures
- * independently would show the stat row assembling itself a number at a time,
- * which reads as a stutter rather than as progress.
+ * state and a single retry: a page that resolved its sections independently
+ * would show itself assembling a chart at a time, which reads as a stutter
+ * rather than as progress — and with seven sections that stutter would be the
+ * dominant impression of the screen.
+ *
+ * The cost of one refresh, so it is not a mystery when the bill arrives:
+ *
+ *   * 1 count over `/users`, and 2 more for new signups (one per `createdAt`
+ *     shape) — 3 aggregations.
+ *   * 14 aggregations for the seven daily columns (one per `date` shape).
+ *   * up to {@link ADMIN_USER_CAP} document reads for the profile page.
+ *   * up to {@link ADMIN_SESSION_CAP} document reads for the session window,
+ *     across 2 queries.
+ *
+ * So: 17 aggregations, and at most 4,100 document reads — in practice the number
+ * of sessions logged in the last twelve weeks plus the size of the userbase.
+ * Aggregations are billed per 1,000 index entries scanned rather than per
+ * matching document, so the fetch dominates. Note that a live-tracked session
+ * carries its full GPS trail, which is transferred whether or not anything reads
+ * it: on a route-heavy database this refresh is bytes-expensive well before it
+ * is read-expensive.
  */
-export async function fetchAdminOverview(): Promise<AdminOverview> {
+export async function fetchAdminOverview(now = new Date()): Promise<AdminOverview> {
   try {
-    const today = startOfDay(new Date())
-    const tomorrow = addDays(today, 1)
-    const weekStart = startOfWeek(today)
+    const today = startOfDay(now)
+    const windowStart = addDays(today, -(ADMIN_WINDOW_DAYS - 1))
+    // Signups share the KPI block's rolling month — see `adminMetrics`' header
+    // for why none of these windows are calendar months.
+    const monthStart = addDays(today, -29)
 
-    // The chart's window: the last seven local days, today included.
+    // The daily chart's window: the last seven local days, today included.
     const dayStarts: Date[] = []
     for (let i = ADMIN_CHART_DAYS - 1; i >= 0; i--) dayStarts.push(addDays(today, -i))
 
-    const [totalUsersSnap, userSnap, dayCounts, weekTotal, sportCounts] = await Promise.all([
+    const [totalUsersSnap, newSignups, userSnap, sessions, dayCounts] = await Promise.all([
       getCountFromServer(collection(db, 'users')),
+
+      countSignupsSince(monthStart),
 
       // No `orderBy('lastActiveAt')`, on purpose. Firestore's ordering skips
       // documents that lack the field entirely, and with no backfill that is
@@ -220,19 +444,14 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
       // screen's truncation note says out loud.
       getDocs(query(collection(db, 'users'), limit(ADMIN_USER_CAP))),
 
+      fetchWindowSessions(windowStart),
+
+      // Still counted rather than derived from the fetched rows. These seven
+      // columns are the screen's oldest figures and they are exact at any
+      // database size; deriving them would silently inherit the session cap and
+      // make a chart that has always been right start under-reporting on the
+      // day the userbase outgrew it.
       Promise.all(dayStarts.map((start) => countSessions(start, addDays(start, 1)))),
-
-      // Counted unfiltered rather than summed from the per-sport counts below,
-      // so a session carrying a sport this build doesn't know about (an older or
-      // web-written document) still lands in the headline figure.
-      countSessions(weekStart, tomorrow),
-
-      Promise.all(
-        SPORT_OPTIONS.map(async (option) => ({
-          sport: option.value,
-          count: await countSessions(weekStart, tomorrow, option.value),
-        })),
-      ),
     ])
 
     const days: AdminDay[] = dayStarts.map((start, i) => ({
@@ -246,9 +465,16 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
       count: dayCounts[i],
     }))
 
+    const profiles = new Map<string, AdminProfileRow>()
     const users: AdminUserRow[] = userSnap.docs
       .map((snapshot) => {
         const profile = toUser(snapshot.data())
+        profiles.set(snapshot.id, {
+          uid: snapshot.id,
+          displayName: profile.displayName || 'Unnamed athlete',
+          sportInteractions: profile.sportInteractions ?? {},
+          sensitivity: profile.conflictSensitivity ?? 'balanced',
+        })
         return {
           uid: snapshot.id,
           displayName: profile.displayName || 'Unnamed athlete',
@@ -264,17 +490,28 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
         return bt - at
       })
 
-    const ranked = sportCounts.filter((s) => s.count > 0).sort((a, b) => b.count - a.count)
     const totalUsers = totalUsersSnap.data().count
+    const rows = sessions.rows
 
     return {
-      totalUsers,
-      sessionsThisWeek: weekTotal,
-      topSport: ranked[0] ?? null,
+      kpis: engagementKpis(rows, totalUsers, newSignups, now),
+      activeWeeks: activeUsersByWeek(rows, now),
+      sportSlices: sportDistribution(rows),
+      sportLoad: loadBySport(rows),
+      heatmap: activityHeatmap(rows),
+      conflicts: conflictMatrix(rows, profiles),
+      topUsers: topUsers(rows, profiles, now),
+
       days,
       windowTotal: days.reduce((sum, day) => sum + day.count, 0),
+
       users,
       truncated: totalUsers > users.length,
+
+      windowDays: ADMIN_WINDOW_DAYS,
+      sessionsAnalysed: rows.length,
+      sessionsTruncated: sessions.truncated,
+      profilesTruncated: totalUsers > users.length,
     }
   } catch (err) {
     throw toAdminError(err)

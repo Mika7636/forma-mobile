@@ -21,12 +21,34 @@
 // would be nothing but an error — a user who forged `isAdmin` in local storage
 // gets past both of them and lands on "This account does not have admin access",
 // because the server is the one that decides.
+//
+// ## Why the page is a `FlatList` with almost everything in its header
+//
+// Seven labelled sections and then a list of every account. The sections are a
+// fixed handful of cards and the account list is unbounded, so the list is the
+// scroll container and the sections ride in `ListHeaderComponent` — the
+// alternative, a `ScrollView` wrapping a `FlatList`, nests two scroll views on
+// the same axis and gives up virtualisation on the only part of the page that
+// needs it.
+//
+// Everything above the accounts is derived from one bounded fetch. See
+// `adminService.fetchAdminOverview` for what that costs and where it is capped;
+// where a cap can change what a section means, the section says so rather than
+// presenting a partial answer as a whole one.
 import { useCallback, useState } from 'react'
 import { FlatList, Linking, RefreshControl, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import ActiveUsersChart from '../components/admin/ActiveUsersChart'
+import ActivityHeatmapCard from '../components/admin/ActivityHeatmapCard'
+import AdminSection from '../components/admin/AdminSection'
 import AdminSkeleton from '../components/admin/AdminSkeleton'
 import AdminUserCard from '../components/admin/AdminUserCard'
+import ConflictMatrixCard from '../components/admin/ConflictMatrixCard'
 import DailySessionsChart from '../components/admin/DailySessionsChart'
+import EngagementKpiSection from '../components/admin/EngagementKpis'
+import LoadBySportChart from '../components/admin/LoadBySportChart'
+import SportDistributionChart from '../components/admin/SportDistributionChart'
+import TopUsersCard from '../components/admin/TopUsersCard'
 import EmptyState from '../components/ui/EmptyState'
 import PrimaryButton from '../components/ui/PrimaryButton'
 import TabIcon from '../components/ui/TabIcon'
@@ -41,7 +63,7 @@ import {
 } from '../services/adminService'
 import { useAuthStore } from '../store/authStore'
 import { haptics } from '../utils/haptics'
-import { sportVisual } from '../utils/sportMeta'
+import { formatThousands } from '../utils/formatting'
 import { RADIUS, SPACING, TYPE, WEIGHT, cardStyle } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
 
@@ -129,8 +151,47 @@ export default function AdminScreen() {
               <AdminSkeleton />
             ) : data ? (
               <>
-                <SummaryRow overview={data} />
-                <DailySessionsChart days={data.days} total={data.windowTotal} />
+                <EngagementKpiSection kpis={data.kpis} windowDays={data.windowDays} />
+
+                <AdminSection
+                  title="Activity"
+                  subtitle="Distinct accounts training each week, and sessions logged each day."
+                >
+                  <ActiveUsersChart weeks={data.activeWeeks} />
+                  <DailySessionsChart days={data.days} total={data.windowTotal} />
+                </AdminSection>
+
+                <AdminSection
+                  title="What the userbase trains"
+                  subtitle="Sessions and training load by sport. The two rank differently, which is the point."
+                >
+                  <SportDistributionChart
+                    slices={data.sportSlices}
+                    windowDays={data.windowDays}
+                  />
+                  <LoadBySportChart bars={data.sportLoad} windowDays={data.windowDays} />
+                </AdminSection>
+
+                <AdminSection
+                  title="When and how it clashes"
+                  subtitle="Training times across the userbase, and which sport pairings actually conflict."
+                >
+                  <ActivityHeatmapCard heatmap={data.heatmap} windowDays={data.windowDays} />
+                  <ConflictMatrixCard
+                    matrix={data.conflicts}
+                    windowDays={data.windowDays}
+                    profilesTruncated={data.profilesTruncated}
+                  />
+                </AdminSection>
+
+                <AdminSection title="Athletes">
+                  <TopUsersCard
+                    users={data.topUsers}
+                    profilesTruncated={data.profilesTruncated}
+                  />
+                </AdminSection>
+
+                <WindowNote overview={data} />
                 <UsersHeading overview={data} />
               </>
             ) : null}
@@ -206,77 +267,48 @@ function AdminHeader() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Summary                                                             */
+/* Provenance                                                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * Three figures, in the Progress screen's summary style: small grey label on a
- * shared upper line, big values on one unbroken baseline, no boxes. The reader
- * wants all three at once — see the note in `ThisWeekBlock`, which is where this
- * treatment is defined and argued.
+ * One line saying what every chart above was computed from.
+ *
+ * Placed after the sections rather than before them because it is a footnote,
+ * not a preamble — but it is not optional. Each section states its own window in
+ * its subtitle; this states the *sample*, which is the thing a reader cannot
+ * infer and the thing that changes what the charts mean if the cap ever bites.
+ *
+ * The truncation sentence appears only when it is true. A permanent "may be
+ * incomplete" hedge is the kind of caveat readers learn to skip, which is
+ * exactly the wrong reflex to train for the day it starts mattering.
  */
-function SummaryRow({ overview }: { overview: AdminOverview }) {
-  const { colors } = useTheme()
-
-  const top = overview.topSport
-  const topLabel = top ? sportVisual(top.sport, colors).label : 'None yet'
-
-  return (
-    <View style={cardStyle(colors)}>
-      <View style={{ flexDirection: 'row' }}>
-        <Stat label="Total users" value={String(overview.totalUsers)} />
-        <Stat label="Sessions this week" value={String(overview.sessionsThisWeek)} />
-        <Stat
-          label="Top sport"
-          value={topLabel}
-          // The sport name is a word, not a figure, and at the numerals' size a
-          // long one ("Combat Sports") wraps into the row below or truncates to
-          // nonsense. Dropping it a step keeps the row's baseline intact.
-          small
-          hint={top ? `${top.count} this week` : undefined}
-        />
-      </View>
-    </View>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  small = false,
-  hint,
-}: {
-  label: string
-  value: string
-  small?: boolean
-  hint?: string
-}) {
+function WindowNote({ overview }: { overview: AdminOverview }) {
   const { colors } = useTheme()
 
   return (
-    <View style={{ flex: 1, minWidth: 0, paddingRight: SPACING.sm }}>
-      <Text
-        numberOfLines={2}
-        style={{ fontSize: TYPE.small, color: colors.textMuted, marginBottom: 3 }}
-      >
-        {label}
+    <View
+      style={{
+        marginTop: SPACING.sm,
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.md,
+        borderRadius: RADIUS.md,
+        backgroundColor: colors.surfaceAlt,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <Text style={{ fontSize: TYPE.caption, lineHeight: 16, color: colors.textMuted }}>
+        Charts above are computed from{' '}
+        <Text style={{ fontWeight: WEIGHT.heavy, color: colors.textBody }}>
+          {formatThousands(overview.sessionsAnalysed)}
+        </Text>{' '}
+        {overview.sessionsAnalysed === 1 ? 'session' : 'sessions'} logged in the last{' '}
+        {overview.windowDays} days, read from each session&apos;s own date. Total users, new
+        signups and the daily columns are counted on the server and are exact.
+        {overview.sessionsTruncated
+          ? ' That window hit its fetch cap, so the oldest weeks on the twelve-week line are incomplete; the last 30 days are whole.'
+          : ''}
       </Text>
-      <Text
-        numberOfLines={1}
-        style={{
-          fontSize: small ? TYPE.subtitle : TYPE.heading,
-          lineHeight: 27,
-          fontWeight: WEIGHT.bold,
-          color: colors.text,
-        }}
-      >
-        {value}
-      </Text>
-      {hint ? (
-        <Text numberOfLines={1} style={{ fontSize: TYPE.caption, color: colors.textSubtle }}>
-          {hint}
-        </Text>
-      ) : null}
     </View>
   )
 }
@@ -299,7 +331,7 @@ function UsersHeading({ overview }: { overview: AdminOverview }) {
             // Firestore before the sort, so this is not "the 100 most recently
             // active" and claiming otherwise would be a lie the reader can't
             // check. See the query note in `adminService`.
-            `Showing ${overview.users.length} of ${overview.totalUsers} accounts, most recently active first.`
+            `Showing ${overview.users.length} of ${overview.kpis.totalUsers} accounts, most recently active first.`
           : 'Most recently active first.'}
       </Text>
     </View>

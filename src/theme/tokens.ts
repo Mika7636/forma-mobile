@@ -930,6 +930,38 @@ export function contrast(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }
 
+/**
+ * `src` composited over `dst` at opacity `t`, as a `#RRGGBB` string.
+ *
+ * For a heatmap cell, which is one token shaded toward another by intensity.
+ * Rendering that as a translucent overlay would look identical and is a trap:
+ * the resulting colour would exist only in the compositor, so nothing could
+ * measure it — and {@link onColor} has to measure a fill to pick type for it. A
+ * cell whose ink is chosen against `surfaceAlt` while the cell itself has become
+ * saturated `warn` is how a grid ends up at 2:1 in one theme and fine in the
+ * other. Mixing here keeps the fill a value the code can read back.
+ *
+ * Channel-wise in sRGB, which is what alpha compositing does; this is not a
+ * perceptual blend and is not trying to be.
+ */
+export function mix(src: string, dst: string, t: number): string {
+  const parse = (hex: string): [number, number, number] | null => {
+    const h = hex.replace('#', '')
+    if (h.length !== 6) return null
+    const n = parseInt(h, 16)
+    return Number.isNaN(n) ? null : [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+  }
+  const a = parse(src)
+  const b = parse(dst)
+  // Anything that isn't a plain 6-digit hex (an rgba() token, say) falls back to
+  // the destination rather than to a NaN colour that renders as black.
+  if (!a || !b) return dst
+
+  const k = Math.max(0, Math.min(1, t))
+  const out = a.map((c, i) => Math.round(c * k + b[i] * (1 - k)))
+  return `#${out.map((c) => c.toString(16).padStart(2, '0')).join('')}`
+}
+
 /** The two inks anything printed on a saturated fill can use. */
 const INK_DARK = '#0B1220'
 const INK_LIGHT = '#FFFFFF'
