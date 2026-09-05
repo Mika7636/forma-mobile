@@ -65,3 +65,21 @@ export function daysSince(iso: string | undefined): number {
   const msPerDay = 1000 * 60 * 60 * 24
   return Math.max(0, Math.floor((Date.now() - then) / msPerDay))
 }
+
+/**
+ * "Thursday" — the weekday a `YYYY-MM-DD` plan day falls on.
+ *
+ * Parsed at local **noon**, never at midnight. `new Date('2026-09-03')` is
+ * parsed as UTC midnight, which is the previous day for anyone west of
+ * Greenwich — so a plan for Thursday would be announced as "Wednesday" for
+ * every user in the Americas. Noon is far enough from both boundaries that no
+ * offset can move it off its own day.
+ *
+ * Returns the input unchanged if it is not a parseable day key, so a bad value
+ * shows up as itself rather than as "Invalid Date".
+ */
+export function weekdayLabel(isoDay: string, style: 'long' | 'short' = 'long'): string {
+  const d = new Date(`${isoDay}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return isoDay
+  return d.toLocaleDateString(undefined, { weekday: style })
+}

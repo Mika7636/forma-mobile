@@ -41,9 +41,13 @@ import PlannerSkeleton from '../components/planner/PlannerSkeleton'
 import SessionDetailModal from '../components/session/SessionDetailModal'
 import EmptyState from '../components/ui/EmptyState'
 import { useMonthPlan, type CalendarDay } from '../hooks/useMonthPlan'
+import { usePlannedSessions } from '../hooks/usePlannedSessions'
+import { useMetrics } from '../hooks/useMetrics'
 import {
   addPlannedSession,
   deletePlannedSession,
+  updatePlannedSession,
+  type PlannedSessionChanges,
 } from '../services/plannedSessionService'
 import { deleteSession, resolveConflict } from '../services/sessionService'
 import { useAuthStore } from '../store/authStore'
@@ -73,6 +77,17 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
 
   const uid = useAuthStore((s) => s.user?.uid)
   const sports = useAuthStore((s) => s.profile?.sports)
+  const sportInteractions = useAuthStore((s) => s.profile?.sportInteractions)
+
+  // The recommendation engine's three inputs, for the resolution chips on a
+  // planned clash. `usePlannedSessions` is called directly rather than read off
+  // the month grid because a resolution needs the *whole* calendar: a clash can
+  // pair a plan on screen with one just past the edge of the visible month, and
+  // the grid would hand over only half of it. That is the direct-call case the
+  // hook's own header describes; the second subscription is on a collection of a
+  // few dozen documents that Firestore serves from the same query target.
+  const { planned: allPlanned, plannedConflicts: livePlannedConflicts } = usePlannedSessions()
+  const { sessions: loggedSessions, ctl, atl } = useMetrics()
 
   const [monthOffset, setMonthOffset] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
@@ -82,9 +97,31 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   const [dayListOpen, setDayListOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const [conflictSheet, setConflictSheet] = useState<Conflict[] | null>(null)
-  const [plannedSheet, setPlannedSheet] = useState<PlannedConflict[] | null>(null)
+  /**
+   * Which planned clashes the sheet is showing, by id.
+   *
+   * Ids rather than the objects themselves, so the sheet's contents are
+   * re-derived from the live calendar on every render. Holding the objects
+   * would freeze the sheet at the moment it opened — an athlete who applied a
+   * resolution would watch the grid behind them update while the card in front
+   * of them went on describing a clash that no longer existed.
+   */
+  const [plannedSheetIds, setPlannedSheetIds] = useState<string[] | null>(null)
   /** The day the "plan a session" sheet is collecting for, if open. */
   const [planningIso, setPlanningIso] = useState<string | null>(null)
+
+  const plannedSheet = useMemo(() => {
+    if (!plannedSheetIds) return null
+    const byId = new Map(livePlannedConflicts.map((c) => [c.id, c]))
+    // Resolved clashes drop out; the sheet renders its own "clash resolved"
+    // state when every one of them has.
+    return plannedSheetIds.map((id) => byId.get(id)).filter((c): c is PlannedConflict => !!c)
+  }, [plannedSheetIds, livePlannedConflicts])
+
+  const openPlannedSheet = useCallback(
+    (conflicts: PlannedConflict[]) => setPlannedSheetIds(conflicts.map((c) => c.id)),
+    [],
+  )
 
   const plan = useMonthPlan(monthOffset)
   const { weeks, monthName, year, totalHours, totalLoad, sessionCount, plannedCount } = plan
@@ -223,6 +260,66 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   const weekPlannedCount = useMemo(
     () => focusWeek.reduce((sum, d) => sum + d.planned.length, 0),
     [focusWeek],
+  )
+
+  /**
+   * Apply one of the engine's resolutions to a plan.
+   *
+   * An update rather than a delete-and-add, so the plan keeps its id and the
+   * card the athlete is looking at does not lose the document underneath it
+   * mid-tap. Nothing is recomputed here: the date, sport, duration and intensity
+   * written are exactly what `suggestConflictResolution` returned.
+   *
+   * No imperative re-check afterwards either. The plans listener re-runs
+   * `detectPlannedConflicts` over the whole calendar on the next snapshot, so
+   * the warning clears itself — a second check here would be a second source of
+   * truth about the same week.
+   */
+  const handleApplyResolution = useCallback(
+    async (target: PlannedSession, changes: PlannedSessionChanges): Promise<boolean> => {
+      if (!uid) return false
+      try {
+        await updatePlannedSession(uid, target.id, changes)
+        haptics.success()
+        toast.success('Plan updated')
+        return true
+      } catch {
+        toast.error('Could not update the plan', {
+          description: isOffline()
+            ? "You're offline — reconnect and try again."
+            : 'Something went wrong. Please try again.',
+        })
+        return false
+      }
+    },
+    [uid],
+  )
+
+  /**
+   * The engine's inputs, held stable across renders.
+   *
+   * Memoised rather than built inline in the JSX. `ConflictResolutionChips`
+   * memoises the call to `suggestConflictResolution` on these objects, and a
+   * fresh `profile` and `metrics` literal on every render would give that memo
+   * new identities every time — recomputing the resolutions, and a new `now`
+   * with them, on every keystroke-level re-render of the screen.
+   *
+   * `undefined` until the profile carries an interaction matrix: without it the
+   * engine has no knowledge base to reason from, and the sheet falls back to
+   * being the pure explanation it was before.
+   */
+  const resolutionContext = useMemo(
+    () =>
+      sportInteractions
+        ? {
+            planned: allPlanned,
+            sessions: loggedSessions,
+            profile: { sports: sports ?? [], sportInteractions },
+            metrics: { ctl, atl },
+            onApply: handleApplyResolution,
+          }
+        : undefined,
+    [allPlanned, loggedSessions, sports, sportInteractions, ctl, atl, handleApplyResolution],
   )
 
   const handleAddPlan = useCallback(
@@ -409,7 +506,7 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
           <PlannedConflictSummary
             conflicts={weekPlannedConflicts}
             plannedCount={weekPlannedCount}
-            onPress={setPlannedSheet}
+            onPress={openPlannedSheet}
           />
         </View>
       ) : null}
@@ -478,7 +575,7 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         onSessionPress={setSelectedSession}
         onSessionDelete={handleDelete}
         onConflictPress={setConflictSheet}
-        onPlannedConflictPress={setPlannedSheet}
+        onPlannedConflictPress={openPlannedSheet}
         onPlanSession={setPlanningIso}
         onLogSession={handleLogForDay}
         onPlannedDelete={handleDeletePlan}
@@ -512,7 +609,11 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         }}
       />
 
-      <PlannedConflictSheet conflicts={plannedSheet} onClose={() => setPlannedSheet(null)} />
+      <PlannedConflictSheet
+        conflicts={plannedSheet}
+        onClose={() => setPlannedSheetIds(null)}
+        resolution={resolutionContext}
+      />
 
       <AddPlannedSessionSheet
         isoDate={planningIso}

@@ -16,6 +16,7 @@ import DashboardSkeleton from '../components/dashboard/DashboardSkeleton'
 import EmptyDashboardState from '../components/dashboard/EmptyDashboardState'
 import FormScoreCard from '../components/dashboard/FormScoreCard'
 import MetricGrid from '../components/dashboard/MetricGrid'
+import NextWeekPlanCard from '../components/dashboard/NextWeekPlanCard'
 import RecentActivity from '../components/dashboard/RecentActivity'
 import ZoneDistributionChart from '../components/dashboard/ZoneDistributionChart'
 import SessionDetailModal from '../components/session/SessionDetailModal'
@@ -27,10 +28,14 @@ import { useConflicts } from '../hooks/useConflicts'
 import { usePlannedSessions } from '../hooks/usePlannedSessions'
 import { useIsMounted } from '../hooks/useSafeTimeout'
 import { useMetrics } from '../hooks/useMetrics'
+import { useRecommendations } from '../hooks/useRecommendations'
+import { addPlannedSession } from '../services/plannedSessionService'
+import { isOffline } from '../store/networkStore'
 import { useAuthStore } from '../store/authStore'
 import { useMetricsStore } from '../store/metricsStore'
 import { toast } from '../store/toastStore'
 import type { DashboardScreenProps } from '../navigation/types'
+import type { SuggestedSession } from '../algorithms/recommender'
 import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
 import { RADIUS, SPACING, TYPE } from '../theme/tokens'
@@ -49,6 +54,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const tabPadding = useTabContentPadding()
 
   const displayName = useAuthStore((s) => s.user?.displayName)
+  const uid = useAuthStore((s) => s.user?.uid)
   const {
     sessions,
     weekSessions,
@@ -69,6 +75,11 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     streak,
   } = useMetrics()
   const { conflicts, dismissConflict } = useConflicts()
+  const {
+    plan: weekPlan,
+    recovery,
+    refresh: refreshSuggestions,
+  } = useRecommendations()
   const { byDay: plannedByDay, conflictsByDay: plannedConflictsByDay } = usePlannedSessions()
 
   /**
@@ -119,6 +130,44 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const goToPlanner = useCallback(() => {
     navigation.navigate('Planner')
   }, [navigation])
+
+  /**
+   * Turn one suggestion into a plan on the calendar.
+   *
+   * The suggestion already carries a date, a duration and a target RPE that
+   * multiply back to its share of the week's budget, so nothing is recomputed
+   * here — the values written are the values the card showed. Resolves false on
+   * failure so the row can re-enable its button.
+   *
+   * Routing to the Planner on success is the point: a plan the athlete cannot
+   * see is indistinguishable from a tap that did nothing, and the Planner is
+   * where it can be moved, hardened or deleted.
+   */
+  const handlePlanIt = useCallback(
+    async (suggestion: SuggestedSession): Promise<boolean> => {
+      if (!uid) return false
+      try {
+        await addPlannedSession(uid, {
+          sport: suggestion.sport,
+          date: suggestion.date,
+          durationMinutes: suggestion.durationMinutes,
+          intensity: suggestion.rpe,
+        })
+        haptics.success()
+        toast.success('Added to your plan')
+        goToPlanner()
+        return true
+      } catch {
+        toast.error('Could not save the plan', {
+          description: isOffline()
+            ? "You're offline — reconnect and try again."
+            : 'Something went wrong. Please try again.',
+        })
+        return false
+      }
+    },
+    [uid, goToPlanner],
+  )
 
   // What the "available now" panel shows a zero-session account: the plan for
   // today, and any clash the engine has already found in the next two days. Both
@@ -278,6 +327,21 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
               ) : (
                 <FormScoreCard form={formScore} ctl={ctl} atl={atl} />
               )}
+
+              {/* Directly under the hero, because it is the only thing on this
+                  screen that says what to do *next*. Everything below it —
+                  grid, zones, recent activity — reports what has already
+                  happened. `null` while the profile is still loading; the card
+                  handles its own insufficient-data state. */}
+              {weekPlan ? (
+                <NextWeekPlanCard
+                  plan={weekPlan}
+                  recovery={recovery}
+                  onPlanIt={handlePlanIt}
+                  onRefresh={refreshSuggestions}
+                  onLogSession={goToLog}
+                />
+              ) : null}
 
               <MetricGrid
                 weeklyLoad={weeklyLoad}
