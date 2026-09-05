@@ -52,6 +52,7 @@
 // **The CTL/ATL/Form maths below is untouched** — same windows, same cold-start
 // blend, same per-day series. Conflict detection reads the same model, so
 // changing it here would change what the coach warns about.
+import { ACWR_CEILING, ACWR_FLOOR } from '../constants/training'
 import type { Session, SportType } from '../types/session'
 import { SPORT_META } from './sportMeta'
 import { addDays, startOfWeek, localISODate, daysBetween, WEEKDAY_INITIALS } from './dates'
@@ -91,8 +92,9 @@ export const TREND_WEEKS = 6
  * get nervous. Deliberately wide: this is a coaching hint, not a target, and a
  * narrow band would have athletes chasing the middle of it.
  */
-const BAND_LOW = 0.8
-const BAND_HIGH = 1.3
+// Shared with the recommender's weekly budget — see `ACWR_FLOOR`.
+const BAND_LOW = ACWR_FLOOR
+const BAND_HIGH = ACWR_CEILING
 
 /** Which sport the screen is filtered to. `all` is the default. */
 export type SportFilter = SportType | 'all'

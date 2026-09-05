@@ -151,6 +151,21 @@ export function calculateBaselineCTL(
  * Pairwise sport-conflict weights seeded onto every new user. Keys are
  * underscore-joined sport pairs; higher values mean stronger interference.
  */
+/**
+ * The acute:chronic workload bounds — Gabbett's "sweet spot", as multiples of a
+ * maintenance week.
+ *
+ * CTL is an average *daily* load, so a week at maintenance is `CTL x 7`. Below
+ * about 0.8x of that fitness drifts down; above about 1.3x the injury-risk curve
+ * turns up sharply. Everything in the app that draws or reasons about a
+ * sustainable range reads these two numbers: the Progress screen's band
+ * (`bandFor`) and the recommender's weekly budget. They are here, in the
+ * dependency-free constants module, so that neither has to import the other to
+ * agree with it.
+ */
+export const ACWR_FLOOR = 0.8
+export const ACWR_CEILING = 1.3
+
 export const DEFAULT_SPORT_INTERACTIONS: Record<string, number> = {
   combat_football: 3,
   combat_running: 3,

@@ -1,4 +1,5 @@
 import { Timestamp } from 'firebase/firestore'
+import { getInteractionLevel } from './sportInteractions'
 import type { Conflict, PlannedConflict } from '../types/conflict'
 import type { PlannedSession } from '../types/planned'
 import type { Session, SportType } from '../types/session'
@@ -50,27 +51,12 @@ const SOFTER_SENSITIVITY: Record<ConflictSensitivity, ConflictSensitivity> = {
   relaxed: 'relaxed',
 }
 
-/**
- * Build the canonical matrix key for a sport pair. Keys are stored
- * alphabetically sorted ("combat_running", never "running_combat") so the
- * lookup is order-independent.
- */
-function pairKey(sportA: string, sportB: string): string {
-  return [sportA, sportB].sort().join('_')
-}
-
-/**
- * Conflict weight (0–3) for a pair of sports from the user's interaction
- * matrix. 0 means the same sport or no recorded interference.
- */
-export function getInteractionLevel(
-  sportA: string,
-  sportB: string,
-  matrix: Record<string, number>,
-): number {
-  if (sportA === sportB) return 0
-  return matrix[pairKey(sportA, sportB)] ?? 0
-}
+// The matrix lookup now lives in `sportInteractions`, the knowledge-base module
+// the recommender also reads. Re-exported here because this file was its home
+// and several callers still import it from this path — and because a conflict
+// engine that resolved sport pairs from anywhere other than the shared matrix
+// is exactly the drift the move was made to prevent.
+export { getInteractionLevel } from './sportInteractions'
 
 function sportLabel(sport: string): string {
   return SPORT_META[sport as SportType]?.label ?? sport

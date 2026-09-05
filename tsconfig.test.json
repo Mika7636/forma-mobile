@@ -1,0 +1,27 @@
+{
+  // Test build. Node's ESM loader demands explicit file extensions on every
+  // import, and this codebase is written for Metro, which does not — so the
+  // suite is compiled to CommonJS first and run from the output rather than
+  // rewriting every import in the app to suit the test runner.
+  //
+  // `files` lists only the test entry point; tsc follows its imports and pulls
+  // in exactly the subgraph under test. That is deliberate: the recommender is
+  // meant to reach nothing but pure modules, so if somebody gives it a
+  // dependency on React Native or Firebase, this build starts pulling in the
+  // world and the change is visible immediately.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    // `bundler` rather than `node10`: it resolves the app's extensionless
+    // imports the way Metro does, and it is the only setting that keeps the
+    // `customConditions` inherited from expo's base config legal.
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "outDir": "test-build",
+    "rootDir": "src",
+    "noEmit": false,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "files": ["src/algorithms/recommender.test.ts"]
+}

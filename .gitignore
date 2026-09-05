@@ -9,6 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Test build output (see tsconfig.test.json)
+test-build/
+
 # Native
 .kotlin/
 *.orig.*

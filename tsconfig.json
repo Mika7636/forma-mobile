@@ -2,5 +2,11 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  // Test files are typechecked by `tsconfig.test.json`, which supplies the Node
+  // types they need. Leaving them in here instead would mean adding "node" to
+  // the app's own types — putting Node globals in scope for React Native code,
+  // where `process`, `Buffer` and friends mostly do not exist and a reference to
+  // one would typecheck cleanly and then fail on a phone.
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "test-build"]
 }
