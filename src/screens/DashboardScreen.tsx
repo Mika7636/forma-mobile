@@ -70,10 +70,11 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const { byDay: plannedByDay, conflictsByDay: plannedConflictsByDay } = usePlannedSessions()
 
   /**
-   * Under two weeks of history, the Form Score is an artefact of the CTL/ATL
-   * ramp rather than a measurement — so the hero shows how far along the
-   * baseline is instead of publishing a number the app can't stand behind. See
-   * `getBaselineState` for why the window is counted in days, not sessions.
+   * Under 42 days of history — the fitness average's time constant — the Form
+   * Score is an artefact of the CTL/ATL ramp rather than a measurement, so the
+   * hero shows how far along the baseline is instead of publishing a number the
+   * app can't stand behind. See `getBaselineState` for why the window is
+   * counted in elapsed days rather than in sessions.
    */
   const baseline = getBaselineState(sessions)
 

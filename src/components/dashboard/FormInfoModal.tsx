@@ -8,11 +8,10 @@ interface FormInfoModalProps {
   /**
    * Opened from the calibrating hero rather than the real one.
    *
-   * Adds the paragraph explaining *why* there is no number yet. That text used
-   * to be printed on the calibration card itself, under the progress bar,
-   * where it was a block of hedging between the reader and the one button that
-   * moves the bar. It belongs behind the affordance whose whole job is
-   * answering "why", which is this one.
+   * Swaps in the short explanation of *why* there is no number yet, and the one
+   * action that skips the wait. It replaces the general explainer rather than
+   * appending to it: someone who has just tapped a card with no score on it is
+   * asking one question, and two stacked paragraphs answer it worse than one.
    */
   building?: boolean
 }
@@ -87,9 +86,9 @@ export default function FormInfoModal({ visible, onClose, building }: FormInfoMo
               textAlign: 'center',
             }}
           >
-            Your Form Score measures the balance between fitness and fatigue. It becomes
-            more accurate as you log more sessions. The first 2–3 weeks are a calibration
-            period where FORMA learns your training baseline.
+            {building
+              ? 'Your Form Score compares long-term fitness against recent fatigue. Fitness is a 42-day average, so it needs 42 days of history before the number means anything.'
+              : 'Your Form Score measures the balance between fitness and fatigue. It becomes more accurate as you log more sessions. The first 2–3 weeks are a calibration period where FORMA learns your training baseline.'}
           </Text>
 
           {building ? (
@@ -102,11 +101,8 @@ export default function FormInfoModal({ visible, onClose, building }: FormInfoMo
                 textAlign: 'center',
               }}
             >
-              Fitness and fatigue are rolling averages over 42 and 7 days, so the score
-              needs both time and training days behind it: about two weeks since your
-              first session, and at least six separate days you actually trained. Until
-              both are there, FORMA holds the number back rather than showing you one it
-              can&apos;t stand behind.
+              Already been training? Log your past sessions with the date picker and the
+              score unlocks straight away.
             </Text>
           ) : null}
 

@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import FormInfoModal from './FormInfoModal'
-import { baselineMeters, type BaselineState } from '../../utils/calibration'
+import { type BaselineState } from '../../utils/calibration'
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
@@ -32,10 +32,9 @@ interface CalibratingFormCardProps {
  *
  * So the readouts are not shown at all until the gate opens. What replaces them
  * is not an empty state: it is a progress state that says exactly where the
- * athlete is, and what makes it move. Which of the gate's two conditions gets
- * the headline is `baselineMeters`' call, not this card's — whichever is
- * further behind is the one the reader needs, and a card that always said
- * "days" would promise a Form Score on a date it is not coming.
+ * athlete is, and what makes it move. The meter counts the one thing the gate
+ * asks for — calendar days since the first session, out of the 42 the fitness
+ * average needs — so the date it points at is the date the score arrives.
  *
  * ## Why it is one flat card
  *
@@ -56,8 +55,7 @@ export default function CalibratingFormCard({
   const { colors } = useTheme()
 
   const [infoOpen, setInfoOpen] = useState(false)
-  const { sessionsLogged } = baseline
-  const { headline, secondary } = baselineMeters(baseline)
+  const { sessionsLogged, daysCovered, target, daysRemaining, fraction } = baseline
 
   // Settle-in scale, matching FormScoreCard so swapping heroes isn't jarring.
   const scale = useSharedValue(0.96)
@@ -127,7 +125,7 @@ export default function CalibratingFormCard({
             lineHeight: 46,
           }}
         >
-          {headline.value}
+          {daysCovered}
         </Text>
         <Text
           style={{
@@ -137,7 +135,7 @@ export default function CalibratingFormCard({
             color: colors.textMuted,
           }}
         >
-          of {headline.target} {headline.noun}
+          of {target} days
         </Text>
       </View>
 
@@ -152,7 +150,7 @@ export default function CalibratingFormCard({
       >
         <View
           style={{
-            width: `${headline.fraction * 100}%`,
+            width: `${fraction * 100}%`,
             height: '100%',
             borderRadius: RADIUS.pill,
             backgroundColor: colors.accent,
@@ -160,15 +158,13 @@ export default function CalibratingFormCard({
         />
       </View>
 
-      {/* The condition that is *not* the headline, plus the raw count. Both
-          have to close before a Form Score appears, so hiding the other one
-          would set up the same false expectation the single-condition gate did.
-          Once it *has* closed it drops off rather than reading "0 days to go",
-          which looks like a bug beside a bar that is still filling. */}
+      {/* What has been logged, and what is left to wait. The countdown drops
+          off at zero rather than reading "0 days to go", which looks like a bug
+          beside a bar that has just filled. */}
       <Text style={{ marginTop: SPACING.sm, fontSize: TYPE.micro, color: colors.textMuted }}>
         {sessionsLogged} session{sessionsLogged === 1 ? '' : 's'} logged
-        {secondary.remaining > 0
-          ? ` · ${secondary.remaining} ${pluralNoun(secondary.noun, secondary.remaining)} to go`
+        {daysRemaining > 0
+          ? ` · ${daysRemaining} day${daysRemaining === 1 ? '' : 's'} to go`
           : ''}
       </Text>
 
@@ -194,9 +190,4 @@ export default function CalibratingFormCard({
       <FormInfoModal building visible={infoOpen} onClose={() => setInfoOpen(false)} />
     </Animated.View>
   )
-}
-
-/** `days` → `day` for a count of one; `training days` → `training day`. */
-function pluralNoun(noun: string, count: number): string {
-  return count === 1 ? noun.replace(/s$/, '') : noun
 }

@@ -78,7 +78,7 @@ export default function EmptyDashboardState({
             color: colors.text,
           }}
         >
-          Unlocks after about two weeks
+          Unlocks after {BASELINE_DAYS} days
         </Text>
         <Text
           style={{
@@ -89,9 +89,9 @@ export default function EmptyDashboardState({
           }}
         >
           Form is your recent fatigue measured against your long-term fitness — one number
-          for whether you&apos;re fresh, building, or digging a hole. It needs around{' '}
-          {BASELINE_DAYS} days of sessions before it says anything real, so FORMA won&apos;t
-          show you one until then.
+          for whether you&apos;re fresh, building, or digging a hole. Fitness is a{' '}
+          {BASELINE_DAYS}-day average, so it needs {BASELINE_DAYS} days of history before it
+          says anything real — and backdating sessions you already trained counts.
         </Text>
 
         <View style={{ marginTop: SPACING.base }}>

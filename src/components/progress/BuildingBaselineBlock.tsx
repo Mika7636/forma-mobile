@@ -1,25 +1,24 @@
 // The Advanced expander's contents while the baseline gate is still closed.
 //
 // Fitness, Fatigue and Form are three exponentially-weighted averages, and
-// until there is both time and training behind them a chart of them is mostly a
-// picture of those averages charging up from their seeds. Drawing it would put
-// a confident line on screen that says more about the maths than about the
-// athlete — and it is the same line the Dashboard hero refuses to reduce to a
-// Form Score, so showing it here would let one screen contradict the other.
+// until 42 days have passed a chart of them is mostly a picture of those
+// averages charging up from their seeds. Drawing it would put a confident line
+// on screen that says more about the maths than about the athlete — and it is
+// the same line the Dashboard hero refuses to reduce to a Form Score, so
+// showing it here would let one screen contradict the other.
 //
 // It shows where the gate has got to instead, from the same `getBaselineState`
-// the Dashboard reads, and headlines the same one of the two conditions — via
-// `baselineMeters` — so the two screens never quote different numbers at each
+// the Dashboard reads, so the two screens never quote different numbers at each
 // other.
 import { Text, View } from 'react-native'
-import { baselineMeters, type BaselineState } from '../../utils/calibration'
+import { type BaselineState } from '../../utils/calibration'
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 export default function BuildingBaselineBlock({ baseline }: { baseline: BaselineState }) {
   const { colors } = useTheme()
 
-  const { headline, secondary } = baselineMeters(baseline)
+  const { daysCovered, target, fraction, sessionsLogged } = baseline
 
   return (
     <View>
@@ -29,11 +28,10 @@ export default function BuildingBaselineBlock({ baseline }: { baseline: Baseline
       <Text
         style={{ marginTop: 6, fontSize: TYPE.small, lineHeight: 19, color: colors.textMuted }}
       >
-        Fitness and Fatigue are rolling averages over 42 and 7 days. They need both time
-        and training days behind them — about two weeks since your first session, and at
-        least six separate days you trained — before their difference tracks you rather
-        than the maths, so FORMA holds the chart back instead of drawing a confident line
-        through almost no data.
+        Fitness is a rolling 42-day average, so it needs 42 days since your first
+        session before its difference from Fatigue tracks you rather than the maths.
+        Until then FORMA holds the chart back instead of drawing a confident line
+        through an average that is still filling.
       </Text>
 
       <Text
@@ -45,7 +43,7 @@ export default function BuildingBaselineBlock({ baseline }: { baseline: Baseline
           color: colors.textBody,
         }}
       >
-        {headline.value} of {headline.target} {headline.noun}
+        {daysCovered} of {target} days
       </Text>
       <View
         style={{
@@ -57,17 +55,16 @@ export default function BuildingBaselineBlock({ baseline }: { baseline: Baseline
       >
         <View
           style={{
-            width: `${headline.fraction * 100}%`,
+            width: `${fraction * 100}%`,
             height: '100%',
             borderRadius: RADIUS.pill,
             backgroundColor: colors.accent,
           }}
         />
       </View>
-      {/* The other condition. Both have to close, so quoting only the headline
-          would set a date the score is not arriving on. */}
+      {/* The raw count beneath the clock, matching the Dashboard hero's caption. */}
       <Text style={{ marginTop: SPACING.sm, fontSize: TYPE.micro, color: colors.textMuted }}>
-        {secondary.value} of {secondary.target} {secondary.noun}
+        {sessionsLogged} session{sessionsLogged === 1 ? '' : 's'} logged
       </Text>
     </View>
   )

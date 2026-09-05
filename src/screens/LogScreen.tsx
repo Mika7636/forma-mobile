@@ -172,8 +172,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
    *
    * State rather than a prop derived from the route, because the athlete can now
    * change it — which is the whole point of the field. Someone who has been
-   * training for months should not have to wait a fortnight for a Form Score
-   * when they can enter the fortnight they already trained.
+   * training for months should not have to wait six weeks for a Form Score when
+   * they can enter the six weeks they already trained.
    */
   const [sessionDay, setSessionDay] = useState<Date>(() =>
     paramDate ? new Date(`${paramDate}T12:00:00`) : new Date(),

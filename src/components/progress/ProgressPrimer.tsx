@@ -72,8 +72,8 @@ export default function ProgressPrimer({ logged, onLogSession }: ProgressPrimerP
             }}
           >
             Bars appear once there are {target} sessions to draw a trend from. Your own
-            sustainable range settles after about {BASELINE_DAYS} days of training, when
-            FORMA has enough to work it out from.
+            sustainable range settles after {BASELINE_DAYS} days of training, when FORMA
+            has enough to work it out from.
           </Text>
 
           <View style={{ marginTop: SPACING.base }}>

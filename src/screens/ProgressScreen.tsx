@@ -41,7 +41,6 @@ import { useProgressData } from '../hooks/useProgressData'
 import { useSessionHistory } from '../hooks/useSessionHistory'
 import {
   PROGRESS_UNLOCK_SESSIONS,
-  baselineMeters,
   getBaselineState,
   type BaselineState,
 } from '../utils/calibration'
@@ -201,7 +200,7 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
               title="Advanced — training model"
               subtitle="Fitness, Fatigue and Form, the way the engine sees them"
             >
-              {/* Same rule as the Dashboard hero: under two weeks of history
+              {/* Same rule as the Dashboard hero: under 42 days of history
                   the CTL/ATL/Form series is the ramp of its own averages rather
                   than a picture of the athlete, so it is withheld and the
                   window's progress shown in its place — behind the same expander,
@@ -237,9 +236,9 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
  */
 function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {
   const { colors } = useTheme()
-  // Whichever of the gate's two conditions is further behind — the same one the
-  // Dashboard hero headlines, so the two screens never quote different numbers.
-  const { headline } = baselineMeters(baseline)
+  // The same span the Dashboard hero counts, so the two screens never quote
+  // different numbers at each other.
+  const { daysCovered, target } = baseline
 
   return (
     <View
@@ -267,7 +266,7 @@ function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {
         <Text style={{ fontWeight: WEIGHT.heavy, color: colors.infoText }}>
           Your range is still settling
         </Text>{' '}
-        — {headline.value} of {headline.target} {headline.noun}. The bars are your real
+        — {daysCovered} of {target} days. The bars are your real
         training; the band they&apos;re measured against will shift as FORMA learns what
         you absorb.
       </Text>
