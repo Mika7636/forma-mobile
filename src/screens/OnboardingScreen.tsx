@@ -49,8 +49,8 @@ import { sportVisual } from '../utils/sportMeta'
  *
  * The wizard used to end on "Experience → Finish", which meant every screen took
  * something from the athlete and none gave anything in return until the
- * dashboard — where the headline numbers need six weeks of history to mean
- * anything. Step 6 closes that: their own sports, run through their own
+ * dashboard — where the headline numbers need 42 days of logged training to
+ * mean anything. Step 6 closes that: their own sports, run through their own
  * interaction matrix, as advice they can use today. See `ConflictMatrixPayoff`.
  */
 const TOTAL_STEPS = 6

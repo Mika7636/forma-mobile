@@ -87,7 +87,7 @@ export default function FormInfoModal({ visible, onClose, building }: FormInfoMo
             }}
           >
             {building
-              ? 'Your Form Score compares long-term fitness against recent fatigue. Fitness is a 42-day average, so it needs 42 days of history before the number means anything.'
+              ? 'Your Form Score compares long-term fitness against recent fatigue. Fitness is a 42-day average, so it needs 42 days of actual training behind it before the number means anything.'
               : 'Your Form Score measures the balance between fitness and fatigue. It becomes more accurate as you log more sessions. The first 2–3 weeks are a calibration period where FORMA learns your training baseline.'}
           </Text>
 

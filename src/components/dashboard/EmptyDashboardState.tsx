@@ -78,7 +78,7 @@ export default function EmptyDashboardState({
             color: colors.text,
           }}
         >
-          Unlocks after {BASELINE_DAYS} days
+          Unlocks after {BASELINE_DAYS} training days
         </Text>
         <Text
           style={{
@@ -90,8 +90,9 @@ export default function EmptyDashboardState({
         >
           Form is your recent fatigue measured against your long-term fitness — one number
           for whether you&apos;re fresh, building, or digging a hole. Fitness is a{' '}
-          {BASELINE_DAYS}-day average, so it needs {BASELINE_DAYS} days of history before it
-          says anything real — and backdating sessions you already trained counts.
+          {BASELINE_DAYS}-day average, so it needs {BASELINE_DAYS} days you actually trained
+          before it says anything real. Rest days don&apos;t count toward it — but backdating
+          sessions you already trained does.
         </Text>
 
         <View style={{ marginTop: SPACING.base }}>

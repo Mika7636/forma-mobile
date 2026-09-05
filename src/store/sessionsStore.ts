@@ -6,6 +6,7 @@ import { collection, onSnapshot } from 'firebase/firestore'
 import { create } from 'zustand'
 import { db } from '../config/firebase'
 import { toSession } from '../services/sessionService'
+import { countTrainingDays } from '../utils/calibration'
 import type { Session } from '../types/session'
 import { useMetricsStore } from './metricsStore'
 
@@ -18,6 +19,21 @@ interface SessionsState {
   sessions: Session[]
   /** Subset of `sessions` from the last 7 days. */
   weekSessions: Session[]
+  /**
+   * Distinct calendar days carrying a session across the athlete's **whole**
+   * history — the baseline gate's meter.
+   *
+   * Counted here rather than by the gate's consumers because it is the one
+   * figure on this screen that must not be windowed. `sessions` above is
+   * deliberately cut to {@link HISTORY_WINDOW_DAYS} for the CTL maths, and
+   * counting training days inside that rolling window would cap the gate at
+   * "trained all 42 of the last 42 days" — leaving a three-times-a-week athlete
+   * parked around 18 for ever, never unlocking. The snapshot already holds all
+   * of it (the listener is unfiltered), so this costs a pass, not a read.
+   */
+  trainingDays: number
+  /** Sessions across all history, for the same reason. */
+  totalSessions: number
   /** True while a listener is attached but its first snapshot hasn't landed. */
   loading: boolean
   /**
@@ -45,6 +61,8 @@ function cutoffDate(daysAgo: number): number {
 const emptyState = {
   sessions: [] as Session[],
   weekSessions: [] as Session[],
+  trainingDays: 0,
+  totalSessions: 0,
   loading: false,
   loadedUid: null as string | null,
   error: null as Error | null,
@@ -62,7 +80,15 @@ export const useSessionsStore = create<SessionsState>((set) => ({
     // A different user signed in; drop the old listener and its data.
     teardown()
 
-    set({ sessions: [], weekSessions: [], loading: true, loadedUid: null, error: null })
+    set({
+      sessions: [],
+      weekSessions: [],
+      trainingDays: 0,
+      totalSessions: 0,
+      loading: true,
+      loadedUid: null,
+      error: null,
+    })
 
     // Deliberately an unfiltered, unordered collection listener.
     //
@@ -80,8 +106,12 @@ export const useSessionsStore = create<SessionsState>((set) => ({
         const cutoff = cutoffDate(HISTORY_WINDOW_DAYS)
         const weekCutoff = cutoffDate(WEEK_DAYS)
 
-        const sessions = snapshot.docs
-          .map((d) => toSession(d.id, d.data()))
+        // The whole history, normalised, before anything is windowed. The
+        // baseline gate is counted from this; everything else from the slice
+        // below it.
+        const all = snapshot.docs.map((d) => toSession(d.id, d.data()))
+
+        const sessions = all
           .filter((s) => new Date(s.date).getTime() >= cutoff)
           .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
@@ -89,7 +119,15 @@ export const useSessionsStore = create<SessionsState>((set) => ({
           (s) => new Date(s.date).getTime() >= weekCutoff,
         )
 
-        set({ sessions, weekSessions, loading: false, loadedUid: uid, error: null })
+        set({
+          sessions,
+          weekSessions,
+          trainingDays: countTrainingDays(all),
+          totalSessions: all.length,
+          loading: false,
+          loadedUid: uid,
+          error: null,
+        })
         // Keep derived training metrics in lockstep with the raw sessions.
         useMetricsStore.getState().recalculate(sessions)
       },

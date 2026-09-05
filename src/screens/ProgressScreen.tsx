@@ -94,8 +94,11 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   // dashboard's unresolved-only feed — a conflict from six weeks ago is still
   // the reason those two sports are worth looking at together.
   const { conflicts: allConflicts } = useConflictHistory()
-  const { sessions } = useSessionHistory()
-  const baseline = getBaselineState(sessions)
+  // `sessions` (windowed to 42 days) feeds the conflict sheet; the gate below it
+  // takes the un-windowed counts instead, because it spans all history. See
+  // `utils/calibration`.
+  const { sessions, trainingDays, totalSessions: loggedSessions } = useSessionHistory()
+  const baseline = getBaselineState({ trainingDays, sessionsLogged: loggedSessions })
   const [openConflicts, setOpenConflicts] = useState<Conflict[] | null>(null)
 
   const rangeConflicts = useMemo(() => {
@@ -200,7 +203,7 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
               title="Advanced — training model"
               subtitle="Fitness, Fatigue and Form, the way the engine sees them"
             >
-              {/* Same rule as the Dashboard hero: under 42 days of history
+              {/* Same rule as the Dashboard hero: under 42 days of training
                   the CTL/ATL/Form series is the ramp of its own averages rather
                   than a picture of the athlete, so it is withheld and the
                   window's progress shown in its place — behind the same expander,
@@ -266,9 +269,8 @@ function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {
         <Text style={{ fontWeight: WEIGHT.heavy, color: colors.infoText }}>
           Your range is still settling
         </Text>{' '}
-        — {daysCovered} of {target} days. The bars are your real
-        training; the band they&apos;re measured against will shift as FORMA learns what
-        you absorb.
+        — {daysCovered} of {target} training days. The bars are your real training; the
+        band they&apos;re measured against will shift as FORMA learns what you absorb.
       </Text>
     </View>
   )

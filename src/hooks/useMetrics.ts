@@ -39,13 +39,22 @@ export interface DashboardMetrics {
   budgetHours: number
   /** Sessions in the current week (7 days). */
   sessionCount: number
-  /** Sessions across the whole history window (last 42 days) — the calibration gate. */
+  /** Sessions in the last 42 days — the conflict engine's calibration softener. */
   totalSessionCount: number
+  /**
+   * Distinct calendar days carrying a session across **all** history — the
+   * baseline gate's meter. Not windowed, unlike everything above it, because a
+   * gate counted inside a rolling 42-day window could never open. See
+   * `utils/calibration`.
+   */
+  trainingDays: number
+  /** Sessions across all history, for the baseline card's caption. */
+  totalSessions: number
   streak: number
 }
 
 export function useMetrics(): DashboardMetrics {
-  const { sessions, loading, error } = useSessionHistory()
+  const { sessions, trainingDays, totalSessions, loading, error } = useSessionHistory()
   const budgetHours = useAuthStore((s) => s.profile?.weeklyBudgetHours ?? 0)
 
   const ctl = useMetricsStore((s) => s.ctl)
@@ -101,6 +110,8 @@ export function useMetrics(): DashboardMetrics {
     budgetHours,
     sessionCount: weekSessions.length,
     totalSessionCount: sessions.length,
+    trainingDays,
+    totalSessions,
     streak,
   }
 }

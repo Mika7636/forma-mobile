@@ -33,8 +33,13 @@ interface CalibratingFormCardProps {
  * So the readouts are not shown at all until the gate opens. What replaces them
  * is not an empty state: it is a progress state that says exactly where the
  * athlete is, and what makes it move. The meter counts the one thing the gate
- * asks for — calendar days since the first session, out of the 42 the fitness
- * average needs — so the date it points at is the date the score arrives.
+ * asks for — days they actually trained, out of the 42 the fitness average
+ * needs — so the only way to move it is the thing the button below does.
+ *
+ * It used to count calendar days since the first session, which meant it crept
+ * forward on rest weeks and promised a score on a date that had nothing to do
+ * with training. Rest days are no longer progress, so the bar no longer fills on
+ * its own.
  *
  * ## Why it is one flat card
  *
@@ -135,7 +140,7 @@ export default function CalibratingFormCard({
             color: colors.textMuted,
           }}
         >
-          of {target} days
+          of {target} training days
         </Text>
       </View>
 
@@ -158,13 +163,15 @@ export default function CalibratingFormCard({
         />
       </View>
 
-      {/* What has been logged, and what is left to wait. The countdown drops
-          off at zero rather than reading "0 days to go", which looks like a bug
-          beside a bar that has just filled. */}
+      {/* What has been logged, and what is left to earn. The countdown says
+          "training days" rather than "days" because those are not the same
+          thing any more, and the difference is the whole point of the meter
+          above it. It drops off at zero rather than reading "0 to go", which
+          looks like a bug beside a bar that has just filled. */}
       <Text style={{ marginTop: SPACING.sm, fontSize: TYPE.micro, color: colors.textMuted }}>
         {sessionsLogged} session{sessionsLogged === 1 ? '' : 's'} logged
         {daysRemaining > 0
-          ? ` · ${daysRemaining} day${daysRemaining === 1 ? '' : 's'} to go`
+          ? ` · ${daysRemaining} training day${daysRemaining === 1 ? '' : 's'} to go`
           : ''}
       </Text>
 

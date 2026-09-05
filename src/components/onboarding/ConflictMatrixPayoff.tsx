@@ -4,9 +4,9 @@
 //
 // Every screen before it takes something from the athlete — sports, hours,
 // weight, experience — and gives nothing back but a progress bar. The app then
-// lands them on a dashboard whose headline numbers need six weeks of history to
-// mean anything, which is a long time to wait to find out whether the thing you
-// signed up for is any good.
+// lands them on a dashboard whose headline numbers need 42 logged training days
+// to mean anything, which is a long time to wait to find out whether the thing
+// you signed up for is any good.
 //
 // This closes that gap with the one insight FORMA can give on day zero: their
 // own sports, run through their own interaction matrix. It is not a preview, a

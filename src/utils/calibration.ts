@@ -4,29 +4,42 @@
 // up. One place owns the thresholds so the dashboard, the conflict engine and
 // the progress guard all agree on what "new" means.
 //
-// ## The baseline gate is one condition: 42 days
+// ## The gate counts training days, not elapsed days
 //
-// Form is Fitness minus Fatigue, and Fitness is a 42-day exponentially-weighted
-// average. Forty-two days is that average's time constant — the span it needs
-// before what it reports is the athlete's accumulated training rather than the
-// seed it started from and the ramp out of it. Ask for the number earlier and
-// the answer is arithmetic about the ramp, dressed as a measurement.
+// It used to measure the calendar span from the earliest logged session to
+// today, and that was wrong in a way that showed up plainly on real accounts: an
+// athlete with twelve sessions spread across August and September read "36 of 42
+// days" and was six days from a Form Score. Thirty of those thirty-six days had
+// no training on them at all. The meter was counting the passage of time as
+// progress, and time is not what the app was waiting for.
 //
-// So the gate is exactly the thing the maths asks for and nothing else: 42
-// calendar days between the earliest logged session and today. There is no
-// second condition on how densely those days are filled. Someone who trains
-// twice a week for six weeks has a converged fitness average and a real Form
-// Score; someone who trains six times a week for ten days does not, however
-// busy the log looks. Elapsed time is what an exponential decay consumes, so
-// elapsed time is what the gate measures.
+// So {@link BASELINE_DAYS} is still 42, but it now counts **distinct calendar
+// days carrying at least one session**. Two sessions on one day are one day.
+// Rest days are not progress, because a day with no training tells FORMA nothing
+// new about the athlete — and a gate that accrued on empty days would open on an
+// account that had barely trained, publishing a Form Score built on twelve
+// sessions as though it had six weeks of evidence behind it. Only days the
+// athlete actually trained move this meter, which is the thing the meter claims
+// to be measuring.
 //
-// The span reads each session's own `date`, never `createdAt`. A session logged
-// this evening for last Tuesday is training that happened on Tuesday, and the
-// averages that consume it treat it that way; a gate that dated it to tonight
-// would disagree with the maths it is guarding. That is also the fast path out
-// of this state — an athlete with months of history behind them can backdate
-// their real sessions and the score unlocks immediately, because it genuinely
-// has 42 days to average over.
+// Every day is counted from the session's own `date`, never `createdAt`. A
+// session logged this evening for last Tuesday is training that happened on
+// Tuesday, and the averages that consume it treat it that way; a gate that dated
+// it to tonight would disagree with the maths it is guarding. That is also the
+// fast path out of this state — an athlete who has been training for months can
+// backdate their real sessions and unlock the score immediately, because those
+// are real training days that really happened.
+//
+// ## The one contract callers must honour
+//
+// {@link getBaselineState} counts over the athlete's **entire** history, so it
+// must be fed figures derived from all of it. This matters more than it looks:
+// `sessionsStore` windows its array to the last 42 calendar days for the CTL
+// maths, and counting distinct days inside a rolling 42-day window would cap the
+// gate at "trained every single day for six straight weeks" and quietly park
+// everyone else below the line for ever. The store therefore counts training
+// days over the unfiltered snapshot — see `countTrainingDays`, which it calls
+// before it windows anything — and hands the total down.
 import type { Session } from '../types/session'
 
 /**
@@ -37,7 +50,7 @@ import type { Session } from '../types/session'
  * softens warnings — one notch gentler sensitivity, no weekly-volume
  * complaints — because a handful of sessions is a poor basis for telling
  * someone they are overreaching. The baseline gate hides *numbers*, because the
- * fitness average needs its full time constant. Different question, different
+ * fitness average needs real training behind it. Different question, different
  * threshold; this one never feeds the baseline gate.
  */
 export const CALIBRATION_SESSION_TARGET = 7
@@ -45,33 +58,47 @@ export const CALIBRATION_SESSION_TARGET = 7
 export const PROGRESS_UNLOCK_SESSIONS = 5
 
 /**
- * The baseline gate: calendar days from the earliest logged session to today,
- * inclusive.
+ * The baseline gate: distinct calendar days on which at least one session was
+ * logged, across the athlete's whole history.
  *
  * Forty-two because CTL — the fitness term — is a 42-day exponentially-weighted
- * average, and 42 days is its time constant. Before then the average is still
- * converging on the athlete's actual load, so Form, which is that average minus
- * a 7-day fatigue one, moves mostly because the slow term is still climbing.
- * At 42 days it has converged, and the difference is a measurement of the
- * athlete rather than a picture of the ramp.
+ * average. That is the amount of training the slow average is built to describe,
+ * and until it has been given that much the difference between it and the 7-day
+ * fatigue average says more about the ramp than about the athlete.
+ *
+ * Counting *training* days rather than *elapsed* days is what makes the number
+ * mean what it says. See the note at the top of this file for the bug that
+ * distinction fixes.
  */
 export const BASELINE_DAYS = 42
+
+/** What the gate needs to know, counted over the athlete's full history. */
+export interface BaselineInput {
+  /**
+   * Distinct calendar days carrying at least one session, over **all** history
+   * — not over a rolling window. See the contract note at the top of this file.
+   */
+  trainingDays: number
+  /** Total sessions logged, for the card's caption. */
+  sessionsLogged: number
+}
 
 /** How far along the baseline gate an account is. */
 export interface BaselineState {
   /**
-   * True while the span is short of {@link BASELINE_DAYS}. Every CTL/ATL/Form
-   * readout must be replaced with a progress state while it holds.
+   * True while fewer than {@link BASELINE_DAYS} training days exist. Every
+   * CTL/ATL/Form readout must be replaced with a progress state while it holds.
    */
   building: boolean
   /**
-   * Span so far, clamped to {@link BASELINE_DAYS} — the "6" in "6 of 42 days".
-   * Counted from the earliest session's own date, so backdated history moves it
-   * immediately.
+   * Training days so far, clamped to {@link BASELINE_DAYS} — the "12" in "12 of
+   * 42 training days". Backdated sessions move it immediately, because they are
+   * days the athlete really trained.
    */
   daysCovered: number
   /** {@link BASELINE_DAYS}, for callers that render the meter. */
   target: number
+  /** Training days still needed. Floored at 0. */
   daysRemaining: number
   /** `daysCovered / target`, clamped to 0–1, for a progress bar. */
   fraction: number
@@ -81,58 +108,69 @@ export interface BaselineState {
 /**
  * A local calendar-day index for a date.
  *
- * Built from the date's *local* Y/M/D and re-anchored through `Date.UTC`, so
- * subtracting two indices gives whole calendar days however the clocks moved
- * between them. Dividing a millisecond difference by 86.4e6 does not: across a
- * DST boundary it is an hour out, which floors to the wrong day whenever the
- * window straddles late March or late October.
+ * Built from the date's *local* Y/M/D and re-anchored through `Date.UTC`, so two
+ * sessions on the same local day always produce the same index however the
+ * clocks moved. Bucketing on the raw timestamp divided by 86.4e6 does not: that
+ * is a UTC day boundary, so an evening session west of Greenwich lands on
+ * tomorrow and one calendar day of training is counted as two.
  *
  * Returns `null` for anything unparseable, so a bad row is skipped rather than
- * poisoning the span with `NaN`.
+ * adding a `NaN` day to the set.
  */
 function dayIndex(value: string | Date): number | null {
+  // The type check is not redundant with the NaN check below it. `new Date(null)`
+  // is the *epoch*, not an invalid date — so a null `date` slipping through from
+  // Firestore would pass `getTime()` and silently add 1 Jan 1970 to the set as a
+  // real training day. `toSession` should never produce one, but this function's
+  // contract is "skip a bad row", and only rejecting the type actually keeps it.
+  if (!(value instanceof Date) && typeof value !== 'string') return null
   const d = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(d.getTime())) return null
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000)
 }
 
 /**
- * Where an account stands against the baseline gate, and whether that clears
- * the bar for showing a Form Score.
+ * Distinct local calendar days on which at least one of `sessions` was logged.
  *
- * History is measured from the **first logged session**, not from registration.
- * An account created three months ago whose owner logged their first run this
- * morning has one day of training data, and the averages know it; dating the
- * window from sign-up would hand that user a Form Score built on a single
- * session. The day the first session lands counts as day one, so a user who logs
- * something today reads "1 of 42 days" rather than a demoralising zero.
+ * A `Set` rather than a sort-and-scan because duplicates are the common case
+ * here: several sessions on one day is what a training day often looks like, and
+ * it has to count once. Unparseable dates are skipped rather than counted.
+ *
+ * Exported because the sessions store calls it on the **unfiltered** snapshot,
+ * before it windows the array down to the CTL period — see the contract note at
+ * the top of this file for why that ordering is load-bearing.
  */
-export function getBaselineState(sessions: Session[], now = new Date()): BaselineState {
-  const today = dayIndex(now)
-
-  let earliest = Number.POSITIVE_INFINITY
+export function countTrainingDays(sessions: Session[]): number {
+  const days = new Set<number>()
   for (const s of sessions) {
     // The session's own `date`, so backdated training counts toward the day it
     // happened — the same day the averages credit it to.
     const day = dayIndex(s.date)
     if (day === null) continue
-    if (day < earliest) earliest = day
+    days.add(day)
   }
+  return days.size
+}
 
-  // An unparseable set of dates is not six weeks of history; treat it as none
-  // rather than letting `Infinity` fall through as a covered window.
-  const spanDays =
-    Number.isFinite(earliest) && today !== null ? Math.max(0, today - earliest) + 1 : 0
-
-  const daysCovered = Math.min(spanDays, BASELINE_DAYS)
+/**
+ * Where an account stands against the baseline gate, and whether that clears the
+ * bar for showing a Form Score.
+ *
+ * Measured in days the athlete trained, so an account that logs its first
+ * session today reads "1 of 42 training days" rather than a demoralising zero,
+ * and one that has not trained since August stays exactly where it was rather
+ * than drifting toward a score it has not earned.
+ */
+export function getBaselineState({ trainingDays, sessionsLogged }: BaselineInput): BaselineState {
+  const daysCovered = Math.max(0, Math.min(trainingDays, BASELINE_DAYS))
 
   return {
     building: daysCovered < BASELINE_DAYS,
     daysCovered,
     target: BASELINE_DAYS,
-    daysRemaining: BASELINE_DAYS - daysCovered,
+    daysRemaining: Math.max(0, BASELINE_DAYS - daysCovered),
     fraction: clamp01(daysCovered / BASELINE_DAYS),
-    sessionsLogged: sessions.length,
+    sessionsLogged,
   }
 }
 

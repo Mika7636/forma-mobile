@@ -64,19 +64,23 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     weeklyDistanceKm,
     budgetHours,
     sessionCount,
+    trainingDays,
+    totalSessions,
     streak,
   } = useMetrics()
   const { conflicts, dismissConflict } = useConflicts()
   const { byDay: plannedByDay, conflictsByDay: plannedConflictsByDay } = usePlannedSessions()
 
   /**
-   * Under 42 days of history — the fitness average's time constant — the Form
-   * Score is an artefact of the CTL/ATL ramp rather than a measurement, so the
-   * hero shows how far along the baseline is instead of publishing a number the
-   * app can't stand behind. See `getBaselineState` for why the window is
-   * counted in elapsed days rather than in sessions.
+   * Under 42 days of actual *training*, the Form Score is an artefact of the
+   * CTL/ATL ramp rather than a measurement, so the hero shows how far along the
+   * baseline is instead of publishing a number the app can't stand behind.
+   *
+   * Fed from the un-windowed counts rather than from `sessions`, which is cut to
+   * the last 42 calendar days — see `utils/calibration` for why that difference
+   * decides whether the gate can ever open.
    */
-  const baseline = getBaselineState(sessions)
+  const baseline = getBaselineState({ trainingDays, sessionsLogged: totalSessions })
 
   const [refreshing, setRefreshing] = useState(false)
   const isMounted = useIsMounted()

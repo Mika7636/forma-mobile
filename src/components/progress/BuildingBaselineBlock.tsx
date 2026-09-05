@@ -1,8 +1,8 @@
 // The Advanced expander's contents while the baseline gate is still closed.
 //
 // Fitness, Fatigue and Form are three exponentially-weighted averages, and
-// until 42 days have passed a chart of them is mostly a picture of those
-// averages charging up from their seeds. Drawing it would put a confident line
+// until 42 days of training have gone into them a chart of them is mostly a
+// picture of those averages charging up from their seeds. Drawing it would put a confident line
 // on screen that says more about the maths than about the athlete — and it is
 // the same line the Dashboard hero refuses to reduce to a Form Score, so
 // showing it here would let one screen contradict the other.
@@ -28,10 +28,10 @@ export default function BuildingBaselineBlock({ baseline }: { baseline: Baseline
       <Text
         style={{ marginTop: 6, fontSize: TYPE.small, lineHeight: 19, color: colors.textMuted }}
       >
-        Fitness is a rolling 42-day average, so it needs 42 days since your first
-        session before its difference from Fatigue tracks you rather than the maths.
-        Until then FORMA holds the chart back instead of drawing a confident line
-        through an average that is still filling.
+        Fitness is a rolling 42-day average, so it needs 42 days you actually trained
+        before its difference from Fatigue tracks you rather than the maths. Rest days
+        don&apos;t move it. Until then FORMA holds the chart back instead of drawing a
+        confident line through an average that is still filling.
       </Text>
 
       <Text
@@ -43,7 +43,7 @@ export default function BuildingBaselineBlock({ baseline }: { baseline: Baseline
           color: colors.textBody,
         }}
       >
-        {daysCovered} of {target} days
+        {daysCovered} of {target} training days
       </Text>
       <View
         style={{
