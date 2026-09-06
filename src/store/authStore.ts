@@ -14,6 +14,7 @@ import {
 import { AppState, type AppStateStatus } from 'react-native'
 import { create } from 'zustand'
 import { auth } from '../config/firebase'
+import { DEMO_EMAIL, DEMO_PASSWORD, isDemoEmail } from '../config/demo'
 import { createUserProfile, deleteUserProfile, readUserProfile } from '../services/userService'
 import {
   clearProfileCache,
@@ -82,6 +83,16 @@ interface AuthState {
    */
   refreshProfile: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
+  /**
+   * Sign into the pre-seeded demo account, using the credentials this build was
+   * compiled with.
+   *
+   * A thin wrapper over {@link signIn} and nothing more — deliberately, because
+   * the *state* of being in demo mode is not set here. It is derived from the
+   * signed-in email by {@link useIsDemo}, so it survives the app being killed
+   * and relaunched, which a flag written on this code path would not.
+   */
+  signInDemo: () => Promise<void>
   signUp: (email: string, password: string, name: string) => Promise<void>
   signOut: () => Promise<void>
   /** Replaces the cached profile (e.g. after onboarding writes to Firestore). */
@@ -262,6 +273,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  signInDemo: async () => {
+    if (!DEMO_EMAIL || !DEMO_PASSWORD) {
+      const message = 'Demo mode is not configured in this build.'
+      set({ error: message })
+      throw new Error(message)
+    }
+    await get().signIn(DEMO_EMAIL, DEMO_PASSWORD)
+  },
+
   signUp: async (email, password, name) => {
     set({ error: null })
     registering = true
@@ -339,6 +359,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 }))
+
+/**
+ * Whether this session is the demo account.
+ *
+ * Derived from the signed-in identity rather than remembered, so it is correct
+ * on a cold start, after a force-close, and after Firebase restores a persisted
+ * session — every path by which the demo handset can arrive at the Dashboard
+ * without anybody having tapped "Try Demo" in this process. A remembered flag
+ * would be false on all of them, and a demo phone with the badge missing and
+ * Settings unlocked is exactly the failure this avoids.
+ *
+ * Reads the Firestore profile's email first and the auth user's second: they are
+ * the same address, but the profile is what the rest of the app treats as the
+ * account's identity, and it is present before the auth object on a cache-warm
+ * start.
+ */
+export function useIsDemo(): boolean {
+  return useAuthStore((state) => isDemoEmail(state.profile?.email ?? state.user?.email))
+}
 
 /* ------------------------------------------------------------------ */
 /* Module-scoped plumbing                                              */

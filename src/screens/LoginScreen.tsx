@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +16,8 @@ import FormInput from '../components/ui/FormInput'
 import FormaLogo from '../components/ui/FormaLogo'
 import PrimaryButton from '../components/ui/PrimaryButton'
 import { useAuthStore } from '../store/authStore'
+import { DEMO_AVAILABLE } from '../config/demo'
+import { MIN_TOUCH, RADIUS, TYPE, WEIGHT } from '../theme/tokens'
 import type { LoginScreenProps } from '../navigation/types'
 import { useTheme } from '../theme/ThemeProvider'
 
@@ -22,12 +25,14 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const { colors } = useTheme()
 
   const signIn = useAuthStore((s) => s.signIn)
+  const signInDemo = useAuthStore((s) => s.signInDemo)
   const error = useAuthStore((s) => s.error)
   const clearError = useAuthStore((s) => s.clearError)
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [demoSubmitting, setDemoSubmitting] = useState(false)
 
   // Success banner shown after registering (RegisterScreen redirects here).
   const justRegistered = route.params?.registered === true
@@ -40,8 +45,30 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     clearError()
   }, [clearError])
 
+  /**
+   * Sign into the pre-seeded demo account.
+   *
+   * Kept entirely separate from {@link handleLogin} rather than reusing it with
+   * arguments: this path must never read the email/password fields, so that
+   * half-typed credentials left in them by a previous tester cannot end up being
+   * submitted by a button labelled "Try Demo".
+   */
+  const handleDemo = async () => {
+    if (submitting || demoSubmitting) return
+    clearError()
+    setDemoSubmitting(true)
+    try {
+      await signInDemo()
+      // RootNavigator swaps to the app; DemoChrome puts the badge up.
+    } catch {
+      haptics.error()
+    } finally {
+      setDemoSubmitting(false)
+    }
+  }
+
   const handleLogin = async () => {
-    if (submitting) return
+    if (submitting || demoSubmitting) return
     clearError()
 
     if (!email.trim() || !password) {
@@ -159,6 +186,61 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             loading={submitting}
             style={{ marginTop: 12 }}
           />
+
+          {/* Secondary, and visibly so: outlined rather than filled, under the
+              real sign-in rather than beside it. It is an escape hatch for
+              somebody who has been handed the phone, not a second front door —
+              a returning athlete should never have to work out which of two
+              equally weighted buttons is theirs.
+
+              Absent entirely from a build that was compiled without the demo
+              credentials, which is every ordinary build. See `config/demo`. */}
+          {DEMO_AVAILABLE ? (
+            <>
+              <Pressable
+                onPress={handleDemo}
+                disabled={demoSubmitting || submitting}
+                accessibilityRole="button"
+                accessibilityLabel="Try the demo account"
+                accessibilityState={{ disabled: demoSubmitting || submitting, busy: demoSubmitting }}
+                style={{
+                  marginTop: 12,
+                  height: 52,
+                  minHeight: MIN_TOUCH,
+                  borderRadius: RADIUS.md,
+                  borderWidth: 1.5,
+                  borderColor: colors.accent,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: demoSubmitting || submitting ? 0.6 : 1,
+                }}
+              >
+                {demoSubmitting ? (
+                  <ActivityIndicator color={colors.accent} />
+                ) : (
+                  <Text
+                    style={{
+                      color: colors.accentText,
+                      fontSize: TYPE.subtitle,
+                      fontWeight: WEIGHT.bold,
+                    }}
+                  >
+                    Try Demo
+                  </Text>
+                )}
+              </Pressable>
+              <Text
+                style={{
+                  marginTop: 8,
+                  textAlign: 'center',
+                  fontSize: TYPE.micro,
+                  color: colors.textSubtle,
+                }}
+              >
+                Explore FORMA with twelve weeks of sample training data.
+              </Text>
+            </>
+          ) : null}
 
           <View
             style={{

@@ -1,0 +1,29 @@
+{
+  // Seed-script build. Same reasoning as `tsconfig.test.json`: Node's ESM loader
+  // demands explicit file extensions on every import and this codebase is
+  // written for Metro, which does not — so the script is compiled to CommonJS
+  // and run from the output rather than rewriting the app's imports to suit it.
+  //
+  // `files` lists only the entry point and tsc follows its imports, which is a
+  // load-bearing constraint rather than a convenience: the seed script reaches
+  // into `src/algorithms` and `src/utils` so that the account it builds is
+  // verified by the app's real modules. If somebody gives one of those a
+  // dependency on React Native, this build starts pulling in the world and the
+  // breakage is visible here rather than at the pitch.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "outDir": "seed-build",
+    "rootDir": ".",
+    "noEmit": false,
+    "skipLibCheck": true,
+    "types": ["node"],
+    // The app is compiled for React Native, where `lib` comes from Expo's base
+    // config. Node needs DOM-free ES libs plus the ES2022 surface the target
+    // above emits against.
+    "lib": ["ES2022"]
+  },
+  "files": ["scripts/seed-demo.ts"]
+}

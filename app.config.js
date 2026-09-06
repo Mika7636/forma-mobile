@@ -35,6 +35,27 @@ const base = require('./app.json')
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY
 
+// Demo-mode credentials, for the "Try Demo" button on the login screen.
+//
+// Read from the environment for the same reason the Maps key is: so the values
+// live in a git-ignored `.env` (or in EAS) rather than in the repository. The
+// same two variables configure `npm run seed:demo`, so the account the button
+// signs into and the account the script seeds cannot drift apart.
+//
+// **This does not make the password secret, and it is not meant to.** `extra` is
+// readable from JS at runtime and the values are baked into the APK, exactly as
+// the Maps key above is — anyone who unpacks the binary can read them. That is
+// acceptable *only* because of what this account is: a throwaway identity
+// holding synthetic training data, which the whole world is about to be handed a
+// phone and invited to poke at. Never point these at an account with anything
+// real in it, and rotate the password after the demo.
+//
+// With neither set the button does not render at all, so an ordinary build is
+// unchanged and a build that forgot the variables fails visibly at build time
+// rather than showing testers a button that cannot work.
+const FORMA_DEMO_EMAIL = process.env.FORMA_DEMO_EMAIL
+const FORMA_DEMO_PASSWORD = process.env.FORMA_DEMO_PASSWORD
+
 // Expo evaluates this config several times per command; warn once per process
 // so the notice is visible without burying the Metro log.
 let warned = false
@@ -49,6 +70,17 @@ module.exports = ({ config }) => {
   // boolean is exposed - never the key itself - because `extra` is readable from
   // JS at runtime, and the app has no reason to know the value.
   expo.extra = { ...(expo.extra ?? {}), googleMapsConfigured: Boolean(GOOGLE_MAPS_API_KEY) }
+
+  // Both or neither: half a credential pair is a button that fails on tap, which
+  // is worse at a pitch than no button at all.
+  if (FORMA_DEMO_EMAIL && FORMA_DEMO_PASSWORD) {
+    expo.extra.demoAccount = { email: FORMA_DEMO_EMAIL, password: FORMA_DEMO_PASSWORD }
+  } else if (FORMA_DEMO_EMAIL || FORMA_DEMO_PASSWORD) {
+    console.warn(
+      '\n⚠️  Only one of FORMA_DEMO_EMAIL / FORMA_DEMO_PASSWORD is set.\n' +
+        '   Demo mode needs both, so the "Try Demo" button will not be shown.\n',
+    )
+  }
 
   if (GOOGLE_MAPS_API_KEY) {
     expo.plugins = [

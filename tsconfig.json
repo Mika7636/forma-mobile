@@ -8,5 +8,13 @@
   // the app's own types — putting Node globals in scope for React Native code,
   // where `process`, `Buffer` and friends mostly do not exist and a reference to
   // one would typecheck cleanly and then fail on a phone.
-  "exclude": ["**/*.test.ts", "**/*.test.tsx", "test-build"]
+  //
+  // `scripts/` is excluded for exactly that reason and no other: the demo seeder
+  // is a Node program that reads `.env` off the filesystem and calls
+  // `process.exit`. It has its own build in `tsconfig.seed.json`, which is what
+  // `npm run seed:demo` runs — so it is still fully typechecked, just not against
+  // the React Native lib set. The modules it shares with the app
+  // (`src/services/demoStory` and friends) stay in *this* project and are checked
+  // here as well, which is the half that actually ships.
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "test-build", "scripts", "seed-build"]
 }

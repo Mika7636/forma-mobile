@@ -33,8 +33,13 @@ import {
   getBudgetTier,
 } from '../constants/training'
 import { clearTrainingData } from '../services/sessionService'
+import { resetDemoData } from '../services/demoService'
 import { getUserProfile, updateUserProfile } from '../services/userService'
-import { useAuthStore } from '../store/authStore'
+import {
+  DEMO_BLOCKED_DESCRIPTION,
+  DEMO_BLOCKED_TITLE,
+} from '../config/demo'
+import { useAuthStore, useIsDemo } from '../store/authStore'
 import { useIsMounted } from '../hooks/useSafeTimeout'
 import { isOffline } from '../store/networkStore'
 import { toast } from '../store/toastStore'
@@ -51,7 +56,7 @@ import type {
   User,
   WeightUnit,
 } from '../types/user'
-import { SPACING, TYPE, cardStyle, onColor } from '../theme/tokens'
+import { RADIUS, SPACING, TYPE, cardStyle, onColor } from '../theme/tokens'
 import { sportVisual } from '../utils/sportMeta'
 import AppearanceSetting from '../components/settings/AppearanceSetting'
 import { useTheme } from '../theme/ThemeProvider'
@@ -71,6 +76,7 @@ export default function SettingsScreen() {
   const tabPadding = useTabContentPadding()
 
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
+  const isDemo = useIsDemo()
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
   const setProfile = useAuthStore((s) => s.setProfile)
@@ -106,6 +112,8 @@ export default function SettingsScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resettingDemo, setResettingDemo] = useState(false)
 
   const pendingRef = useRef<Partial<User>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -150,6 +158,24 @@ export default function SettingsScreen() {
     [flush],
   )
 
+  /**
+   * Refuse a settings change while the demo account is signed in, and say why.
+   *
+   * Returns `true` when the caller should stop. Every handler that writes to the
+   * profile calls this first — see `config/demo` for why the line is drawn at
+   * profile writes specifically, and why logging and editing sessions is
+   * deliberately still allowed.
+   *
+   * A toast rather than an alert: a stranger poking at a settings screen should
+   * be told what happened and left where they are, not made to dismiss a modal
+   * for something they were only exploring.
+   */
+  const blockedInDemo = useCallback((): boolean => {
+    if (!isDemo) return false
+    toast.info(DEMO_BLOCKED_TITLE, { description: DEMO_BLOCKED_DESCRIPTION })
+    return true
+  }, [isDemo])
+
   // Unmounting mid-debounce (log out right after typing a name) would drop the
   // pending write, so flush it on the way out. The write is fire-and-forget:
   // Firestore queues it locally and sends it once the tree is already gone.
@@ -167,11 +193,13 @@ export default function SettingsScreen() {
 
   // --- Field handlers ---
   const onChangeName = (text: string) => {
+    if (blockedInDemo()) return
     setDisplayName(text)
     queueSave({ displayName: text.trim() })
   }
 
   const toggleSport = (value: SportType) => {
+    if (blockedInDemo()) return
     const next = sports.includes(value)
       ? sports.filter((s) => s !== value)
       : [...sports, value]
@@ -188,6 +216,7 @@ export default function SettingsScreen() {
   }
 
   const onBudgetChange = (value: number) => {
+    if (blockedInDemo()) return
     const hours = Math.round(value)
     if (hours === budget) return
     setBudget(hours)
@@ -199,6 +228,7 @@ export default function SettingsScreen() {
   }
 
   const onSelectExperience = (value: ExperienceLevel) => {
+    if (blockedInDemo()) return
     haptics.selection()
     setExperience(value)
     queueSave({
@@ -209,6 +239,7 @@ export default function SettingsScreen() {
   }
 
   const onChangeWeight = (text: string) => {
+    if (blockedInDemo()) return
     const cleaned = text.replace(/[^0-9]/g, '').slice(0, 3)
     setWeightInput(cleaned)
     const num = parseInt(cleaned, 10)
@@ -220,6 +251,7 @@ export default function SettingsScreen() {
 
   const onToggleUnit = (unit: WeightUnit) => {
     if (unit === weightUnit) return
+    if (blockedInDemo()) return
     haptics.selection()
     const num = parseFloat(weightInput)
     if (!Number.isNaN(num)) {
@@ -235,11 +267,13 @@ export default function SettingsScreen() {
   // Haptics for these two live in the child components (ConflictSensitivity /
   // SportInteractionMatrix), so the handlers just persist.
   const onSelectSensitivity = (value: SensitivityLevel) => {
+    if (blockedInDemo()) return
     setSensitivity(value)
     queueSave({ conflictSensitivity: value })
   }
 
   const onSetInteraction = (a: SportType, b: SportType, level: number) => {
+    if (blockedInDemo()) return
     const next = { ...interactions, [pairKey(a, b)]: level }
     setInteractions(next)
     queueSave({ sportInteractions: next })
@@ -249,6 +283,7 @@ export default function SettingsScreen() {
   // the saved preferences and reconciles the OS schedule, so a toggle can't
   // leave an orphaned notification behind. Haptics live in the child.
   const onChangeNotifications = (next: NotificationPreferences) => {
+    if (blockedInDemo()) return
     setNotifications(next)
     queueSave({ notificationPreferences: next })
   }
@@ -281,6 +316,21 @@ export default function SettingsScreen() {
   // --- Destructive actions ---
   const handleLogout = () => {
     haptics.warning()
+    // Same action, different words. On the demo handset "log out" describes
+    // nothing the person holding it did — they never logged in — and the useful
+    // reassurance is that the sample data survives, which is not what a
+    // destructive-styled "are you sure you want to log out" conveys.
+    if (isDemo) {
+      Alert.alert(
+        'Leave the demo?',
+        'This returns to the login screen. Tap "Try Demo" there to come back — the sample data is untouched.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Exit Demo', onPress: () => void signOut() },
+        ],
+      )
+      return
+    }
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log Out', style: 'destructive', onPress: () => void signOut() },
@@ -290,6 +340,9 @@ export default function SettingsScreen() {
   const handleClearData = async () => {
     const uid = user?.uid
     if (!uid) return
+    // Belt and braces: the button is already hidden in demo mode, but this is
+    // the one action that would destroy the seeded story outright.
+    if (blockedInDemo()) return
     try {
       await clearTrainingData(uid)
       setClearOpen(false)
@@ -308,6 +361,7 @@ export default function SettingsScreen() {
   }
 
   const handleDeleteAccount = async () => {
+    if (blockedInDemo()) return
     try {
       await deleteAccount()
       // On success RootNavigator swaps to the auth stack automatically.
@@ -322,6 +376,62 @@ export default function SettingsScreen() {
       } else {
         Alert.alert('Could not delete account', 'Something went wrong. Please try again.')
       }
+    }
+  }
+
+  /**
+   * Put the demo account back the way it was seeded.
+   *
+   * Runs the same generator the seed script runs, re-anchored to now — so a
+   * reset on the afternoon of the pitch produces a twelve-week story ending that
+   * afternoon, not a replay of whatever window existed when the script was run.
+   * See `services/demoService`.
+   *
+   * The rebuilt profile is pushed into the auth store and back into this
+   * screen's own form state, because the reset rewrites the profile too: leaving
+   * the sliders showing the previous tester's values while Firestore held the
+   * seeded ones would make the next edit write the stale figures back.
+   */
+  const handleResetDemo = async () => {
+    const uid = user?.uid
+    if (!uid || resettingDemo) return
+    setResettingDemo(true)
+    try {
+      const result = await resetDemoData(uid, profile?.email ?? user?.email)
+      setProfile(result.profile)
+      setDisplayName(result.profile.displayName)
+      setSports(result.profile.sports)
+      setBudget(result.profile.weeklyBudgetHours)
+      setExperience(result.profile.experienceLevel)
+      setWeightUnit(result.profile.weightUnit ?? 'kg')
+      setWeightInput(String(result.profile.weightKg ?? 70))
+      setSensitivity(result.profile.conflictSensitivity ?? 'balanced')
+      setInteractions(result.profile.sportInteractions ?? {})
+      setNotifications(withPreferenceDefaults(result.profile.notificationPreferences))
+      setResetOpen(false)
+
+      // Named failures rather than a bare "done": the operator is about to hand
+      // the phone to a stranger, and "which screen should I check first" is the
+      // only useful thing to say when a condition did not come back.
+      if (result.failedChecks.length > 0) {
+        toast.warning('Demo data reset, with warnings', {
+          description: `Check: ${result.failedChecks.join('; ')}`,
+          duration: 7000,
+        })
+      } else {
+        toast.success('Demo data reset', {
+          description: `${result.sessions} sessions, ${result.conflicts} conflicts and ${result.planned} planned sessions restored.`,
+        })
+      }
+    } catch {
+      setResetOpen(false)
+      toast.error('Could not reset the demo', {
+        description: isOffline()
+          ? "You're offline — reconnect and try again."
+          : 'Some data may be half-written. Try again before the next tester.',
+      })
+    } finally {
+      if (isMounted.current) setResettingDemo(false)
     }
   }
 
@@ -412,19 +522,28 @@ export default function SettingsScreen() {
                   <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted }}>
                     DISPLAY NAME
                   </Text>
-                  <TextInput
-                    value={displayName}
-                    onChangeText={onChangeName}
-                    placeholder="Your name"
-                    placeholderTextColor={colors.textSubtle}
-                    style={{
-                      marginTop: 2,
-                      fontSize: 18,
-                      fontWeight: '700',
-                      color: colors.text,
-                      paddingVertical: 2,
-                    }}
-                  />
+                  {/* In demo mode the field is locked rather than merely
+                      unsaved. Leaving it editable and silently discarding the
+                      write would let a tester rename the athlete on screen and
+                      watch the name revert on the next render, which reads as a
+                      bug; `pointerEvents="none"` hands the tap to the wrapper,
+                      which explains instead. */}
+                  <DemoLock active={isDemo} onBlocked={blockedInDemo}>
+                    <TextInput
+                      value={displayName}
+                      onChangeText={onChangeName}
+                      editable={!isDemo}
+                      placeholder="Your name"
+                      placeholderTextColor={colors.textSubtle}
+                      style={{
+                        marginTop: 2,
+                        fontSize: 18,
+                        fontWeight: '700',
+                        color: colors.text,
+                        paddingVertical: 2,
+                      }}
+                    />
+                  </DemoLock>
                 </View>
               </View>
 
@@ -507,17 +626,23 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               </View>
-              <Slider
-                style={{ width: '100%', height: 40, marginTop: 12 }}
-                minimumValue={BUDGET_MIN}
-                maximumValue={BUDGET_MAX}
-                step={1}
-                value={budget}
-                onValueChange={onBudgetChange}
-                minimumTrackTintColor={colors.accent}
-                maximumTrackTintColor={colors.border}
-                thumbTintColor={colors.accent}
-              />
+              {/* Disabled as well as guarded: the handler alone would let the
+                  thumb be dragged the length of the track and snap back, which
+                  looks like the control is broken rather than locked. */}
+              <DemoLock active={isDemo} onBlocked={blockedInDemo}>
+                <Slider
+                  style={{ width: '100%', height: 40, marginTop: 12 }}
+                  minimumValue={BUDGET_MIN}
+                  maximumValue={BUDGET_MAX}
+                  step={1}
+                  value={budget}
+                  disabled={isDemo}
+                  onValueChange={onBudgetChange}
+                  minimumTrackTintColor={colors.accent}
+                  maximumTrackTintColor={colors.border}
+                  thumbTintColor={colors.accent}
+                />
+              </DemoLock>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 {['Casual', 'Active', 'Serious', 'Elite'].map((label) => (
                   <Text key={label} style={{ fontSize: 11, color: colors.textSubtle }}>
@@ -581,14 +706,17 @@ export default function SettingsScreen() {
                     paddingHorizontal: 14,
                   }}
                 >
-                  <TextInput
-                    value={weightInput}
-                    onChangeText={onChangeWeight}
-                    keyboardType="number-pad"
-                    placeholder="70"
-                    placeholderTextColor={colors.textSubtle}
-                    style={{ height: 50, fontSize: 18, color: colors.text }}
-                  />
+                  <DemoLock active={isDemo} onBlocked={blockedInDemo}>
+                    <TextInput
+                      value={weightInput}
+                      onChangeText={onChangeWeight}
+                      editable={!isDemo}
+                      keyboardType="number-pad"
+                      placeholder="70"
+                      placeholderTextColor={colors.textSubtle}
+                      style={{ height: 50, fontSize: 18, color: colors.text }}
+                    />
+                  </DemoLock>
                 </View>
                 <View
                   style={{
@@ -708,6 +836,58 @@ export default function SettingsScreen() {
               />
             </Card>
 
+            {/* Demo — only ever rendered on the demo account. */}
+            {isDemo ? (
+              <Card title="Demo">
+                <Text
+                  style={{
+                    fontSize: TYPE.small,
+                    lineHeight: 19,
+                    color: colors.textBody,
+                    marginBottom: SPACING.md,
+                  }}
+                >
+                  Restores the twelve-week sample history, its conflicts and next
+                  week&apos;s plan — including anything a previous tester logged or
+                  edited. Run this between testers.
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    haptics.medium()
+                    setResetOpen(true)
+                  }}
+                  disabled={resettingDemo}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset demo data"
+                  accessibilityState={{ disabled: resettingDemo, busy: resettingDemo }}
+                  style={{
+                    height: 50,
+                    borderRadius: RADIUS.md,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1.5,
+                    borderColor: colors.accent,
+                    backgroundColor: colors.surface,
+                    opacity: resettingDemo ? 0.6 : 1,
+                  }}
+                >
+                  {resettingDemo ? (
+                    <ActivityIndicator color={colors.accent} />
+                  ) : (
+                    <Text
+                      style={{
+                        color: colors.accentText,
+                        fontSize: TYPE.subtitle,
+                        fontWeight: '700',
+                      }}
+                    >
+                      Reset Demo Data
+                    </Text>
+                  )}
+                </Pressable>
+              </Card>
+            ) : null}
+
             {/* Data */}
             <Card title="Data">
               <Pressable
@@ -718,18 +898,26 @@ export default function SettingsScreen() {
                   Export Data
                 </Text>
               </Pressable>
-              <View style={{ height: 1, backgroundColor: colors.border }} />
-              <Pressable
-                onPress={() => {
-                  haptics.medium()
-                  setClearOpen(true)
-                }}
-                style={{ paddingVertical: 12 }}
-              >
-                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.dangerText }}>
-                  Clear All Training Data
-                </Text>
-              </Pressable>
+              {/* Hidden rather than disabled on the demo account: "Reset Demo
+                  Data" above already covers the only reason anybody would reach
+                  for it here, and a greyed-out destructive control invites the
+                  one tester who wants to find out what it does. */}
+              {isDemo ? null : (
+                <>
+                  <View style={{ height: 1, backgroundColor: colors.border }} />
+                  <Pressable
+                    onPress={() => {
+                      haptics.medium()
+                      setClearOpen(true)
+                    }}
+                    style={{ paddingVertical: 12 }}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: colors.dangerText }}>
+                      Clear All Training Data
+                    </Text>
+                  </Pressable>
+                </>
+              )}
             </Card>
 
             {/* Account */}
@@ -747,20 +935,27 @@ export default function SettingsScreen() {
                 }}
               >
                 <Text style={{ color: colors.dangerText, fontSize: 16, fontWeight: '700' }}>
-                  Log Out
+                  {isDemo ? 'Exit Demo' : 'Log Out'}
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={() => {
-                  haptics.medium()
-                  setDeleteOpen(true)
-                }}
-                style={{ alignSelf: 'center', marginTop: 14, padding: 6 }}
-              >
-                <Text style={{ fontSize: TYPE.body, fontWeight: '700', color: colors.dangerText }}>
-                  Delete Account
-                </Text>
-              </Pressable>
+              {/* Deleting the demo account would end the demo permanently, and
+                  no amount of type-to-confirm makes that a risk worth leaving on
+                  a phone in a stranger's hands. */}
+              {isDemo ? null : (
+                <Pressable
+                  onPress={() => {
+                    haptics.medium()
+                    setDeleteOpen(true)
+                  }}
+                  style={{ alignSelf: 'center', marginTop: 14, padding: 6 }}
+                >
+                  <Text
+                    style={{ fontSize: TYPE.body, fontWeight: '700', color: colors.dangerText }}
+                  >
+                    Delete Account
+                  </Text>
+                </Pressable>
+              )}
             </Card>
             </>
           )}
@@ -777,6 +972,80 @@ export default function SettingsScreen() {
         onConfirm={handleClearData}
         onClose={() => setClearOpen(false)}
       />
+
+      {/* Reset the demo. A plain confirm rather than type-to-confirm: it is run
+          repeatedly, by the person running the pitch, and it restores rather
+          than destroys — the friction the other two modals exist to add would
+          only be in the way here. */}
+      <Modal
+        visible={resetOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setResetOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.scrim,
+            justifyContent: 'center',
+            paddingHorizontal: 24,
+          }}
+        >
+          <Animated.View
+            entering={FadeInDown.duration(200)}
+            style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 20 }}
+          >
+            <Text
+              style={{ fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center' }}
+            >
+              Reset demo data?
+            </Text>
+            <Text
+              style={{
+                marginTop: 10,
+                fontSize: 14,
+                lineHeight: 20,
+                color: colors.textBody,
+                textAlign: 'center',
+              }}
+            >
+              Everything logged or edited during this session is removed and the sample
+              twelve-week history is rebuilt, ending today.
+            </Text>
+            <Pressable
+              onPress={() => void handleResetDemo()}
+              disabled={resettingDemo}
+              accessibilityRole="button"
+              style={{
+                height: 50,
+                borderRadius: 12,
+                marginTop: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.accent,
+                opacity: resettingDemo ? 0.7 : 1,
+              }}
+            >
+              {resettingDemo ? (
+                <ActivityIndicator color={colors.onAccent} />
+              ) : (
+                <Text style={{ color: colors.onAccent, fontSize: 16, fontWeight: '700' }}>
+                  Reset
+                </Text>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => setResetOpen(false)}
+              disabled={resettingDemo}
+              style={{ height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 6 }}
+            >
+              <Text style={{ color: colors.textMuted, fontSize: 15, fontWeight: '700' }}>
+                Cancel
+              </Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </Modal>
 
       {/* Type-to-confirm: delete account */}
       <ConfirmTypeModal
@@ -816,6 +1085,48 @@ function Card({ title, children }: { title?: string; children: React.ReactNode }
       ) : null}
       {children}
     </View>
+  )
+}
+
+/**
+ * Makes a control inert and turns a tap on it into an explanation.
+ *
+ * Only for the controls that would otherwise *appear* to accept input — a text
+ * field, a slider. The tile-style controls (sports, experience, sensitivity) are
+ * all fully controlled by props, so a guarded handler is enough: nothing moves
+ * and the toast is the only response. These three move on their own before any
+ * handler runs, which is why they need the touches intercepted rather than the
+ * writes refused.
+ *
+ * `pointerEvents="none"` on the inner view rather than `disabled` on the control
+ * itself, because a disabled `TextInput` on Android still swallows the touch and
+ * the wrapper would never hear it — the tap would do nothing at all, which is
+ * the outcome this exists to avoid.
+ */
+function DemoLock({
+  active,
+  onBlocked,
+  children,
+}: {
+  active: boolean
+  onBlocked: () => boolean
+  children: React.ReactNode
+}) {
+  if (!active) return <>{children}</>
+
+  return (
+    <Pressable
+      onPress={() => {
+        onBlocked()
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Locked in demo mode"
+      accessibilityHint="Settings cannot be changed on the demo account"
+    >
+      <View pointerEvents="none" style={{ opacity: 0.6 }}>
+        {children}
+      </View>
+    </Pressable>
   )
 }
 

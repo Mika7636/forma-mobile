@@ -11,6 +11,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants'
 import * as SplashScreen from 'expo-splash-screen'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import DemoChrome from './src/components/ui/DemoBanner'
 import ErrorBoundary from './src/components/ui/ErrorBoundary'
 import OfflineBanner from './src/components/ui/OfflineBanner'
 import ThemedStatusBar from './src/components/ui/ThemedStatusBar'
@@ -146,9 +147,15 @@ function Root() {
         message="The app ran into an unexpected error. Your training data is saved — restarting the screen usually clears it."
         retryLabel="Reload FORMA"
       >
-        <NavigationContainer ref={navigationRef} theme={navTheme}>
-          <RootNavigator />
-        </NavigationContainer>
+        {/* Inside the boundary so a failure in the strip is caught like any
+            other, and outside the navigator because it has to sit above every
+            screen rather than inside one of them. It renders its children and
+            nothing else unless the signed-in account is the demo account. */}
+        <DemoChrome>
+          <NavigationContainer ref={navigationRef} theme={navTheme}>
+            <RootNavigator />
+          </NavigationContainer>
+        </DemoChrome>
       </ErrorBoundary>
 
       {/* Both of these are app-global on purpose. Mounted here — outside the

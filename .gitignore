@@ -55,3 +55,6 @@ google-services.json
 GoogleService-Info.plist
 *.serviceaccount.json
 firebase-debug.log
+
+# Seed-script build output (see tsconfig.seed.json)
+seed-build/

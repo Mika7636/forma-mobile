@@ -50,7 +50,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "tsc -p tsconfig.test.json && node --test \"test-build/**/*.test.js\""
+    "test": "tsc -p tsconfig.test.json && node --test \"test-build/**/*.test.js\"",
+    "seed:demo": "tsc -p tsconfig.seed.json && node seed-build/scripts/seed-demo.js"
   },
   "private": true
 }
