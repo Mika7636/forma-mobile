@@ -60,6 +60,8 @@
 // Score in the -8..+5 band regardless of when the demo is given, instead of
 // swinging into "Overreaching" if the pitch happens to fall on a Monday.
 import { Timestamp } from 'firebase/firestore'
+import { buildDailyLoads, calculateATL, calculateCTL } from '../algorithms/ctlAtl'
+import { getFormStatus } from '../algorithms/formScore'
 import { detectConflicts } from '../algorithms/conflictDetector'
 import { estimateCalories } from '../algorithms/calories'
 import { estimateHRZone } from '../algorithms/heartRate'
@@ -561,8 +563,17 @@ export function buildDemoStory({
       // the account is seeded at.
       if (when.getTime() > now.getTime()) {
         if (!isSameLocalDay(when, now)) return
-        const pulled = new Date(now.getTime() - 40 * 60_000)
-        // Seeded in the small hours, "earlier today" is yesterday. Drop it.
+        // Five minutes, not forty. The gap between "last week's instance of this
+        // session left the seven-day window" and "this week's happened" is the
+        // hole that swings Form, so it has to be closed at *every* seeding hour,
+        // not most of them. At forty minutes a seed run at 00:15 on a Monday
+        // could not place Monday's session earlier the same day, left the window
+        // a session short, and certified a demo whose hero read "+51, Peaked,
+        // optimal for competition". Five minutes narrows that to the first five
+        // minutes after midnight, and the Form-status check below catches even
+        // that rather than trusting this to be enough.
+        const pulled = new Date(now.getTime() - 5 * 60_000)
+        // Seeded in the first minutes of a day, "earlier today" is yesterday.
         if (!isSameLocalDay(pulled, now)) return
         when.setTime(pulled.getTime())
       }
@@ -813,20 +824,31 @@ export function verifyDemoStory(
     createdAt: profile.createdAt,
   })
 
-  // CTL/ATL exactly as `metricsStore` derives them: a 42-day daily mean and a
-  // 7-day one, over the windowed list.
-  const dailyLoad = new Map<string, number>()
-  for (const s of windowed) {
-    const key = localISODate(new Date(s.date))
-    dailyLoad.set(key, (dailyLoad.get(key) ?? 0) + s.loadScore)
-  }
-  const meanOverDays = (days: number) => {
-    let total = 0
-    for (let i = 0; i < days; i++) total += dailyLoad.get(localISODate(addDays(now, -i))) ?? 0
-    return Math.round(total / days)
-  }
-  const ctl = meanOverDays(42)
-  const atl = meanOverDays(7)
+  // ---- CTL / ATL ----
+  //
+  // Computed by calling `metricsStore`'s own three functions, on the same
+  // windowed list the store would hand them, with the same baseline blend.
+  //
+  // This used to be a local reimplementation — bucket by day, take a 42-day mean
+  // and a 7-day mean — and it was subtly not the same calculation. It bucketed
+  // by *local* day where `buildDailyLoads` bucketed by *UTC* day, and it anchored
+  // its own seven-day window instead of taking the last seven keys of the map.
+  // The two agreed in London and diverged by fifty points in Bangkok, so the seed
+  // script cheerfully certified a Form Score of +5 for an account the phone then
+  // rendered at -43 with an "Overreaching / high injury risk" hero.
+  //
+  // A verifier that reimplements the thing it is verifying can only ever confirm
+  // that its author understood the code, which is precisely the thing in doubt.
+  // Calling the real functions is what makes this check mean "the phone will show
+  // this" rather than "I believe the phone will show this".
+  const daysSinceRegistration = Math.max(
+    0,
+    Math.floor((now.getTime() - new Date(profile.createdAt).getTime()) / 86_400_000),
+  )
+  const baselineATL = profile.baselineCTL != null ? profile.baselineCTL * 0.9 : undefined
+  const dailyLoads = buildDailyLoads(windowed, 42, now)
+  const ctl = calculateCTL(dailyLoads, { baselineCTL: profile.baselineCTL, daysSinceRegistration })
+  const atl = calculateATL(dailyLoads, { baselineATL, daysSinceRegistration })
   const form = ctl - atl
 
   const recommenderInput = {
@@ -849,6 +871,29 @@ export function verifyDemoStory(
       baseline.building ? 'the BASELINE METER' : `a Form Score of ${form}`
     }.`,
     critical: true,
+  })
+
+  /* 1b — and the number it publishes has to be defensible.
+   *
+   * Clearing the gate only means the hero shows a *number*; this is about which
+   * number. Form is CTL minus a seven-day mean, and seven-day means of weekly
+   * training have a hole in them — between the moment last week's session leaves
+   * the window and the moment this week's lands, fatigue reads low and Form
+   * spikes. Seeded at the wrong hour the demo account has read "+51, Peaked,
+   * optimal for competition" for an athlete midway through an ordinary block,
+   * and (before the day-bucketing fix below it) "-43, Overreaching, high injury
+   * risk" for the same account on the same data.
+   *
+   * Both are indefensible across a table, so neither is allowed to ship silently.
+   * The band is the four middle states — Building, Balanced, Fresh, and the
+   * shoulder of Heavy load — which is what an athlete training five times a week
+   * should actually read.
+   */
+  const status = getFormStatus(form)
+  checks.push({
+    name: 'Form Score lands in a defensible band',
+    passed: form > -15 && form <= 15,
+    detail: `CTL ${ctl}, ATL ${atl}, Form ${form} — hero reads "${status.status}: ${status.message}"`,
   })
 
   /* 2 — three sports, lopsided, over the concentration threshold. */

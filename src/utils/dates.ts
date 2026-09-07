@@ -13,6 +13,21 @@ export function formatDate(date: Date | string): string {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * A **UTC** calendar date key (`YYYY-MM-DD`).
+ *
+ * Almost never what you want. Grouping training by day is a question about the
+ * athlete's calendar, not Greenwich's: at UTC+7 an early-morning session belongs
+ * to the previous UTC day, and west of Greenwich an evening one belongs to the
+ * next — so two sessions the athlete did on different days can share a key, and
+ * one they did on a single day can be split across two. Use
+ * {@link localISODate} for anything that buckets, counts or streaks by day.
+ *
+ * `buildDailyLoads` used this and was the last place in the app that did; the
+ * result was a Form Score that disagreed with the Progress screen by fifty
+ * points for every user east of Greenwich. Kept only for a caller that genuinely
+ * wants a UTC key.
+ */
 export function toISODate(date: Date): string {
   return formatDate(date)
 }

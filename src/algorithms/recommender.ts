@@ -114,6 +114,58 @@ const MIN_CONFLICT_GAP_DAYS = 2
 /** Days a suggested plan spans. */
 const PLAN_HORIZON_DAYS = 7
 
+/**
+ * The largest share of a week's load any one sport may be given.
+ *
+ * The scoring below is a *ranking*, and using it directly as an allocation was a
+ * category error: a sport that has not been trained in a fortnight wins on both
+ * balance and freshness, and on a three-sport profile that took it to roughly
+ * 55% of the week. On the demo account that produced "Combat Sports, 90 min,
+ * RPE 9" — a single session carrying more load than the other two together, for
+ * an athlete whose own dashboard was describing them as fatigued.
+ *
+ * A cap says the obvious thing the ranking cannot: being the sport that most
+ * needs attention is a reason to schedule it, not a reason to hand it the week.
+ *
+ * It is a *sport* cap and not a session cap, so two gym sessions cannot between
+ * them do what one was stopped from doing alone.
+ *
+ * ## The one thing it cannot cap
+ *
+ * A share is a number; a session is a thing somebody has to go and do. Combat's
+ * shortest realistic session is 45 minutes at RPE 6 — 270 AU — so on a 455 AU
+ * week combat is over this cap the moment it is suggested at all, and the only
+ * ways to honour the cap would be to suggest a twenty-minute sparring session or
+ * to suggest nothing. Both are worse than being over.
+ *
+ * So the cap binds the *allocation*, which is what {@link allocateShares}
+ * guarantees exactly, and the realised plan can exceed it where a sport's floor
+ * or the five-minute rounding grid leaves no room underneath. That is the same
+ * precedence {@link minSessionLoad} already sets: a plan of seven-minute runs is
+ * arithmetic, not advice.
+ */
+export const SPORT_SHARE_CAP = 0.4
+
+/**
+ * The RPE no suggestion may exceed while the athlete is fatigued.
+ *
+ * The `fatigued` stance already pulls the week's *volume* down to the floor of
+ * the sustainable range, and that was only half the answer: the same load
+ * reshaped as one maximal session is not an easier week, it is the same week
+ * concentrated. So the intensity comes down with it.
+ *
+ * Six because that is "somewhat hard" on the Borg scale the RPE slider is built
+ * from, and because it is reachable by every sport in {@link SESSION_SHAPES} —
+ * combat's floor is 6, so a ceiling any lower would leave that sport with an
+ * empty range and no session to suggest.
+ *
+ * The alternative — leaving intensity alone — is what produced a Dashboard whose
+ * hero read "Overreaching. High injury risk. Rest required." directly above a
+ * card recommending ninety minutes of sparring at RPE 9. A plan that contradicts
+ * the screen it is printed on is worse than no plan.
+ */
+const FATIGUED_RPE_CEILING = 6
+
 /** How many sessions a plan suggests. */
 const MIN_PLAN_SESSIONS = 3
 const MAX_PLAN_SESSIONS = 4
@@ -653,10 +705,95 @@ function minSessionLoad(sport: string): number {
   return shape.minutes[0] * shape.rpe[0]
 }
 
-/** The largest load a session of this sport can realistically carry. */
-function maxSessionLoad(sport: string): number {
+/**
+ * The RPE band a sport may be suggested at, once any ceiling is applied.
+ *
+ * Floored at the sport's own minimum rather than at the ceiling, so a ceiling
+ * below a sport's easiest realistic effort collapses the band to that single
+ * value instead of inverting it. Combat starts at RPE 6, which is exactly
+ * {@link FATIGUED_RPE_CEILING}, and an inverted band would silently return no
+ * candidate at all.
+ */
+function rpeBand(sport: string, maxRpe?: number): [number, number] {
   const shape = SESSION_SHAPES[sport] ?? DEFAULT_SHAPE
-  return shape.minutes[1] * shape.rpe[1]
+  const [low, high] = shape.rpe
+  if (maxRpe == null) return [low, high]
+  return [low, Math.max(low, Math.min(high, maxRpe))]
+}
+
+/**
+ * The largest load a session of this sport can realistically carry.
+ *
+ * Takes the same ceiling {@link shapeSession} does, because the two answer
+ * halves of one question: this decides whether the placed sessions *could*
+ * reach the budget, and that decides what they are actually shaped to. Left
+ * unaware of the ceiling, `budgetFit` would report `on_target` for a fatigued
+ * week whose sessions are capped at RPE 6 and cannot reach the target — the
+ * plan would quietly undershoot while claiming to be on it.
+ */
+function maxSessionLoad(sport: string, maxRpe?: number): number {
+  const shape = SESSION_SHAPES[sport] ?? DEFAULT_SHAPE
+  return shape.minutes[1] * rpeBand(sport, maxRpe)[1]
+}
+
+/**
+ * Split `target` across `placements`, weighted by score, with no sport taking
+ * more than {@link SPORT_SHARE_CAP}.
+ *
+ * ## Why the cap has to be able to lift
+ *
+ * Forty percent is only satisfiable when there are enough distinct sports to
+ * share the week out: two sports capped at 40% each leave a fifth of the budget
+ * unspent, and a plan that deliberately under-trains by 20% to honour a
+ * presentation rule is not a better plan. So the cap that is actually applied is
+ * the looser of 40% and an even split — which is 40% from three sports up, 50%
+ * for two, and no cap at all for one.
+ *
+ * ## Why it is water-filled rather than clamped once
+ *
+ * Capping the leader hands its excess to everybody else, which can push the
+ * runner-up over the same line. Clamping in a single pass would leave that
+ * second breach in place. Each round therefore freezes the sports that have
+ * breached, redistributes what is left across those that have not, and repeats
+ * until nothing is over — at most once per sport, since a frozen sport never
+ * thaws.
+ */
+export function allocateShares(
+  placements: Placement[],
+  weightOf: (p: Placement) => number,
+): number[] {
+  const weights = placements.map((p) => Math.max(0.01, weightOf(p)))
+  const sports = Array.from(new Set(placements.map((p) => p.sport)))
+  const cap = Math.max(SPORT_SHARE_CAP, 1 / sports.length)
+
+  const sportWeight = new Map<string, number>()
+  placements.forEach((p, i) => sportWeight.set(p.sport, (sportWeight.get(p.sport) ?? 0) + weights[i]))
+
+  const capped = new Map<string, number>()
+  for (let pass = 0; pass <= sports.length; pass++) {
+    const free = sports.filter((sport) => !capped.has(sport))
+    const remaining = 1 - capped.size * cap
+    const freeWeight = free.reduce((sum, sport) => sum + (sportWeight.get(sport) ?? 0), 0)
+    if (free.length === 0 || freeWeight <= 0) break
+
+    const breached = free.filter(
+      (sport) => (remaining * (sportWeight.get(sport) ?? 0)) / freeWeight > cap + 1e-9,
+    )
+    if (breached.length === 0) {
+      for (const sport of free) {
+        capped.set(sport, (remaining * (sportWeight.get(sport) ?? 0)) / freeWeight)
+      }
+      break
+    }
+    for (const sport of breached) capped.set(sport, cap)
+  }
+
+  // Each sport's share, divided among its own placements by their weights.
+  return placements.map((p, i) => {
+    const sportShare = capped.get(p.sport) ?? 0
+    const within = weights[i] / (sportWeight.get(p.sport) || 1)
+    return sportShare * within
+  })
 }
 
 /**
@@ -670,9 +807,17 @@ function maxSessionLoad(sport: string): number {
 export function shapeSession(
   sport: string,
   load: number,
+  /**
+   * Hard ceiling on the suggested RPE, or `undefined` for the sport's own range.
+   *
+   * Set while the athlete is fatigued — see {@link FATIGUED_RPE_CEILING}. The
+   * load still has to be met, so a capped RPE is absorbed by a longer session
+   * rather than a smaller one, which is exactly the trade a coach would make.
+   */
+  maxRpe?: number,
 ): { durationMinutes: number; rpe: number; load: number } {
   const shape = SESSION_SHAPES[sport] ?? DEFAULT_SHAPE
-  const [rpeLow, rpeHigh] = shape.rpe
+  const [rpeLow, rpeHigh] = rpeBand(sport, maxRpe)
   const [minLow, minHigh] = shape.minutes
   const midRpe = (rpeLow + rpeHigh) / 2
 
@@ -699,7 +844,7 @@ export function shapeSession(
 }
 
 /** A placement decided before any load is allocated to it. */
-interface Placement {
+export interface Placement {
   sport: SportType
   dayIndex: number
   /** The overlapping session that forced it later, if any. */
@@ -980,6 +1125,11 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
   const scoreOf = new Map(scores.map((sc) => [sc.sport, sc]))
   const minimumOf = (list: Placement[]) => list.reduce((sum, p) => sum + minSessionLoad(p.sport), 0)
 
+  // Intensity ceiling for the whole week. Derived from the stance rather than
+  // from the raw Form number so that the card's "Easing off" label and the
+  // sessions under it are driven by one decision, not two that might disagree.
+  const rpeCeiling = budget.stance === 'fatigued' ? FATIGUED_RPE_CEILING : undefined
+
   while (placements.length > 1 && minimumOf(placements) > budget.target) {
     let weakest = placements[0]
     for (const p of placements) {
@@ -988,11 +1138,41 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
     placements = placements.filter((p) => p !== weakest)
   }
 
+  // Second trim: a sport placed more often than its own share of the week can
+  // pay for.
+  //
+  // {@link allocateShares} caps what a sport is *given*, but it cannot cap what
+  // a session physically costs. Two swims allocated 70 AU each are both rounded
+  // up to swimming's 80 AU floor — because a twelve-minute swim is not a session
+  // — and the sport lands at 46% of a week it was allowed 40% of. Capping the
+  // allocation and then quietly exceeding it is worse than not capping at all,
+  // so where the arithmetic does not fit, the extra session goes rather than the
+  // cap.
+  //
+  // The survivor is the earlier day: two placements of one sport carry the same
+  // score, so there is nothing to rank them by, and the earlier slot is the one
+  // the athlete can act on sooner.
+  for (let guard = 0; guard < placements.length; guard++) {
+    const distinct = new Set(placements.map((p) => p.sport)).size
+    const capLoad = Math.max(SPORT_SHARE_CAP, 1 / distinct) * budget.target
+    const grouped = new Map<SportType, Placement[]>()
+    for (const p of placements) {
+      grouped.set(p.sport, [...(grouped.get(p.sport) ?? []), p])
+    }
+    const overspent = [...grouped.values()].find(
+      (list) => list.length > 1 && minimumOf(list) > capLoad,
+    )
+    if (!overspent || placements.length <= 1) break
+    const victim = overspent[overspent.length - 1]
+    placements = placements.filter((p) => p !== victim)
+  }
+
   // Both directions of "the sports cannot meet the budget". The floor binds when
   // one real session already costs more than the week; the ceiling binds when
   // every session that could legally be placed, at its longest and hardest, still
   // falls short.
-  const capacityOf = (list: Placement[]) => list.reduce((sum, p) => sum + maxSessionLoad(p.sport), 0)
+  const capacityOf = (list: Placement[]) =>
+    list.reduce((sum, p) => sum + maxSessionLoad(p.sport, rpeCeiling), 0)
   const budgetFit: BudgetFit =
     minimumOf(placements) > budget.target
       ? 'below_minimum'
@@ -1001,10 +1181,10 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
         : 'on_target'
 
   // Split the target across the placements, weighted by score, so the better
-  // ranked sport carries the bigger session. Weights are normalised over the
-  // placements actually made, which is what keeps the sum equal to the target.
-  const weights = placements.map((p) => Math.max(0.01, scoreOf.get(p.sport)?.total ?? 0.01))
-  const weightTotal = weights.reduce((a, b) => a + b, 0)
+  // ranked sport carries the bigger session — but with no sport allowed more
+  // than its share of the week. See {@link allocateShares}; the shares it
+  // returns sum to 1, which is what keeps the allocation equal to the target.
+  const shares = allocateShares(placements, (p) => scoreOf.get(p.sport)?.total ?? 0.01)
 
   // Which sport genuinely holds the least outstanding overlap — checked, not
   // assumed, because the reason strings are allowed to say "lowest" only here.
@@ -1014,8 +1194,8 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
   )
 
   const suggestions: SuggestedSession[] = placements.map((placement, i) => {
-    const share = (weights[i] / weightTotal) * budget.target
-    const shaped = shapeSession(placement.sport, share)
+    const share = shares[i] * budget.target
+    const shaped = shapeSession(placement.sport, share, rpeCeiling)
     const score = scoreOf.get(placement.sport)!
     const driver = drivingComponent(score)
     return {
@@ -1040,7 +1220,17 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
   // sport's clamp leaves the total a little off the budget; nudging the largest
   // session — the one with the most room to absorb it — pulls the week back
   // without disturbing the shape of the rest.
-  correctDrift(suggestions, budget.target)
+  // The cap has to survive the drift pass, or the correction quietly undoes it:
+  // that pass walks the sessions largest-first and grows the biggest one, which
+  // is precisely the session the cap just held down. Each is therefore given its
+  // own ceiling — its capped share, plus the same 5% the tests allow the week as
+  // a whole, so rounding still has somewhere to go.
+  correctDrift(
+    suggestions,
+    budget.target,
+    rpeCeiling,
+    shares.map((share) => share * budget.target * 1.05),
+  )
 
   return {
     status: 'ok',
@@ -1074,9 +1264,16 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
  * smaller correction for the next; a second sweep picks that up. It converges or
  * it does not, and the caller sees the result either way in `allocatedLoad`.
  */
-function correctDrift(suggestions: SuggestedSession[], target: number): void {
+function correctDrift(
+  suggestions: SuggestedSession[],
+  target: number,
+  maxRpe: number | undefined,
+  /** Per-session load ceilings, in the order `suggestions` came in. */
+  loadCaps: number[],
+): void {
   if (suggestions.length === 0) return
 
+  const capOf = new Map(suggestions.map((s, i) => [s, loadCaps[i] ?? Number.POSITIVE_INFINITY]))
   const byLoad = [...suggestions].sort((a, b) => b.load - a.load)
 
   for (let pass = 0; pass < 2; pass++) {
@@ -1085,7 +1282,8 @@ function correctDrift(suggestions: SuggestedSession[], target: number): void {
 
     for (const session of byLoad) {
       if (drift === 0) break
-      const reshaped = shapeSession(session.sport, session.load + drift)
+      const wanted = Math.min(session.load + drift, capOf.get(session) ?? Number.POSITIVE_INFINITY)
+      const reshaped = shapeSession(session.sport, wanted, maxRpe)
       if (reshaped.load === session.load) continue
       drift -= reshaped.load - session.load
       session.durationMinutes = reshaped.durationMinutes

@@ -39,7 +39,7 @@ Check the story first, without writing anything:
 npm run seed:demo -- --dry-run
 ```
 
-That prints a pass/fail line for each of the ten conditions the demo depends on,
+That prints a pass/fail line for each of the eleven conditions the demo depends on,
 computed by running the app's own modules over the generated data. Then:
 
 ```bash
@@ -138,24 +138,35 @@ mid-week seeding.
 
 ### Two things worth knowing before someone asks
 
-- **The recommended combat session is a hard one** (typically 90 min at RPE 8–9).
-  That is the recommender working as designed: combat is 13% of this athlete's
-  load and has not been trained in over two weeks, so it wins the ranking and
-  takes the largest share of the week's budget. The card's own reason string says
-  so. If you would rather it did not, the lever is `W_BALANCE` in
-  `src/algorithms/recommender.ts` — but that changes the product, not the demo.
-- **Running is often suggested as a 20-minute easy session**, for the mirror-image
-  reason: at 65% of the load its balance deficit is zero, so it gets the residual.
+- **No sport takes more than ~40% of the suggested week.** The ranking used to be
+  used directly as an allocation, which handed the most-neglected sport over half
+  the budget and produced a 90-minute RPE-9 combat session. `SPORT_SHARE_CAP` in
+  `src/algorithms/recommender.ts` now caps it. The cap lifts to an even split when
+  there are too few sports to satisfy 40%, and the finished plan can still sit a
+  little over it where a sport's shortest realistic session already costs more
+  than its share — combat cannot be suggested for less than 45 minutes.
+- **A fatigued week is offered at RPE 6 or below.** The `fatigued` stance already
+  pulled the week's volume to the floor of the sustainable range; it now pulls
+  intensity down too, so the hero cannot say "Rest required" above a maximal
+  suggestion.
 
 ---
 
 ## 4. Re-verifying after a change
 
-`npm run seed:demo -- --dry-run` runs the ten conditions through the app's real
-modules — `computeProgress`, `computeWeeklyPlan`, `computeRecoveryStatus`,
+`npm run seed:demo -- --dry-run` runs the eleven conditions through the app's real
+modules — `buildDailyLoads`/`calculateCTL`/`calculateATL` (the same three the
+Dashboard uses), `computeProgress`, `computeWeeklyPlan`, `computeRecoveryStatus`,
 `getBaselineState`, `detectConflicts`, `detectPlannedConflicts`. The one marked
 critical (42+ distinct training days) aborts the seed if it fails, because a
 demo that opens on "building your baseline" has lost before anybody scrolls.
+
+**Seed from the machine the demo will be given from, or at least the same
+timezone.** The story is anchored to the seeding machine's local clock. The
+verifier now computes Form through the app's own pipeline, so a mismatch between
+the two would be caught — but a seed run from a laptop seven hours behind the
+handset still produces a twelve-week window ending seven hours in that phone's
+past.
 
 If you retune a threshold in the recommender or the conflict engine, run the dry
 run again. The story is a fixed point of those modules, not an independent

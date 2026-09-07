@@ -14,12 +14,15 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  allocateShares,
   computeRecoveryStatus,
   computeWeeklyPlan,
   recoveryWindowDays,
   shapeSession,
   suggestConflictResolution,
   RECOMMENDER_MIN_TRAINING_DAYS,
+  SPORT_SHARE_CAP,
+  type Placement,
   type RecommenderInput,
   type RecommenderProfile,
   type SportScore,
@@ -452,6 +455,172 @@ describe('allocation', () => {
 /* ------------------------------------------------------------------ */
 /* 3. Recovery windows and status                                      */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* 3b. Shape of the allocation: caps and stance                        */
+/* ------------------------------------------------------------------ */
+
+describe('allocation shape', () => {
+  /**
+   * The cap is an exact property of `allocateShares` and an approximate one of
+   * the finished plan, so it is tested at both levels — exactly where it is
+   * exact, and with the slack named where the slack is real. Asserting the tight
+   * bound end-to-end would be asserting that sessions have no minimum size.
+   */
+  const place = (sports: SportType[]): Placement[] =>
+    sports.map((sport, i) => ({ sport, dayIndex: i, spacedFrom: null }))
+
+  test('the allocator never gives one sport more than its share', () => {
+    // Weights deliberately lopsided: combat outscores the rest three to one,
+    // which is exactly what a neglected sport looks like to the ranking and what
+    // used to hand it ~55% of the week.
+    const weights: Record<string, number> = { combat: 0.9, running: 0.3, gym: 0.3 }
+    const placements = place(['combat', 'running', 'gym'])
+    const shares = allocateShares(placements, (p) => weights[p.sport] ?? 0.01)
+
+    const total = shares.reduce((a, b) => a + b, 0)
+    assert.ok(Math.abs(total - 1) < 1e-9, `shares must spend the week, summed to ${total}`)
+    assert.ok(
+      shares[0] <= SPORT_SHARE_CAP + 1e-9,
+      `combat took ${(shares[0] * 100).toFixed(1)}% despite the cap`,
+    )
+    // The excess has to go somewhere, not evaporate.
+    assert.ok(shares[1] > 0.25 && shares[2] > 0.25, 'the excess is redistributed, not dropped')
+  })
+
+  test('two placements of one sport are capped together, not separately', () => {
+    const weights: Record<string, number> = { gym: 0.9, running: 0.2 }
+    const placements = place(['gym', 'gym', 'running'])
+    const shares = allocateShares(placements, (p) => weights[p.sport] ?? 0.01)
+
+    const gym = shares[0] + shares[1]
+    // Two distinct sports, so the cap lifts to an even split — 40% each would
+    // leave a fifth of the week unspent, which is not a better plan.
+    assert.ok(gym <= 0.5 + 1e-9, `gym took ${(gym * 100).toFixed(1)}% across two sessions`)
+    assert.ok(Math.abs(shares.reduce((a, b) => a + b, 0) - 1) < 1e-9)
+  })
+
+  test('the cap lifts only as far as an even split when sports are few', () => {
+    for (const [sports, expected] of [
+      [['running'], 1],
+      [['running', 'gym'], 0.5],
+      [['running', 'gym', 'combat'], SPORT_SHARE_CAP],
+      [['running', 'gym', 'combat', 'swimming'], SPORT_SHARE_CAP],
+    ] as [SportType[], number][]) {
+      const shares = allocateShares(place(sports), () => 1)
+      const worst = Math.max(...shares)
+      assert.ok(
+        worst <= expected + 1e-9,
+        `${sports.length} sports: worst share ${(worst * 100).toFixed(1)}% exceeds ${(expected * 100).toFixed(0)}%`,
+      )
+      assert.ok(Math.abs(shares.reduce((a, b) => a + b, 0) - 1) < 1e-9)
+    }
+  })
+
+  test('no sport runs away with the finished plan either', () => {
+    // End-to-end, with the slack the session floors and the five-minute grid
+    // genuinely need. Before the cap, combat reached 55% here.
+    const mixes: SportType[][] = [
+      ['running', 'cycling', 'swimming'],
+      ['combat', 'running', 'gym'],
+      ['football', 'strength'],
+      ['running', 'cycling', 'swimming', 'gym', 'combat'],
+    ]
+
+    for (const sports of mixes) {
+      for (const ctl of [35, 50, 65, 80, 110]) {
+        const plan = computeWeeklyPlan({
+          sessions: history(sports, 20, { rpe: 6, minutes: 60 }),
+          profile: profile(sports),
+          metrics: { ctl, atl: ctl },
+          now: NOW,
+        })
+        if (plan.status !== 'ok' || plan.budgetFit !== 'on_target') continue
+
+        const bySport = new Map<string, number>()
+        for (const s of plan.sessions) bySport.set(s.sport, (bySport.get(s.sport) ?? 0) + s.load)
+        if (bySport.size < 2) continue
+
+        const limit = Math.max(SPORT_SHARE_CAP, 1 / bySport.size)
+        for (const [sport, load] of bySport) {
+          const share: number = load / plan.budget.target
+          assert.ok(
+            share <= limit + 0.12,
+            `${sports.join('+')} @ CTL ${ctl}: ${sport} took ${(share * 100).toFixed(0)}%, ` +
+              `well past the ${(limit * 100).toFixed(0)}% cap`,
+          )
+        }
+      }
+    }
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* A fatigued week is easier, not just shorter                       */
+  /* ---------------------------------------------------------------- */
+
+  test('shapeSession honours an RPE ceiling, and ignores it when absent', () => {
+    // Combat's own range is 6-9, so a ceiling of 6 collapses it to a single
+    // value rather than inverting it — the case that would otherwise return no
+    // candidate at all.
+    for (const sport of ['running', 'combat', 'gym', 'cycling'] as const) {
+      const free = shapeSession(sport, 600)
+      const capped = shapeSession(sport, 600, 6)
+      assert.ok(capped.rpe <= 6, `${sport} ignored the ceiling at RPE ${capped.rpe}`)
+      assert.ok(capped.durationMinutes > 0, `${sport} produced no session under the ceiling`)
+      assert.equal(capped.durationMinutes * capped.rpe, capped.load)
+      assert.ok(free.rpe >= capped.rpe, `${sport}: the ceiling should never raise intensity`)
+    }
+    // A hard effort is still reachable when nothing is capping it.
+    assert.ok(shapeSession('combat', 700).rpe > 6)
+  })
+
+  test('a fatigued week lowers intensity, not only volume', () => {
+    // Form -30. The budget already aimed at the floor; the sessions used to be
+    // shaped at whatever RPE hit that load, so the Dashboard could show
+    // "Overreaching. High injury risk. Rest required." directly above a
+    // 90-minute RPE-9 sparring suggestion.
+    const plan = computeWeeklyPlan(
+      input({
+        sessions: history(['running', 'combat', 'gym'], 20, { rpe: 7, minutes: 60 }),
+        profile: profile(['running', 'combat', 'gym']),
+        metrics: { ctl: 60, atl: 90 },
+      }),
+    )
+
+    assert.equal(plan.status, 'ok')
+    if (plan.status !== 'ok') return
+    assert.equal(plan.budget.stance, 'fatigued')
+    assert.ok(plan.sessions.length > 0, 'a fatigued week is still a week')
+
+    for (const s of plan.sessions) {
+      assert.ok(
+        s.rpe <= 6,
+        `${s.sport} suggested at RPE ${s.rpe} while the hero says the athlete is overreaching`,
+      )
+      assert.equal(s.durationMinutes * s.rpe, s.load)
+      assert.ok(s.durationMinutes >= 20, `${s.durationMinutes} min is not a real session`)
+    }
+  })
+
+  test('the ceiling does not leak into a healthy week', () => {
+    // Tied to the stance, so an athlete in balance must still be offered a hard
+    // session when the budget is big enough to want one.
+    const plan = computeWeeklyPlan(
+      input({
+        sessions: history(['running', 'combat', 'gym'], 20, { rpe: 6, minutes: 60 }),
+        profile: profile(['running', 'combat', 'gym']),
+        metrics: { ctl: 110, atl: 105 },
+      }),
+    )
+    assert.equal(plan.status, 'ok')
+    if (plan.status !== 'ok') return
+    assert.notEqual(plan.budget.stance, 'fatigued')
+    assert.ok(
+      plan.sessions.some((s) => s.rpe > 6),
+      'a non-fatigued week should still be allowed a hard session',
+    )
+  })
+})
 
 describe('recovery windows', () => {
   test('the window is derived from the matrix and intensity, not flat', () => {
