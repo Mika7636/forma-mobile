@@ -6,6 +6,7 @@ import {
   createUserWithEmailAndPassword,
   deleteUser,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile as updateAuthProfile,
@@ -24,6 +25,12 @@ import {
   writeProfileCache,
 } from '../services/profileCache'
 import { clearLastActiveThrottle } from '../services/lastActive'
+import {
+  cooldownRemaining,
+  refreshVerified,
+  sendVerification,
+  type ResendOutcome,
+} from '../services/emailVerification'
 import { cancelAllNotifications } from '../services/notificationService'
 import { clearTrainingData } from '../services/sessionService'
 import { friendlyAuthError } from '../utils/authErrors'
@@ -73,6 +80,34 @@ interface AuthState {
   error: string | null
 
   /**
+   * Whether the signed-in address has been confirmed.
+   *
+   * Mirrored into state rather than read from `auth.currentUser.emailVerified`
+   * at the point of use, and that is not a convenience. `reload()` mutates the
+   * `User` object in place: the flag flips, the object reference does not, and
+   * every component reading it through the store or through `auth.currentUser`
+   * re-renders never. A copy here is what actually makes the banner disappear.
+   *
+   * Nothing in the app is gated on it — see `services/emailVerification`.
+   */
+  emailVerified: boolean
+  /**
+   * The Dashboard banner has been dismissed for this run of the app.
+   *
+   * Deliberately *not* persisted. A dismissal that survived a restart would
+   * silently become permanent for the one user who taps × out of reflex on day
+   * one, and the address would then stay unverified forever with nothing on
+   * screen ever mentioning it again. Session-scoped means the nudge is easy to
+   * get rid of now and still there tomorrow. Settings shows the state
+   * unconditionally, so there is always a way back to it either way.
+   */
+  verificationDismissed: boolean
+  /** `Date.now()` of the last successful send. Drives the resend countdown. */
+  verificationSentAt: number | null
+  /** True while a send (or the reload before it) is in flight. */
+  verificationSending: boolean
+
+  /**
    * Attaches the auth-state listener *and* the AppState resume hook. Returns a
    * single unsubscribe fn that detaches both.
    */
@@ -104,6 +139,21 @@ interface AuthState {
    */
   deleteAccount: () => Promise<void>
   clearError: () => void
+
+  /**
+   * Ask Firebase whether the address has been confirmed since we last looked,
+   * and publish the answer. Called on every background→active edge, which is
+   * what lets somebody click the link in their inbox, swipe back to FORMA and
+   * find the banner already gone.
+   */
+  refreshEmailVerified: () => Promise<void>
+  /** Hide the Dashboard banner for the rest of this session. */
+  dismissVerificationBanner: () => void
+  /**
+   * Reload, then send a fresh verification email if it is still needed.
+   * Enforces the 60-second cooldown and never rejects — see {@link ResendOutcome}.
+   */
+  resendVerificationEmail: () => Promise<ResendOutcome>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -113,6 +163,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   authResolved: false,
   loading: true,
   error: null,
+  emailVerified: false,
+  verificationDismissed: false,
+  verificationSentAt: null,
+  verificationSending: false,
 
   initialize: () => {
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
@@ -132,6 +186,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           profileStatus: 'unknown',
           authResolved: true,
           loading: false,
+          ...clearedVerification(),
         })
         return
       }
@@ -144,15 +199,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // same as knowing *where to send them*, and the gap between those two is
       // precisely where the app used to flash onboarding at an existing user.
       const cached = peekProfileCache(firebaseUser.uid)
+      // A different account arriving must not inherit the previous one's
+      // dismissal or its cooldown — both are about a person and an inbox, not
+      // about the handset. Re-signing into the *same* account (a token refresh
+      // re-emits here) keeps them, so a resend countdown isn't reset by an event
+      // the user never caused.
+      const switchedAccount = get().user?.uid !== firebaseUser.uid
       set({
         user: firebaseUser,
         profile: cached,
         profileStatus: cached ? 'loaded' : 'unknown',
         authResolved: true,
         loading: !cached,
+        ...(switchedAccount ? clearedVerification() : null),
+        emailVerified: firebaseUser.emailVerified,
       })
 
       void get().refreshProfile()
+      // The cached flag above is whatever Firebase last persisted, which for a
+      // restored session can be weeks stale. Ask for the truth straight away:
+      // the common case is an account verified on another device since, and the
+      // cost of being wrong is a banner shown to somebody who is already done.
+      void get().refreshEmailVerified()
     })
 
     // The resume path — the one the bug report is actually about.
@@ -171,6 +239,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const { user, profileStatus } = get()
       if (!user) return
+
+      // The other half of the resume path, and the one the verification banner
+      // depends on: the user leaves FORMA, opens their mail app, taps the link,
+      // and comes back. Nothing about that round trip touches this process, so
+      // without asking here the banner would sit there — telling somebody who
+      // has just verified their email to verify their email — until the app was
+      // killed and relaunched.
+      //
+      // Once verified, an address never becomes unverified, so this stops for
+      // good the first time it comes back true. That is what keeps it from
+      // being a network call on every glance at the app for the entire life of
+      // the account.
+      if (!get().emailVerified) void get().refreshEmailVerified()
+
       // `missing` is settled by the backend and re-reading it on every glance at
       // the app would be pure battery burn. Everything else — including a
       // `loaded` that came from the mirror rather than from Firestore — is a
@@ -294,6 +376,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Set the Firebase display name and seed the Firestore profile.
       await updateAuthProfile(credential.user, { displayName: name.trim() })
       await createUserProfile(credential.user.uid, email.trim(), name.trim())
+
+      // Send the confirmation email — and, emphatically, do not wait to find out
+      // whether it worked.
+      //
+      // Registration has already succeeded by this line: the account exists and
+      // the profile is written. A mail send that is slow, rate-limited or simply
+      // failing must not turn that into a failed sign-up, because the catch
+      // below would show "Something went wrong", the user would try again, and
+      // the second attempt would be met with "an account with that email already
+      // exists" — locking a real new user out of an account they just created
+      // over an email they were never blocked on in the first place.
+      //
+      // Its own `.catch` rather than the shared one, and no `await`: it runs
+      // while the sign-out below proceeds. Firebase resolves it against the
+      // credential it was handed, so signing out mid-flight doesn't cancel it.
+      // If it never arrives, the banner on the Dashboard offers a resend.
+      void sendEmailVerification(credential.user).catch((err) => {
+        console.warn('[FORMA] verification email failed to send at sign-up', err)
+      })
+
       // Per spec: do NOT auto-login. Sign out so the user lands on Login.
       await firebaseSignOut(auth)
     } catch (error) {
@@ -304,7 +406,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       registering = false
       // We suppressed the listener throughout, so make sure state reflects the
       // signed-out reality.
-      set({ user: null, profile: null, profileStatus: 'unknown', authResolved: true, loading: false })
+      set({
+        user: null,
+        profile: null,
+        profileStatus: 'unknown',
+        authResolved: true,
+        loading: false,
+        ...clearedVerification(),
+      })
     }
   },
 
@@ -326,7 +435,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // outlive the session; clearing it also means signing back in records the
     // return straight away rather than up to an hour later.
     await clearLastActiveThrottle(uid)
-    set({ user: null, profile: null, profileStatus: 'unknown', error: null })
+    set({ user: null, profile: null, profileStatus: 'unknown', error: null, ...clearedVerification() })
   },
 
   setProfile: (profile) => {
@@ -354,10 +463,60 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     loadToken += 1
     await clearProfileCache(current.uid)
     await clearLastActiveThrottle(current.uid)
-    set({ user: null, profile: null, profileStatus: 'unknown', error: null })
+    set({ user: null, profile: null, profileStatus: 'unknown', error: null, ...clearedVerification() })
   },
 
   clearError: () => set({ error: null }),
+
+  refreshEmailVerified: async () => {
+    const user = auth.currentUser ?? get().user
+    if (!user) return
+    // Already true is already settled — an address cannot be un-verified, so
+    // there is no answer this call could return that would change anything.
+    if (get().emailVerified) return
+
+    const uid = user.uid
+    const verified = await refreshVerified(user)
+    // A slow reload belonging to an account that has since signed out (or been
+    // swapped) must not land, exactly as with the profile read above.
+    if (!verified || useAuthStore.getState().user?.uid !== uid) return
+    set({ emailVerified: true })
+  },
+
+  dismissVerificationBanner: () => set({ verificationDismissed: true }),
+
+  resendVerificationEmail: async () => {
+    const user = auth.currentUser ?? get().user
+    if (!user) return { status: 'failed', message: 'You are not signed in.' }
+
+    const { verificationSending, verificationSentAt } = get()
+    // A second tap while the first send is still in flight is a double-tap, not
+    // a request for two emails.
+    if (verificationSending) return { status: 'cooldown', secondsRemaining: 1 }
+
+    const remaining = cooldownRemaining(verificationSentAt)
+    if (remaining > 0) return { status: 'cooldown', secondsRemaining: remaining }
+
+    const uid = user.uid
+    set({ verificationSending: true })
+    try {
+      const outcome = await sendVerification(user)
+      // Signed out mid-send: publish nothing, because `emailVerified` and the
+      // cooldown both belong to an account that is no longer on screen.
+      if (useAuthStore.getState().user?.uid !== uid) return outcome
+
+      if (outcome.status === 'already-verified') {
+        // The reload inside `sendVerification` found it. No email went out, so
+        // no cooldown starts — the banner is about to vanish anyway.
+        set({ emailVerified: true })
+      } else if (outcome.status === 'sent') {
+        set({ verificationSentAt: Date.now() })
+      }
+      return outcome
+    } finally {
+      if (useAuthStore.getState().user?.uid === uid) set({ verificationSending: false })
+    }
+  },
 }))
 
 /**
@@ -389,6 +548,23 @@ export function useIsDemo(): boolean {
 
 /** Set while a registration is mid-flight; makes the auth listener stand down. */
 let registering = false
+
+/**
+ * The verification fields, back to their signed-out values.
+ *
+ * Every one of them describes a person and their inbox rather than the handset,
+ * so all four have to go together whenever the account does. Leaving the
+ * cooldown behind would silently rate-limit the *next* account to sign in on
+ * this phone — which on the demo handset is every tester after the first.
+ */
+function clearedVerification() {
+  return {
+    emailVerified: false,
+    verificationDismissed: false,
+    verificationSentAt: null,
+    verificationSending: false,
+  } as const
+}
 
 /**
  * Incremented on every profile load and on every sign-out. A load compares the

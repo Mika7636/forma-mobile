@@ -18,6 +18,7 @@ import FormScoreCard from '../components/dashboard/FormScoreCard'
 import MetricGrid from '../components/dashboard/MetricGrid'
 import NextWeekPlanCard from '../components/dashboard/NextWeekPlanCard'
 import RecentActivity from '../components/dashboard/RecentActivity'
+import VerifyEmailBanner from '../components/dashboard/VerifyEmailBanner'
 import ZoneDistributionChart from '../components/dashboard/ZoneDistributionChart'
 import SessionDetailModal from '../components/session/SessionDetailModal'
 import PressableScale from '../components/ui/PressableScale'
@@ -25,6 +26,7 @@ import { getBaselineState } from '../utils/calibration'
 import { haptics } from '../utils/haptics'
 import { localISODate } from '../utils/dates'
 import { useConflicts } from '../hooks/useConflicts'
+import { useEmailVerification } from '../hooks/useEmailVerification'
 import { usePlannedSessions } from '../hooks/usePlannedSessions'
 import { useIsMounted } from '../hooks/useSafeTimeout'
 import { useMetrics } from '../hooks/useMetrics'
@@ -81,6 +83,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     refresh: refreshSuggestions,
   } = useRecommendations()
   const { byDay: plannedByDay, conflictsByDay: plannedConflictsByDay } = usePlannedSessions()
+  const verification = useEmailVerification()
 
   /**
    * Under 42 days of actual *training*, the Form Score is an artefact of the
@@ -303,6 +306,20 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
               />
             ))}
           </View>
+        ) : null}
+
+        {/* Account hygiene, deliberately *below* the conflict banners: an
+            unverified address is a housekeeping note and a flagged clash is an
+            injury risk, and if both are on screen the risk is the one that
+            should be read first. Suppressed entirely in demo mode — see
+            `useEmailVerification`. */}
+        {verification.showBanner ? (
+          <VerifyEmailBanner
+            sending={verification.sending}
+            cooldown={verification.cooldown}
+            onResend={() => void verification.resend()}
+            onDismiss={verification.dismiss}
+          />
         ) : null}
 
         {/* Body */}

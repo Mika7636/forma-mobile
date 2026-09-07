@@ -19,6 +19,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import Slider from '@react-native-community/slider'
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated'
 import ConflictSensitivity from '../components/settings/ConflictSensitivity'
+import EmailVerificationRow from '../components/settings/EmailVerificationRow'
 import NotificationSettings from '../components/settings/NotificationSettings'
 import SportInteractionMatrix from '../components/settings/SportInteractionMatrix'
 import SettingsSkeleton from '../components/settings/SettingsSkeleton'
@@ -922,6 +923,7 @@ export default function SettingsScreen() {
 
             {/* Account */}
             <Card title="Account">
+              <EmailVerificationRow />
               <Pressable
                 onPress={handleLogout}
                 style={{
