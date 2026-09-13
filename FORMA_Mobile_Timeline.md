@@ -10,7 +10,7 @@
 - **Start:** Monday, July 6, 2026
 - **Deadline:** Friday, September 26, 2026
 - **Total time:** 12 weeks (84 days)
-- **Team:** 2 developers, ~2–4 hrs/day
+- **Team:** 2 developers, ~2–4 hours/day
 - **Advisor check-ins:** every Friday — must show tangible progress
 
 ---
