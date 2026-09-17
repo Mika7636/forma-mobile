@@ -2,18 +2,24 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs'
 import type { NavigatorScreenParams } from '@react-navigation/native'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 
-// The auth flow is a native stack: Login ⇄ Register. Onboarding is gated by
+// The auth flow is a native stack: Login ⇄ Register, plus Login → ForgotPassword
+// (which may carry the address already typed on Login). Onboarding is gated by
 // RootNavigator (shown only when a logged-in user hasn't finished onboarding),
 // so it lives outside this stack.
 export type AuthStackParamList = {
   Login: { registered?: boolean } | undefined
   Register: undefined
+  ForgotPassword: { email?: string } | undefined
 }
 
 export type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>
 export type RegisterScreenProps = NativeStackScreenProps<
   AuthStackParamList,
   'Register'
+>
+export type ForgotPasswordScreenProps = NativeStackScreenProps<
+  AuthStackParamList,
+  'ForgotPassword'
 >
 
 // The main app is a bottom-tab navigator. The Log tab can receive a `date`

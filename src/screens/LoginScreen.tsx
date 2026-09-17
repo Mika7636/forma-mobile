@@ -167,6 +167,22 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             onSubmitEditing={handleLogin}
           />
 
+          <Pressable
+            onPress={() => {
+              clearError()
+              navigation.navigate('ForgotPassword', { email: email.trim() || undefined })
+            }}
+            hitSlop={8}
+            accessibilityRole="link"
+            style={{ alignSelf: 'flex-end', marginTop: -6, marginBottom: 10 }}
+          >
+            <Text
+              style={{ color: colors.accentText, fontSize: TYPE.body, fontWeight: '700' }}
+            >
+              Forgot password?
+            </Text>
+          </Pressable>
+
           {error ? (
             <Text
               style={{
