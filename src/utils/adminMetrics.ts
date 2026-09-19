@@ -107,23 +107,6 @@ export interface EngagementKpis {
   retention: number | null
   /** The denominator behind {@link retention} — how many there were to keep. */
   retentionBase: number
-  medianDaysSinceLastSession: MedianGap
-}
-
-/**
- * The median gap, with "we cannot see far enough back" kept as its own state.
- *
- * An account whose last session predates the fetch window has *some* gap, and
- * this screen does not know what it is. Reporting the largest gap it can see
- * would quietly understate the answer; reporting nothing would throw away a
- * figure that is usually perfectly well determined. So when the median lands in
- * that group it comes back as a floor and the card renders it as "> 84 days".
- */
-export interface MedianGap {
-  /** Whole days, or `null` when there are no accounts at all. */
-  days: number | null
-  /** True when the median falls outside the fetch window; `days` is a floor. */
-  beyondWindow: boolean
 }
 
 /** One point on the weekly-actives line. */
@@ -250,13 +233,9 @@ export function engagementKpis(
   const weekUsers = new Set<string>()
   const monthUsers = new Set<string>()
   const prevMonthUsers = new Set<string>()
-  const lastSessionAt = new Map<string, number>()
   let monthSessions = 0
 
   for (const row of rows) {
-    const last = lastSessionAt.get(row.uid)
-    if (last === undefined || row.dateMs > last) lastSessionAt.set(row.uid, row.dateMs)
-
     if (row.dateMs >= weekStart) weekUsers.add(row.uid)
 
     // Per *row*, not per user, and that is what makes the retention denominator
@@ -284,42 +263,7 @@ export function engagementKpis(
     newSignups,
     retention: prevMonthUsers.size > 0 ? retained / prevMonthUsers.size : null,
     retentionBase: prevMonthUsers.size,
-    medianDaysSinceLastSession: medianGap(lastSessionAt, totalUsers, today),
   }
-}
-
-/**
- * Median whole days from each account's most recent session to today.
- *
- * Taken over **every** account, not just the ones that have trained: a median
- * computed only over active users answers "how recently do active users train",
- * which is a different and much rosier question. Accounts with no session in the
- * window sort to the end as unknown-but-larger, which is enough to place the
- * median even though their exact gap is not known — see {@link MedianGap}.
- */
-function medianGap(
-  lastSessionAt: Map<string, number>,
-  totalUsers: number,
-  today: Date,
-): MedianGap {
-  if (totalUsers <= 0) return { days: null, beyondWindow: false }
-
-  const gaps = Array.from(lastSessionAt.values())
-    .map((ms) =>
-      Math.max(0, Math.floor((today.getTime() - startOfDay(new Date(ms)).getTime()) / MS_PER_DAY)),
-    )
-    .sort((a, b) => a - b)
-
-  // Two indices for an even population, one repeated index for an odd one.
-  const lower = Math.floor((totalUsers - 1) / 2)
-  const upper = Math.floor(totalUsers / 2)
-
-  // The upper index is the one that can fall past the known values. If it does,
-  // the true median is at least the largest gap we can see.
-  if (upper >= gaps.length) {
-    return { days: gaps.length > 0 ? gaps[gaps.length - 1] : null, beyondWindow: true }
-  }
-  return { days: Math.round((gaps[lower] + gaps[upper]) / 2), beyondWindow: false }
 }
 
 /* ------------------------------------------------------------------ */

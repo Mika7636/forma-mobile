@@ -151,7 +151,7 @@ export default function AdminScreen() {
               <AdminSkeleton />
             ) : data ? (
               <>
-                <EngagementKpiSection kpis={data.kpis} windowDays={data.windowDays} />
+                <EngagementKpiSection kpis={data.kpis} />
 
                 <AdminSection
                   title="Activity"
