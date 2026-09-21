@@ -889,7 +889,7 @@ export function verifyDemoStory(
    * shoulder of Heavy load — which is what an athlete training five times a week
    * should actually read.
    */
-  const status = getFormStatus(form)
+  const status = getFormStatus(form, ctl)
   checks.push({
     name: 'Form Score lands in a defensible band',
     passed: form > -15 && form <= 15,

@@ -99,7 +99,7 @@ export function useMetrics(): DashboardMetrics {
     loading,
     error,
     formScore,
-    formStatus: getFormStatus(form),
+    formStatus: getFormStatus(form, ctl),
     ctl: Math.round(ctl),
     atl: Math.round(atl),
     weeklyLoad,

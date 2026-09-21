@@ -49,7 +49,7 @@ interface FormScoreCardProps {
 export default function FormScoreCard({ form, ctl, atl }: FormScoreCardProps) {
   const { colors } = useTheme()
 
-  const { status, message, color } = getFormStatus(form)
+  const { status, message, color } = getFormStatus(form, ctl)
   const style = colors.hero[color] ?? colors.hero.green
   const emoji = HERO_EMOJI[color] ?? HERO_EMOJI.green
   const shimmer = color === SHIMMER_TONE
