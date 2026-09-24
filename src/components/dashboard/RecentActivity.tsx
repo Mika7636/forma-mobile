@@ -1,3 +1,5 @@
+// Dashboard feed of the most recent sessions.
+
 import { Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import RouteThumbnail from './RouteThumbnail'
@@ -9,20 +11,14 @@ import type { Session } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
 import { onColor } from '../../theme/tokens'
 
-/** How many sessions the dashboard surfaces; the rest live on Progress. */
 const MAX_ROWS = 7
 
 interface RecentActivityProps {
-  /** Sessions newest-first; only the first {@link MAX_ROWS} are shown. */
   sessions: Session[]
   onSelect: (session: Session) => void
   baseDelay?: number
 }
 
-/**
- * The dashboard's activity feed — the most recent sessions with their load,
- * calories and HR zone at a glance.
- */
 export default function RecentActivity({
   sessions,
   onSelect,
@@ -39,12 +35,6 @@ export default function RecentActivity({
       </Text>
 
       <View style={{ gap: 8 }}>
-        {/*
-          Plain map rather than a FlatList: this list is capped at 7 rows and
-          lives inside the dashboard's ScrollView, where a nested VirtualizedList
-          scrolling the same axis breaks virtualisation and warns at runtime.
-          There's nothing to virtualise at this size anyway.
-        */}
         {rows.map((session, index) => (
           <SessionRow
             key={session.id}
@@ -82,8 +72,6 @@ function SessionRow({
 
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
-      {/* `card` rather than `button`: a full-width row shrinking by 3% looks
-          like a glitch, so it gets the subtler press. */}
       <PressableScale
         onPress={onPress}
         variant="card"
@@ -100,13 +88,11 @@ function SessionRow({
           padding: 12,
         }}
       >
-        {/* Sport emoji in a tinted circle. */}
         <View
           style={{
             width: 42,
             height: 42,
             borderRadius: 21,
-            // 1A ≈ 10% alpha — a soft wash of the sport's own colour.
             backgroundColor: `${meta.color}1A`,
             alignItems: 'center',
             justifyContent: 'center',
@@ -116,7 +102,6 @@ function SessionRow({
           <Text style={{ fontSize: 20 }}>{meta.icon}</Text>
         </View>
 
-        {/* Sport + meta line. */}
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }} numberOfLines={1}>
@@ -140,7 +125,6 @@ function SessionRow({
           <RouteThumbnail coordinates={route} />
         ) : null}
 
-        {/* Load / calories / zone. */}
         <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
           <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
             {session.loadScore} AU
@@ -167,7 +151,6 @@ function SessionRow({
           ) : null}
         </View>
 
-        {/* Tap affordance — opens the session detail modal. */}
         <Text style={{ fontSize: 22, color: colors.textSubtle, marginLeft: 8, marginTop: -2 }}>
           ›
         </Text>

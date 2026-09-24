@@ -1,3 +1,5 @@
+// The titled card every Progress chart sits in.
+
 import { useState, type ReactNode } from 'react'
 import {
   LayoutAnimation,
@@ -14,10 +16,6 @@ import { haptics } from '../../utils/haptics'
 import { RADIUS, SPACING, TYPE, WEIGHT, cardStyle } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-// LayoutAnimation is opt-in on old-architecture Android and a no-op without
-// this. Idempotent, and harmless on the new architecture and on iOS where it is
-// already on — so this card does not depend on some other screen having been
-// imported first to animate its own disclosure.
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true)
 }
@@ -25,41 +23,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 interface ChartCardProps {
   title: string
   subtitle?: string
-  /** Ms before the card fades/slides in. */
   delay?: number
-  /**
-   * Rendered under the header, above the plot — typically a compact legend.
-   *
-   * Compact is the operative word: this sits between the reader and the chart,
-   * so anything longer than one row belongs behind {@link info} instead.
-   */
   legend?: ReactNode
-  /**
-   * The long-form explanation, behind an info button in the header.
-   *
-   * The load chart's legend used to spell out all three states on their own
-   * lines — three rows of prose above a 200px plot, which is a third of the
-   * card spent explaining a chart nobody could see yet. The wording is not
-   * worse for being one tap away; it is simply no longer in front of the thing
-   * it describes.
-   */
   info?: ReactNode
-  /** Accessible name for the info button, e.g. "About the training load chart". */
   infoLabel?: string
-  /**
-   * The plot. Receives the card's measured inner width so the SVG can size
-   * itself exactly, then re-render responsively when the layout settles. Not
-   * called until a non-zero width is known, so charts never draw at width 0.
-   */
   children: (width: number) => ReactNode
 }
 
-/**
- * The rounded card every progress chart sits in — title, optional subtitle,
- * an optional info disclosure and legend, then a width-measured plot area.
- * Centralises the shadow, padding and entrance animation so all the charts read
- * as one system.
- */
 export default function ChartCard({
   title,
   subtitle,
@@ -76,7 +46,6 @@ export default function ChartCard({
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width
-    // Only re-render on a real change — avoids a render loop from sub-pixel jitter.
     if (Math.abs(w - width) > 0.5) setWidth(w)
   }
 
@@ -106,9 +75,6 @@ export default function ChartCard({
             accessibilityRole="button"
             accessibilityState={{ expanded: showInfo }}
             accessibilityLabel={infoLabel ?? `About ${title}`}
-            // A generous hit slop rather than a 44pt box: the button is a 20pt
-            // glyph tucked into the header, and padding it out to the touch
-            // minimum would push the title off-centre.
             hitSlop={12}
             style={{ marginLeft: SPACING.sm, paddingTop: 1 }}
           >

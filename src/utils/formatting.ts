@@ -1,3 +1,5 @@
+// Number, duration and distance formatting helpers.
+
 export function formatDuration(minutes: number): string {
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
@@ -13,19 +15,12 @@ export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-/**
- * Group a number with thousands separators — "1240" → "1,240".
- *
- * Done by hand rather than via toLocaleString/Intl so the output is identical
- * on every device regardless of the JS engine's locale data.
- */
 export function formatThousands(value: number): string {
   const rounded = Math.round(value)
   const sign = rounded < 0 ? '-' : ''
   return sign + String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
-/** "1h 30m", "45m", "0m" — compact minutes label for the zone chart. */
 export function formatZoneMinutes(minutes: number): string {
   const rounded = Math.round(minutes)
   const h = Math.floor(rounded / 60)
@@ -52,20 +47,11 @@ export function formatTimeAgo(isoDate: string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-/**
- * Distance in km to exactly two decimals — "0.68", "12.40", "108.35".
- *
- * GPS-tracked sessions store a raw haversine sum (0.6753331193…), so every km
- * figure that reaches the UI goes through here rather than being interpolated
- * straight into a template string. Non-finite input degrades to "0.00" instead
- * of printing "NaN".
- */
 export function formatDistance(km: number): string {
   if (!Number.isFinite(km)) return '0.00'
   return km.toFixed(2)
 }
 
-/** {@link formatDistance} with its unit — "0.68 km". */
 export function formatDistanceKm(km: number): string {
   return `${formatDistance(km)} km`
 }

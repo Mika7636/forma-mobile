@@ -1,16 +1,5 @@
-// The launch screen the user actually sees fade away.
-//
-// Why a JS overlay on top of the native splash rather than just the native one:
-// the native splash can only be cut, not faded, and it disappears the moment
-// `hideAsync()` runs — which is before auth has restored and before the first
-// Firestore snapshot lands, so you'd get a flash of an empty dashboard. This
-// overlay takes over from it, holds until the app is genuinely ready, then
-// fades out.
-//
-// The handoff is invisible because this renders the *same* asset the native
-// splash uses (assets/splash-icon.png), at the same width, on the same white,
-// in the same place. Only the wordmark is new, and it fades in below the mark so
-// nothing shifts.
+// The launch screen the user sees fade away.
+
 import { useCallback, useEffect, useState } from 'react'
 import { Image, Text, View } from 'react-native'
 import Animated, {
@@ -22,13 +11,10 @@ import Animated, {
 } from 'react-native-reanimated'
 import { MOTION, TYPE } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
-/** Matches `imageWidth` in the expo-splash-screen plugin config in app.json. */
 const MARK_WIDTH = 180
 
 interface BrandSplashProps {
-  /** Flip true once auth state and first data have settled. */
   ready: boolean
-  /** Called after the fade completes, so the parent can stop rendering this. */
   onFinished?: () => void
 }
 
@@ -45,7 +31,6 @@ export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
   }, [onFinished])
 
   useEffect(() => {
-    // Slightly delayed so it doesn't animate during the busiest frames of boot.
     wordmark.value = withDelay(140, withTiming(1, { duration: MOTION.base }))
   }, [wordmark])
 
@@ -59,7 +44,6 @@ export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
   const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }))
   const wordmarkStyle = useAnimatedStyle(() => ({
     opacity: wordmark.value,
-    // A few pixels of rise — enough to read as "arriving", not as a slide.
     transform: [{ translateY: (1 - wordmark.value) * 8 }],
   }))
 
@@ -86,12 +70,9 @@ export default function BrandSplash({ ready, onFinished }: BrandSplashProps) {
         source={require('../../../assets/splash-icon.png')}
         style={{ width: MARK_WIDTH, height: MARK_WIDTH }}
         resizeMode="contain"
-        // Decoding the mark late would defeat the point of a seamless handoff.
         fadeDuration={0}
       />
 
-      {/* Absolutely positioned so its arrival can't nudge the mark off the
-          centre the native splash left it on. */}
       <View style={{ position: 'absolute', top: '50%', left: 0, right: 0, marginTop: MARK_WIDTH / 2 }}>
         <Animated.View style={[{ alignItems: 'center' }, wordmarkStyle]}>
           <Text

@@ -1,31 +1,5 @@
-// Section 5 — when the userbase actually trains.
-//
-// Seven rows of four-hour blocks. Two coarse axes on purpose: 7 × 24 would be
-// 168 cells across a phone's width, each about two points wide, and at that size
-// a heatmap stops being a picture of anything. Four-hour blocks are also roughly
-// how people describe training time to themselves — early morning, lunchtime,
-// after work — so a bright column has a plain-language reading.
-//
-// ## The shading, and why it is a computed mix rather than a ramp of constants
-//
-// A cell runs from `surfaceAlt` to `accent` with intensity, mixed at render time
-// by {@link mix}. Two reasons it is not a hand-written ramp of hex values: the
-// blend then comes out right in both themes without a second palette entry, and
-// the empty cell is genuinely the page's own empty-surface token rather than an
-// approximation of it that drifts the next time the palette is retuned.
-//
-// It is a real background colour rather than a translucent overlay, which is the
-// same choice the conflict grid makes and for a reason that bites there — a fill
-// that exists only in the compositor is a fill nothing can measure, and
-// `onColor` has to measure one to pick type for it. This grid carries no text on
-// its cells today; matching the construction is what stops that from becoming a
-// contrast bug on the day it does.
-//
-// The floor matters. A cell holding one session at a truly proportional mix
-// would be invisible, which reads as zero — so any non-empty cell starts at a
-// visible minimum and the ramp runs from there. The difference between "none"
-// and "barely any" is the most interesting distinction on this grid, and it is
-// exactly the one a purely linear scale destroys.
+// Admin section 5: when the userbase trains, as a day/hour heatmap.
+
 import { Text, View } from 'react-native'
 import ChartCard from '../progress/ChartCard'
 import { ChartEmpty } from './AdminSection'
@@ -35,10 +9,8 @@ import { formatThousands } from '../../utils/formatting'
 import { RADIUS, SPACING, TYPE, WEIGHT, mix } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/** Monday-first, matching `mondayFirstIndex`, which builds the rows. */
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-/** "00–04", "04–08", … derived from the bucket count so the two cannot drift. */
 const HOUR_LABELS = Array.from({ length: HOUR_BUCKETS }, (_, i) => {
   const span = 24 / HOUR_BUCKETS
   const pad = (h: number) => String(h).padStart(2, '0')
@@ -49,7 +21,6 @@ const CELL_H = 30
 const GAP = 3
 const ROW_LABEL_W = 34
 
-/** How far toward `accent` the faintest non-empty cell is mixed, and the range. */
 const MIX_FLOOR = 0.16
 const MIX_RANGE = 0.84
 
@@ -106,8 +77,6 @@ function Grid({ heatmap, width }: { heatmap: ActivityHeatmap; width: number }) {
 
   return (
     <View>
-      {/* Column headers. Above the grid rather than below it, because the row
-          labels are on the left and a reader lands on the top-left corner. */}
       <View style={{ flexDirection: 'row', marginBottom: SPACING.xs }}>
         <View style={{ width: ROW_LABEL_W }} />
         {HOUR_LABELS.map((label, i) => (
@@ -151,8 +120,6 @@ function Grid({ heatmap, width }: { heatmap: ActivityHeatmap; width: number }) {
                 height: CELL_H,
                 marginLeft: hourIndex === 0 ? 0 : GAP,
                 borderRadius: RADIUS.xs,
-                // The accent mixed into the empty surface at this cell's
-                // intensity; at zero that resolves to `surfaceAlt` exactly.
                 backgroundColor: mix(colors.accent, colors.surfaceAlt, intensity(count, heatmap.max)),
               }}
             />
@@ -163,19 +130,11 @@ function Grid({ heatmap, width }: { heatmap: ActivityHeatmap; width: number }) {
   )
 }
 
-/** How far toward `accent` a cell holding `count` of a busiest `max` is mixed. */
 function intensity(count: number, max: number): number {
   if (count <= 0 || max <= 0) return 0
   return MIX_FLOOR + (count / max) * MIX_RANGE
 }
 
-/**
- * The legend: the ramp itself, its two ends named.
- *
- * A swatch strip rather than a numeric key, because the grid encodes a
- * continuous quantity and five labelled buckets would imply thresholds the data
- * does not have. The endpoints are what a reader needs to decode a cell.
- */
 function Scale({ max }: { max: number }) {
   const { colors } = useTheme()
 
@@ -194,8 +153,6 @@ function Scale({ max }: { max: number }) {
             height: 10,
             marginRight: 3,
             borderRadius: 2,
-            // The same mix the cells use, so a swatch and the cell it stands for
-            // are the same colour by construction rather than by coincidence.
             backgroundColor: mix(
               colors.accent,
               colors.surfaceAlt,

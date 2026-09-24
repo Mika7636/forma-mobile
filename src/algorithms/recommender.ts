@@ -1,308 +1,105 @@
-// FORMA's recommendation engine: a rule-based expert system, not a model.
-//
-// ## What kind of thing this is
-//
-// Three parts, in the classical arrangement:
-//
-//   * **Knowledge base** — the sport interaction matrix (`sportInteractions`),
-//     which is the athlete's own copy, seeded at registration and editable. It
-//     is the only thing here that encodes domain expertise about how sports
-//     interfere, and it is shared with the conflict engine so the app cannot
-//     warn about a pairing it would also recommend.
-//   * **Inference engine** — the constraint checks below: a load budget bounded
-//     by the same acute:chronic range the Progress band draws, recovery windows
-//     derived from the matrix and ATL's decay, and a scoring rule that ranks
-//     sports on three measured components.
-//   * **Explainable output** — every recommendation carries a `reason` built by
-//     interpolating the numbers that actually drove it. Nothing here composes a
-//     sentence from anything it did not compute; if a figure appears in the
-//     copy, it appears in the returned data too, and a caller can check it.
-//
-// There is no API call, no model, no randomness, and no hidden state. Given the
-// same sessions, profile, metrics and `now`, every function returns exactly the
-// same object — which is what makes the whole thing testable and is most of the
-// reason it is rules and not a model.
-//
-// ## Why every function is guarded on training days
-//
-// Advice is a stronger claim than a chart. A Form Score that is slightly wrong
-// is a number the athlete can discount; "train combat on Thursday" is an
-// instruction, and one derived from four sessions is a guess wearing the app's
-// authority. So all three entry points refuse below
-// {@link RECOMMENDER_MIN_TRAINING_DAYS} distinct training days and say so in a
-// typed state rather than degrading quietly — see the note on that constant for
-// why the bar is days trained rather than days elapsed.
+// Rule-based recommendation engine: weekly plan, recovery, conflict resolutions.
+
 import { ACWR_CEILING, ACWR_FLOOR, SPORT_OPTIONS } from '../constants/training'
 import { countTrainingDays } from '../utils/calibration'
 import { getInteractionLevel, overlapWeight } from './sportInteractions'
 import type { Session, SportType } from '../types/session'
 import type { SportInteractions } from '../types/user'
 
-/* ------------------------------------------------------------------ */
-/* Constants — every tunable in one place                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * Distinct training days below which this module refuses to advise.
- *
- * Days the athlete actually trained, counted by the same
- * {@link countTrainingDays} the Form Score's baseline gate uses, so the two
- * cannot disagree about how well FORMA knows somebody. It is deliberately lower
- * than that gate's 42: showing a *number* built on a half-converged average is a
- * different risk from suggesting a week's training, and a fortnight of real
- * training days is enough to rank sports and space them sensibly even while the
- * fitness average is still filling.
- */
 export const RECOMMENDER_MIN_TRAINING_DAYS = 14
 
-/** CTL is a daily average, so a week at maintenance is seven of them. */
 const DAYS_PER_WEEK = 7
 
-/** Nudge above maintenance applied when the athlete is detraining. */
 const DETRAINING_TARGET = 1.05
 
-/** Form below this reads as accumulated fatigue rather than a hard block. */
 const FATIGUED_FORM = -15
 
-/** Consecutive sub-floor weeks that count as detraining. */
 const DETRAINING_WEEKS = 2
 
-/**
- * The decay constant for residual fatigue, in days.
- *
- * Seven, because ATL — the fatigue term — is a 7-day average, so seven days is
- * the horizon over which a session still counts as recent. Modelled as a smooth
- * exponential rather than as the step function a 7-day rolling mean literally
- * applies: the rolling mean drops a session entirely on day 7, and advice built
- * on that would tell an athlete a sport was blocked on Tuesday and fine on
- * Wednesday for no reason they could feel. A decay says the same thing without
- * the cliff.
- */
 const FATIGUE_TIME_CONSTANT = 7
 
-/**
- * Residual conflicting fatigue at or below which a sport is advisable again.
- *
- * Solved rather than picked. The requirement is that a level-2 pairing after an
- * RPE-7 session — precisely the threshold at which `detectConflicts` fires at
- * balanced sensitivity — yields a window of exactly 2 days, which is that
- * engine's own 48-hour rule. Substituting into {@link recoveryWindowDays} and
- * requiring the ceiling to land on 2 gives a valid band of roughly
- * [0.355, 0.405); 0.38 is taken from the middle of it, so neither rounding edge
- * is one floating-point wobble away.
- *
- * The two engines therefore agree at the point they overlap, and this module
- * extends the idea past it rather than offering a second opinion. It also keeps
- * level-1 pairings at zero days for any intensity — the matrix's weakest
- * overlap is 1/3, below this tolerance even at RPE 10 — which is the same
- * "level 2 and up" bar the conflict engine warns from.
- */
 const RECOVERY_TOLERANCE = 0.38
 
-/** Nobody is told to wait longer than this to train a sport again. */
 const MAX_RECOVERY_DAYS = 5
 
-/**
- * Conflicting sports are never placed closer than this, whatever the maths says.
- *
- * A hard floor on top of {@link recoveryWindowDays}, because "not on adjacent
- * days" is a rule the plan must satisfy even where a light prior session would
- * have computed a window of zero.
- */
 const MIN_CONFLICT_GAP_DAYS = 2
 
-/** Days a suggested plan spans. */
 const PLAN_HORIZON_DAYS = 7
 
-/**
- * The largest share of a week's load any one sport may be given.
- *
- * The scoring below is a *ranking*, and using it directly as an allocation was a
- * category error: a sport that has not been trained in a fortnight wins on both
- * balance and freshness, and on a three-sport profile that took it to roughly
- * 55% of the week. On the demo account that produced "Combat Sports, 90 min,
- * RPE 9" — a single session carrying more load than the other two together, for
- * an athlete whose own dashboard was describing them as fatigued.
- *
- * A cap says the obvious thing the ranking cannot: being the sport that most
- * needs attention is a reason to schedule it, not a reason to hand it the week.
- *
- * It is a *sport* cap and not a session cap, so two gym sessions cannot between
- * them do what one was stopped from doing alone.
- *
- * ## The one thing it cannot cap
- *
- * A share is a number; a session is a thing somebody has to go and do. Combat's
- * shortest realistic session is 45 minutes at RPE 6 — 270 AU — so on a 455 AU
- * week combat is over this cap the moment it is suggested at all, and the only
- * ways to honour the cap would be to suggest a twenty-minute sparring session or
- * to suggest nothing. Both are worse than being over.
- *
- * So the cap binds the *allocation*, which is what {@link allocateShares}
- * guarantees exactly, and the realised plan can exceed it where a sport's floor
- * or the five-minute rounding grid leaves no room underneath. That is the same
- * precedence {@link minSessionLoad} already sets: a plan of seven-minute runs is
- * arithmetic, not advice.
- */
 export const SPORT_SHARE_CAP = 0.4
 
-/**
- * The RPE no suggestion may exceed while the athlete is fatigued.
- *
- * The `fatigued` stance already pulls the week's *volume* down to the floor of
- * the sustainable range, and that was only half the answer: the same load
- * reshaped as one maximal session is not an easier week, it is the same week
- * concentrated. So the intensity comes down with it.
- *
- * Six because that is "somewhat hard" on the Borg scale the RPE slider is built
- * from, and because it is reachable by every sport in {@link SESSION_SHAPES} —
- * combat's floor is 6, so a ceiling any lower would leave that sport with an
- * empty range and no session to suggest.
- *
- * The alternative — leaving intensity alone — is what produced a Dashboard whose
- * hero read "Overreaching. High injury risk. Rest required." directly above a
- * card recommending ninety minutes of sparring at RPE 9. A plan that contradicts
- * the screen it is printed on is worse than no plan.
- */
 const FATIGUED_RPE_CEILING = 6
 
-/** How many sessions a plan suggests. */
 const MIN_PLAN_SESSIONS = 3
 const MAX_PLAN_SESSIONS = 4
 
-/** Window over which the balance component measures each sport's share. */
 const BALANCE_WINDOW_DAYS = 28
 
-/**
- * Component weights. Recovery outranks the other two combined, because avoiding
- * harm outranks balance: a perfectly balanced week that stacks a level-3 pairing
- * is worse advice than an unbalanced one that does not.
- */
 const W_RECOVERY = 0.5
 const W_BALANCE = 0.3
 const W_FRESHNESS = 0.2
 
-/** Days since a sport was last trained at which freshness saturates. */
 const FRESHNESS_CEILING_DAYS = 7
 
 const MS_PER_DAY = 86_400_000
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                             */
-/* ------------------------------------------------------------------ */
-
-/** The slice of a profile the engine reads. A full `User` satisfies it. */
 export interface RecommenderProfile {
   sports: SportType[]
   sportInteractions: SportInteractions
 }
 
-/** Current fitness and fatigue, as the metrics store already computes them. */
 export interface RecommenderMetrics {
-  /** Chronic training load — the 42-day daily average. */
   ctl: number
-  /** Acute training load — the 7-day daily average. */
   atl: number
 }
 
-/**
- * Everything the engine needs, passed in by the caller.
- *
- * No Firestore, no stores, no clock except the one handed over: `now` is a
- * parameter so that "what should I do this week" is a pure function of a moment
- * rather than of when the test happened to run.
- */
 export interface RecommenderInput {
-  /** The athlete's history. Full history where available. */
   sessions: Session[]
   profile: RecommenderProfile
   metrics: RecommenderMetrics
   now?: Date
 }
 
-/* ------------------------------------------------------------------ */
-/* Outputs                                                            */
-/* ------------------------------------------------------------------ */
-
-/** Why the engine declined to answer. Returned, never thrown. */
 export interface InsufficientData {
   status: 'insufficient_data'
   trainingDays: number
   required: number
-  /** Plain English, with the real figures in it. */
   reason: string
 }
 
-/** Which rule set the weekly target. */
 export type BudgetStance = 'fatigued' | 'detraining' | 'maintain'
 
-/**
- * Whether the week's sessions could be made to sum to the budget.
- *
- * Almost always `on_target`. The other two are the cases where the athlete's own
- * sports and the budget genuinely cannot be reconciled, and they are reported
- * rather than hidden because both are readable states with obvious advice
- * attached — and because the alternative is a plan that quietly misses its own
- * stated target and looks like an arithmetic bug.
- *
- *  * `below_minimum` — one realistic session already costs more than the whole
- *    week. A beginner at very low fitness whose chosen sports all come in long:
- *    a 45-minute football match is 225 AU against a 140 AU week.
- *  * `above_capacity` — the sessions that could legally be placed cannot carry
- *    the budget between them. A single-sport athlete at high fitness, where the
- *    recovery windows between repeats of that one sport leave room for fewer
- *    sessions than the budget needs.
- */
 export type BudgetFit = 'on_target' | 'below_minimum' | 'above_capacity'
 
 export interface LoadBudget {
-  /** `CTL x 7` — a week that holds fitness exactly level. */
   maintenanceLoad: number
-  /** `ACWR_FLOOR x maintenance`. Below this, fitness drifts down. */
   floor: number
-  /** `ACWR_CEILING x maintenance`. Above this, injury risk turns up. */
   ceiling: number
-  /** Where in `[floor, ceiling]` this week should land. */
   target: number
   stance: BudgetStance
-  /** The rule that chose `target`, with its numbers. */
   reason: string
 }
 
-/** The three measured components behind a sport's rank. Each 0–1. */
 export interface SportScore {
   sport: SportType
-  /** Outstanding conflicting fatigue. Higher is worse; it *lowers* `total`. */
   recoveryDebt: number
-  /** How far under an even share of load this sport is. Higher scores higher. */
   balanceDeficit: number
-  /** Days since last trained, over {@link FRESHNESS_CEILING_DAYS}. */
   freshness: number
-  /** Weighted total, 0–1. */
   total: number
-  /** Days since this sport was last trained; `null` if never. */
   daysSinceLastTrained: number | null
-  /** This sport's share of the last 28 days' load, 0–1. */
   loadShare: number
 }
 
-/** Which component contributed most to a suggestion. */
 export type DrivingComponent = 'recovery' | 'balance' | 'freshness'
 
 export interface SuggestedSession {
   sport: SportType
-  /** Local calendar day, `YYYY-MM-DD`. */
   date: string
-  /** Whole days from today. 1 is tomorrow. */
   dayOffset: number
   durationMinutes: number
-  /** Integer 1–10. `durationMinutes x rpe` is `load`. */
   rpe: number
-  /** sRPE load this session is meant to carry. */
   load: number
-  /** The component that put this sport at the top. */
   drivenBy: DrivingComponent
-  /** One sentence, interpolated from this session's own figures. */
   reason: string
 }
 
@@ -312,24 +109,17 @@ export type WeeklyPlan =
       status: 'ok'
       budget: LoadBudget
       sessions: SuggestedSession[]
-      /** Every sport ranked, so a caller can show the workings. */
       scores: SportScore[]
-      /** Sum of `sessions[].load`. Within rounding of `budget.target`. */
       allocatedLoad: number
-      /** Whether the suggested sessions could actually sum to the target. */
       budgetFit: BudgetFit
     }
 
-/** The session standing between a sport and its next outing. */
 export interface RecoveryBlocker {
   sessionId: string
   sport: SportType
-  /** Local calendar day the blocking session happened on. */
   date: string
   rpe: number
-  /** 0–3 from the matrix; 3-equivalent when it is the same sport. */
   interactionLevel: number
-  /** Days that session's fatigue needs, from the matrix and ATL's decay. */
   windowDays: number
 }
 
@@ -339,19 +129,15 @@ export type RecoveryStatus =
   | {
       sport: SportType
       status: 'recovering'
-      /** Local calendar day it becomes advisable. */
       readyOn: string
       daysRemaining: number
       blockedBy: RecoveryBlocker
       reason: string
     }
 
-/** A session the conflict engine has flagged, as the planner holds it. */
 export interface PlannedSessionInput {
   sport: SportType
-  /** Local calendar day, `YYYY-MM-DD`. */
   date: string
-  /** Planned RPE, 1–10. */
   intensity: number
   durationMinutes?: number
 }
@@ -361,7 +147,6 @@ export type Resolution =
   | {
       kind: 'reschedule'
       sport: SportType
-      /** Where to move it to. */
       date: string
       daysMoved: number
       blockedBy: RecoveryBlocker
@@ -369,31 +154,16 @@ export type Resolution =
     }
   | {
       kind: 'substitute'
-      /** What to do instead, on the original day. */
       sport: SportType
       date: string
       durationMinutes: number
       rpe: number
       load: number
-      /** The substitute's overlap with the blocking session, 0–1. */
       overlap: number
       replaces: SportType
       reason: string
     }
 
-/* ------------------------------------------------------------------ */
-/* Day arithmetic                                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * A local calendar-day index.
- *
- * The same construction the calibration gate uses: local Y/M/D re-anchored
- * through `Date.UTC`, so two sessions on one local day share an index whatever
- * the clocks did, and a difference of indices is whole calendar days across a
- * DST boundary. `null` for anything unparseable, so a bad row is skipped rather
- * than poisoning a window with `NaN`.
- */
 function dayIndex(value: string | Date): number | null {
   if (!(value instanceof Date) && typeof value !== 'string') return null
   const d = value instanceof Date ? value : new Date(value)
@@ -401,12 +171,10 @@ function dayIndex(value: string | Date): number | null {
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY)
 }
 
-/** `YYYY-MM-DD` for a day index. */
 function isoFromDayIndex(index: number): string {
   return new Date(index * MS_PER_DAY).toISOString().slice(0, 10)
 }
 
-/** "Tuesday" — how a suggested day is named in a reason. */
 function weekdayName(index: number): string {
   return new Date(index * MS_PER_DAY).toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -418,7 +186,6 @@ function sportLabel(sport: string): string {
   return SPORT_OPTIONS.find((o) => o.value === sport)?.label ?? sport
 }
 
-/** One session reduced to what the rules read, with its day already resolved. */
 interface DatedSession {
   id: string
   sport: SportType
@@ -443,49 +210,18 @@ function toDated(sessions: Session[]): DatedSession[] {
   return out.sort((a, b) => b.dayIndex - a.dayIndex)
 }
 
-/* ------------------------------------------------------------------ */
-/* The core rule: how long conflicting fatigue lasts                   */
-/* ------------------------------------------------------------------ */
-
-/**
- * Residual fatigue from a session of intensity `rpe`, `daysAgo` days later,
- * as it lands on a sport with `overlap` against it. 0–1.
- *
- * Three factors, all measured rather than assumed: how much the two sports share
- * (the matrix), how hard the session was (its own RPE), and how long ago it was
- * (ATL's decay). A level-1 pairing, an easy session, or a fortnight of distance
- * each drive this toward zero on their own.
- */
 export function residualFatigue(overlap: number, rpe: number, daysAgo: number): number {
   if (overlap <= 0 || rpe <= 0) return 0
   const intensity = Math.max(0, Math.min(rpe / 10, 1))
   return overlap * intensity * Math.exp(-Math.max(0, daysAgo) / FATIGUE_TIME_CONSTANT)
 }
 
-/**
- * How many days must pass before a session stops holding a sport back.
- *
- * Solved rather than tabulated: {@link residualFatigue} is
- * `overlap x intensity x e^(-d/7)`, so the day it falls to
- * {@link RECOVERY_TOLERANCE} is `7 x ln(overlap x intensity / tolerance)`.
- * Ceiled to a whole day, floored at zero and capped at
- * {@link MAX_RECOVERY_DAYS}.
- *
- * Which is why this is not a flat constant: a level-3 pairing after an RPE-9
- * session yields five days, the same pairing after an easy RPE-4 session yields
- * none, and a level-1 pairing yields none at any intensity — matching the
- * conflict engine, which only ever fires from level 2 up.
- */
 export function recoveryWindowDays(overlap: number, rpe: number): number {
   const initial = residualFatigue(overlap, rpe, 0)
   if (initial <= RECOVERY_TOLERANCE) return 0
   const days = FATIGUE_TIME_CONSTANT * Math.log(initial / RECOVERY_TOLERANCE)
   return Math.min(MAX_RECOVERY_DAYS, Math.max(0, Math.ceil(days)))
 }
-
-/* ------------------------------------------------------------------ */
-/* Guard                                                              */
-/* ------------------------------------------------------------------ */
 
 function guard(sessions: Session[]): InsufficientData | null {
   const trainingDays = countTrainingDays(sessions)
@@ -500,11 +236,6 @@ function guard(sessions: Session[]): InsufficientData | null {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* 1. Load budget                                                     */
-/* ------------------------------------------------------------------ */
-
-/** Total load in the trailing 7-day block `weeksAgo` weeks back. */
 function trailingWeekLoad(sessions: DatedSession[], today: number, weeksAgo: number): number {
   const end = today - weeksAgo * DAYS_PER_WEEK
   const start = end - DAYS_PER_WEEK
@@ -515,16 +246,6 @@ function trailingWeekLoad(sessions: DatedSession[], today: number, weeksAgo: num
   return total
 }
 
-/**
- * The coming week's load budget, and the rule that set it.
- *
- * The bounds are the Gabbett acute:chronic range the Progress band is drawn
- * from — imported, not copied, so the number the athlete is advised to hit is
- * inside the band they can already see. The target within them is a three-way
- * decision, checked in order of urgency: fatigue first, because backing off is
- * the one recommendation it is never wrong to follow late; then detraining;
- * then hold.
- */
 function computeBudget(
   sessions: DatedSession[],
   metrics: RecommenderMetrics,
@@ -548,9 +269,6 @@ function computeBudget(
     }
   }
 
-  // Trailing 7-day blocks rather than calendar weeks: the question is whether
-  // the last fortnight of *elapsed* training was under the floor, and a calendar
-  // week read on a Tuesday would compare two days against a seven-day floor.
   const recentWeeks: number[] = []
   for (let w = 0; w < DETRAINING_WEEKS; w++) recentWeeks.push(trailingWeekLoad(sessions, today, w))
   const detraining = recentWeeks.length === DETRAINING_WEEKS && recentWeeks.every((l) => l < floor)
@@ -582,17 +300,6 @@ function computeBudget(
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* 2. Sport scoring                                                   */
-/* ------------------------------------------------------------------ */
-
-/**
- * Rank the athlete's sports on three measured components.
- *
- * Exported because the plan returns these alongside its suggestions: the whole
- * claim of an explainable system is that a reader can check the reasoning, and
- * that means handing over the components, not only the sentence built from them.
- */
 export function scoreSports(
   sessions: DatedSession[],
   profile: RecommenderProfile,
@@ -601,7 +308,6 @@ export function scoreSports(
   const sports = profile.sports
   const matrix = profile.sportInteractions ?? {}
 
-  // Load per sport over the balance window, for the even-split comparison.
   const windowStart = today - BALANCE_WINDOW_DAYS
   const loadBySport = new Map<string, number>()
   let windowTotal = 0
@@ -613,7 +319,6 @@ export function scoreSports(
   const evenShare = sports.length > 0 ? 1 / sports.length : 0
 
   return sports.map((sport) => {
-    // --- recoveryDebt: what is still sitting on this sport's muscles ---
     let debt = 0
     for (const s of sessions) {
       const daysAgo = today - s.dayIndex
@@ -622,12 +327,10 @@ export function scoreSports(
     }
     const recoveryDebt = Math.max(0, Math.min(debt, 1))
 
-    // --- balanceDeficit: how far under an even split ---
     const loadShare = windowTotal > 0 ? (loadBySport.get(sport) ?? 0) / windowTotal : 0
     const balanceDeficit =
       evenShare > 0 ? Math.max(0, Math.min((evenShare - loadShare) / evenShare, 1)) : 0
 
-    // --- freshness: days since last trained, saturating at a week ---
     let lastDay: number | null = null
     for (const s of sessions) {
       if (s.sport !== sport) continue
@@ -654,7 +357,6 @@ export function scoreSports(
   })
 }
 
-/** Which of the three contributed most to this sport's total. */
 function drivingComponent(score: SportScore): DrivingComponent {
   const recovery = W_RECOVERY * (1 - score.recoveryDebt)
   const balance = W_BALANCE * score.balanceDeficit
@@ -664,20 +366,6 @@ function drivingComponent(score: SportScore): DrivingComponent {
   return 'recovery'
 }
 
-/* ------------------------------------------------------------------ */
-/* 3. Allocation                                                      */
-/* ------------------------------------------------------------------ */
-
-/**
- * Realistic duration and intensity ranges per sport.
- *
- * The point of this table is that `load = minutes x rpe` has many solutions and
- * most of them are nonsense: 600 AU is a plausible 75 minutes at RPE 8, and also
- * an absurd 300 minutes at RPE 2 or a heroic 60 at RPE 10. Constraining RPE to
- * what the sport is usually done at, and duration to what a session of it
- * usually lasts, is what keeps a suggestion something an athlete could actually
- * go and do.
- */
 const SESSION_SHAPES: Record<string, { rpe: [number, number]; minutes: [number, number] }> = {
   running: { rpe: [4, 8], minutes: [20, 90] },
   cycling: { rpe: [3, 7], minutes: [30, 150] },
@@ -690,30 +378,11 @@ const SESSION_SHAPES: Record<string, { rpe: [number, number]; minutes: [number, 
 
 const DEFAULT_SHAPE = { rpe: [4, 8] as [number, number], minutes: [30, 90] as [number, number] }
 
-/**
- * The smallest load a session of this sport can realistically carry — its
- * shortest sensible duration at its easiest sensible intensity.
- *
- * This is what bounds how many sessions a budget can be split into. A 140 AU
- * week (an athlete at CTL 20) cannot hold three sessions, because three sessions
- * of anything real already come to more than that; splitting it into three
- * anyway would produce a plan of seven-minute runs, which is arithmetic rather
- * than advice.
- */
 function minSessionLoad(sport: string): number {
   const shape = SESSION_SHAPES[sport] ?? DEFAULT_SHAPE
   return shape.minutes[0] * shape.rpe[0]
 }
 
-/**
- * The RPE band a sport may be suggested at, once any ceiling is applied.
- *
- * Floored at the sport's own minimum rather than at the ceiling, so a ceiling
- * below a sport's easiest realistic effort collapses the band to that single
- * value instead of inverting it. Combat starts at RPE 6, which is exactly
- * {@link FATIGUED_RPE_CEILING}, and an inverted band would silently return no
- * candidate at all.
- */
 function rpeBand(sport: string, maxRpe?: number): [number, number] {
   const shape = SESSION_SHAPES[sport] ?? DEFAULT_SHAPE
   const [low, high] = shape.rpe
@@ -721,43 +390,11 @@ function rpeBand(sport: string, maxRpe?: number): [number, number] {
   return [low, Math.max(low, Math.min(high, maxRpe))]
 }
 
-/**
- * The largest load a session of this sport can realistically carry.
- *
- * Takes the same ceiling {@link shapeSession} does, because the two answer
- * halves of one question: this decides whether the placed sessions *could*
- * reach the budget, and that decides what they are actually shaped to. Left
- * unaware of the ceiling, `budgetFit` would report `on_target` for a fatigued
- * week whose sessions are capped at RPE 6 and cannot reach the target — the
- * plan would quietly undershoot while claiming to be on it.
- */
 function maxSessionLoad(sport: string, maxRpe?: number): number {
   const shape = SESSION_SHAPES[sport] ?? DEFAULT_SHAPE
   return shape.minutes[1] * rpeBand(sport, maxRpe)[1]
 }
 
-/**
- * Split `target` across `placements`, weighted by score, with no sport taking
- * more than {@link SPORT_SHARE_CAP}.
- *
- * ## Why the cap has to be able to lift
- *
- * Forty percent is only satisfiable when there are enough distinct sports to
- * share the week out: two sports capped at 40% each leave a fifth of the budget
- * unspent, and a plan that deliberately under-trains by 20% to honour a
- * presentation rule is not a better plan. So the cap that is actually applied is
- * the looser of 40% and an even split — which is 40% from three sports up, 50%
- * for two, and no cap at all for one.
- *
- * ## Why it is water-filled rather than clamped once
- *
- * Capping the leader hands its excess to everybody else, which can push the
- * runner-up over the same line. Clamping in a single pass would leave that
- * second breach in place. Each round therefore freezes the sports that have
- * breached, redistributes what is left across those that have not, and repeats
- * until nothing is over — at most once per sport, since a frozen sport never
- * thaws.
- */
 export function allocateShares(
   placements: Placement[],
   weightOf: (p: Placement) => number,
@@ -788,7 +425,6 @@ export function allocateShares(
     for (const sport of breached) capped.set(sport, cap)
   }
 
-  // Each sport's share, divided among its own placements by their weights.
   return placements.map((p, i) => {
     const sportShare = capped.get(p.sport) ?? 0
     const within = weights[i] / (sportWeight.get(p.sport) || 1)
@@ -796,24 +432,9 @@ export function allocateShares(
   })
 }
 
-/**
- * The closest realistic `(minutes, rpe)` pair whose product is `load`.
- *
- * Searches the sport's plausible RPE range, takes minutes to the nearest five,
- * clamps to the sport's plausible duration, and keeps whichever candidate lands
- * closest to the requested load — breaking ties toward the middle of the RPE
- * range, since a mid-range effort is the one an athlete is most likely to hit.
- */
 export function shapeSession(
   sport: string,
   load: number,
-  /**
-   * Hard ceiling on the suggested RPE, or `undefined` for the sport's own range.
-   *
-   * Set while the athlete is fatigued — see {@link FATIGUED_RPE_CEILING}. The
-   * load still has to be met, so a capped RPE is absorbed by a longer session
-   * rather than a smaller one, which is exactly the trade a coach would make.
-   */
   maxRpe?: number,
 ): { durationMinutes: number; rpe: number; load: number } {
   const shape = SESSION_SHAPES[sport] ?? DEFAULT_SHAPE
@@ -828,9 +449,6 @@ export function shapeSession(
     const raw = load / rpe
     const rounded = Math.max(minLow, Math.min(Math.round(raw / 5) * 5, minHigh))
     const actual = rounded * rpe
-    // Distance from the requested load first; closeness to a mid-range effort
-    // only as the tie-break, scaled small enough that it can never outrank a
-    // genuinely better load match.
     const key = Math.abs(actual - load) + Math.abs(rpe - midRpe) * 0.01
     if (key < bestKey) {
       bestKey = key
@@ -838,34 +456,19 @@ export function shapeSession(
     }
   }
 
-  // The loop always runs at least once for any valid shape, but a malformed
-  // table entry would leave `best` null rather than crashing the plan.
   return best ?? { durationMinutes: minLow, rpe: rpeLow, load: minLow * rpeLow }
 }
 
-/** A placement decided before any load is allocated to it. */
 export interface Placement {
   sport: SportType
   dayIndex: number
-  /** The overlapping session that forced it later, if any. */
   spacedFrom: Extract<DayBlock, { kind: 'overlap' }> | null
 }
 
-/** Why a day is unavailable. `occupied` carries no overlap to explain. */
 type DayBlock =
   | { kind: 'occupied' }
   | { kind: 'overlap'; sport: SportType; dayIndex: number; level: number; gap: number }
 
-/**
- * Is `sport` allowed on `day`, given history and what is already placed?
- *
- * Returns the binding constraint rather than a boolean, so a reason string can
- * name the session that actually did the constraining instead of asserting a
- * spacing rule in the abstract. "That day is already taken" is a separate kind:
- * it is a fact about the plan rather than about the matrix, and folding it in
- * with the overlaps would have the copy claim a level-0 clash — which is to say
- * no clash at all — as the thing that moved a session.
- */
 function blockingConstraint(
   sport: SportType,
   day: number,
@@ -874,7 +477,6 @@ function blockingConstraint(
   placedRpe: Map<number, number>,
   matrix: SportInteractions,
 ): DayBlock | null {
-  // Nothing twice on one day, whatever the sports are.
   for (const p of placed) {
     if (p.dayIndex === day) return { kind: 'occupied' }
   }
@@ -885,13 +487,6 @@ function blockingConstraint(
     const level = getInteractionLevel(sport, otherSport, matrix)
     const overlap = overlapWeight(sport, otherSport, matrix)
     const window = recoveryWindowDays(overlap, rpe)
-    // The adjacency floor applies to genuinely conflicting pairs — level 2 and
-    // up, the same bar the conflict engine warns from. Two sports the matrix
-    // says barely interact may sit on consecutive days, which is what makes a
-    // four-session week possible at all. The same sport repeating is governed by
-    // its own window instead: the matrix scores that pair 0 by design, while
-    // `overlapWeight` reads it as total overlap, so a hard session still blocks
-    // a repeat without needing the level-based floor.
     const required = level >= 2 ? Math.max(window, MIN_CONFLICT_GAP_DAYS) : window
     if (required <= 0) return
     if (Math.abs(day - otherDay) >= required) return
@@ -901,8 +496,6 @@ function blockingConstraint(
   }
 
   for (const s of history) {
-    // Only the recent past can still be binding; older than the decay horizon
-    // and `recoveryWindowDays` returns 0 anyway.
     if (day - s.dayIndex > MAX_RECOVERY_DAYS) continue
     consider(s.sport, s.dayIndex, s.rpe)
   }
@@ -913,19 +506,6 @@ function blockingConstraint(
   return binding
 }
 
-/**
- * Lay sessions out across the coming week.
- *
- * Placement happens **before** load is allocated, which is the ordering that
- * makes the budget arithmetic honest: the plan first works out how many sessions
- * it can legally fit, then divides the target across exactly those, so the
- * suggested loads always sum to the budget instead of a session being dropped
- * afterwards and taking its share of the week with it.
- *
- * Each candidate goes on the earliest day that clears every constraint. Sports
- * are tried in score order and a sport that cannot be placed anywhere in the
- * horizon is skipped rather than squeezed in against the matrix.
- */
 function placeSessions(
   ranked: SportScore[],
   history: DatedSession[],
@@ -934,23 +514,14 @@ function placeSessions(
   wanted: number,
 ): Placement[] {
   const placed: Placement[] = []
-  // Intensity is not known until load is allocated, so spacing between two
-  // *suggested* sessions assumes each will be a solidly hard effort. Assuming
-  // the top of the range would space the week out on training that may never be
-  // that hard; assuming the bottom would let a real clash through.
   const ASSUMED_RPE = 7
   const placedRpe = new Map<number, number>()
 
-  // Cycle the ranked list so a two-sport athlete still gets four sessions rather
-  // than the plan collapsing to the number of sports they picked.
   for (let i = 0; placed.length < wanted && i < wanted * ranked.length; i++) {
     const candidate = ranked[i % ranked.length]
     if (!candidate) break
 
     let day: number | null = null
-    // What stood in the way on the first day tried — the reason this session
-    // sits where it does rather than tomorrow. Captured on the way past, so the
-    // explanation never has to be reconstructed after the fact.
     let firstOverlap: Extract<DayBlock, { kind: 'overlap' }> | null = null
 
     for (let offset = 1; offset <= PLAN_HORIZON_DAYS; offset++) {
@@ -974,8 +545,6 @@ function placeSessions(
     placed.push({
       sport: candidate.sport,
       dayIndex: day,
-      // Only credit the spacing when it actually moved the session. A session on
-      // the first available day was not spaced away from anything.
       spacedFrom: day > today + 1 ? firstOverlap : null,
     })
     placedRpe.set(day, ASSUMED_RPE)
@@ -984,22 +553,10 @@ function placeSessions(
   return placed.sort((a, b) => a.dayIndex - b.dayIndex)
 }
 
-/** "1 day", "3 days" — a count and its noun, agreeing. */
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-/**
- * One sentence, built only from figures this suggestion actually computed.
- *
- * Two rules govern everything here. Every number interpolated is one the caller
- * also receives on the returned object, so a reader can check the sentence
- * against the data. And no superlative is asserted without being tested for —
- * "lowest" is a claim about the whole set, so it is only used where this sport
- * genuinely holds the minimum, and a plainer wording stands in where it does
- * not. A recommendation that overstates its own reasoning is worse than one
- * that under-explains it.
- */
 function buildReason(
   score: SportScore,
   driver: DrivingComponent,
@@ -1034,10 +591,6 @@ function buildReason(
     const gap = placement.dayIndex - placement.spacedFrom.dayIndex
     const day = weekdayName(placement.spacedFrom.dayIndex)
     const other = sportLabel(placement.spacedFrom.sport)
-    // The matrix scores a sport against itself 0 — it does not *interfere* with
-    // itself, it just is itself — so quoting a level here would read "level-0
-    // overlap", which says the opposite of why the session moved. A repeat is
-    // spaced on the fatigue it left behind, and that is what the sentence says.
     clauses.push(
       placement.spacedFrom.sport === score.sport
         ? `placed ${plural(gap, 'day')} after ${day}'s ${other} session so the same muscles get their recovery`
@@ -1048,14 +601,6 @@ function buildReason(
   return `${clauses.join(', and ')}.`
 }
 
-/**
- * The coming week: a budget, and 3–4 sessions that spend it.
- *
- * See the file header for the shape of the system. The order here is the order
- * of the reasoning: how much to do, which sports deserve it, when they can
- * legally happen, and only then how each slice becomes a session somebody could
- * actually go and train.
- */
 export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
   const blocked = guard(input.sessions)
   if (blocked) return blocked
@@ -1067,10 +612,6 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
   const sessions = toDated(input.sessions)
   const budget = computeBudget(sessions, input.metrics, today)
 
-  // A non-positive CTL means there is no maintenance week to reason about — the
-  // whole budget collapses to zero and every figure below it would be a
-  // fabrication. The training-day guard almost always catches this first; this
-  // is the arithmetic backstop.
   if (budget.maintenanceLoad <= 0) {
     const trainingDays = countTrainingDays(input.sessions)
     return {
@@ -1086,10 +627,6 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
   const scores = scoreSports(sessions, input.profile, today)
   const ranked = [...scores].sort((a, b) => b.total - a.total || a.sport.localeCompare(b.sport))
 
-  // How many sessions the budget can actually hold. Four where it stretches,
-  // fewer where it does not — the count follows the athlete's fitness rather
-  // than a constant, because a fixed three would force a low-CTL week to be cut
-  // into pieces too small to be worth logging.
   const cheapest = Math.min(...input.profile.sports.map(minSessionLoad), Number.POSITIVE_INFINITY)
   const affordable = Number.isFinite(cheapest)
     ? Math.floor(budget.target / cheapest)
@@ -1115,19 +652,9 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
     }
   }
 
-  // `affordable` was computed from the *cheapest* sport; placement may well have
-  // chosen dearer ones — a 45-minute combat session starts at 270 AU where a
-  // 20-minute run starts at 80. So trim against what was actually placed,
-  // dropping the lowest-ranked session until the week's unavoidable minimum fits
-  // inside the budget. Trimming after placement rather than guessing before it
-  // is what keeps the allocation honest for every sport mix, not just the ones
-  // whose minimums happen to be similar.
   const scoreOf = new Map(scores.map((sc) => [sc.sport, sc]))
   const minimumOf = (list: Placement[]) => list.reduce((sum, p) => sum + minSessionLoad(p.sport), 0)
 
-  // Intensity ceiling for the whole week. Derived from the stance rather than
-  // from the raw Form number so that the card's "Easing off" label and the
-  // sessions under it are driven by one decision, not two that might disagree.
   const rpeCeiling = budget.stance === 'fatigued' ? FATIGUED_RPE_CEILING : undefined
 
   while (placements.length > 1 && minimumOf(placements) > budget.target) {
@@ -1138,20 +665,6 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
     placements = placements.filter((p) => p !== weakest)
   }
 
-  // Second trim: a sport placed more often than its own share of the week can
-  // pay for.
-  //
-  // {@link allocateShares} caps what a sport is *given*, but it cannot cap what
-  // a session physically costs. Two swims allocated 70 AU each are both rounded
-  // up to swimming's 80 AU floor — because a twelve-minute swim is not a session
-  // — and the sport lands at 46% of a week it was allowed 40% of. Capping the
-  // allocation and then quietly exceeding it is worse than not capping at all,
-  // so where the arithmetic does not fit, the extra session goes rather than the
-  // cap.
-  //
-  // The survivor is the earlier day: two placements of one sport carry the same
-  // score, so there is nothing to rank them by, and the earlier slot is the one
-  // the athlete can act on sooner.
   for (let guard = 0; guard < placements.length; guard++) {
     const distinct = new Set(placements.map((p) => p.sport)).size
     const capLoad = Math.max(SPORT_SHARE_CAP, 1 / distinct) * budget.target
@@ -1167,10 +680,6 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
     placements = placements.filter((p) => p !== victim)
   }
 
-  // Both directions of "the sports cannot meet the budget". The floor binds when
-  // one real session already costs more than the week; the ceiling binds when
-  // every session that could legally be placed, at its longest and hardest, still
-  // falls short.
   const capacityOf = (list: Placement[]) =>
     list.reduce((sum, p) => sum + maxSessionLoad(p.sport, rpeCeiling), 0)
   const budgetFit: BudgetFit =
@@ -1180,14 +689,8 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
         ? 'above_capacity'
         : 'on_target'
 
-  // Split the target across the placements, weighted by score, so the better
-  // ranked sport carries the bigger session — but with no sport allowed more
-  // than its share of the week. See {@link allocateShares}; the shares it
-  // returns sum to 1, which is what keeps the allocation equal to the target.
   const shares = allocateShares(placements, (p) => scoreOf.get(p.sport)?.total ?? 0.01)
 
-  // Which sport genuinely holds the least outstanding overlap — checked, not
-  // assumed, because the reason strings are allowed to say "lowest" only here.
   const lowestDebt = ranked.reduce(
     (min, sc) => Math.min(min, sc.recoveryDebt),
     Number.POSITIVE_INFINITY,
@@ -1216,15 +719,6 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
     }
   })
 
-  // One corrective pass. Rounding minutes to the nearest five inside each
-  // sport's clamp leaves the total a little off the budget; nudging the largest
-  // session — the one with the most room to absorb it — pulls the week back
-  // without disturbing the shape of the rest.
-  // The cap has to survive the drift pass, or the correction quietly undoes it:
-  // that pass walks the sessions largest-first and grows the biggest one, which
-  // is precisely the session the cap just held down. Each is therefore given its
-  // own ceiling — its capped share, plus the same 5% the tests allow the week as
-  // a whole, so rounding still has somewhere to go.
   correctDrift(
     suggestions,
     budget.target,
@@ -1242,33 +736,10 @@ export function computeWeeklyPlan(input: RecommenderInput): WeeklyPlan {
   }
 }
 
-/**
- * Pull the allocated total back toward the budget.
- *
- * Each session is shaped independently against its own share, and rounding
- * minutes to a five-minute grid inside the sport's duration clamp leaves the
- * week's total a little off the target. This walks the sessions largest first —
- * the biggest session has the most room to absorb a change, and adjusting it is
- * the least visible correction available — and re-shapes each toward its own
- * load plus whatever drift is still outstanding.
- *
- * Re-shaping rather than nudging the duration is what makes it work at the
- * edges. A session already sitting at its sport's shortest sensible duration
- * cannot get smaller by minutes at all, and a correction that only moved minutes
- * would give up there — precisely in the low-budget weeks where every session is
- * pinned to its floor and the drift is largest. Going back through
- * {@link shapeSession} lets it drop an RPE instead, which is the other axis the
- * load was built from.
- *
- * Two passes, because absorbing drift on one session can overshoot and leave a
- * smaller correction for the next; a second sweep picks that up. It converges or
- * it does not, and the caller sees the result either way in `allocatedLoad`.
- */
 function correctDrift(
   suggestions: SuggestedSession[],
   target: number,
   maxRpe: number | undefined,
-  /** Per-session load ceilings, in the order `suggestions` came in. */
   loadCaps: number[],
 ): void {
   if (suggestions.length === 0) return
@@ -1293,7 +764,6 @@ function correctDrift(
   }
 }
 
-/** Only reachable from an unparseable `now`; keeps the return type honest. */
 function guardFallback(sessions: Session[]): InsufficientData {
   return {
     status: 'insufficient_data',
@@ -1303,19 +773,6 @@ function guardFallback(sessions: Session[]): InsufficientData {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* 4. Recovery status                                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * For each of the athlete's sports: trainable now, or the day it becomes
- * advisable and what is holding it back.
- *
- * The window is derived, never flat — see {@link recoveryWindowDays}. The
- * blocker returned is the session producing the *latest* ready date, which is
- * the one an athlete can actually act on: naming any other would have them wait
- * for a session that was never the binding constraint.
- */
 export function computeRecoveryStatus(input: RecommenderInput): RecoveryStatus[] {
   const blocked = guard(input.sessions)
   const sports = input.profile.sports
@@ -1356,9 +813,6 @@ export function computeRecoveryStatus(input: RecommenderInput): RecoveryStatus[]
             sport: s.sport,
             date: isoFromDayIndex(s.dayIndex),
             rpe: s.rpe,
-            // The matrix's own level for the pair. Same-sport reads 0 there by
-            // design, so it is reported as the full 3 it is treated as — see
-            // `overlapWeight` for why the two differ.
             interactionLevel:
               s.sport === sport ? 3 : getInteractionLevel(sport, s.sport, matrix),
             windowDays: window,
@@ -1395,19 +849,6 @@ export function computeRecoveryStatus(input: RecommenderInput): RecoveryStatus[]
   })
 }
 
-/* ------------------------------------------------------------------ */
-/* 5. Conflict resolution                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * Two ways out of a flagged session: move it, or swap it.
- *
- * Both preserve something the athlete wanted. Rescheduling preserves the
- * *session* and gives up the day; substituting preserves the *day* and its load
- * — so the week's total still lands on budget — and gives up the sport. Between
- * them they cover both reasons somebody planned that session in the first place,
- * which is why the answer is two options and not one instruction.
- */
 export function suggestConflictResolution(
   plannedSession: PlannedSessionInput,
   context: RecommenderInput,
@@ -1431,7 +872,6 @@ export function suggestConflictResolution(
   const matrix = context.profile.sportInteractions ?? {}
   const resolutions: Resolution[] = []
 
-  /** The worst unresolved constraint against `sport` on `day`. */
   const constraintOn = (sport: SportType, day: number): RecoveryBlocker | null => {
     let worst: RecoveryBlocker | null = null
     for (const s of sessions) {
@@ -1458,7 +898,6 @@ export function suggestConflictResolution(
 
   const original = constraintOn(plannedSession.sport, plannedDay)
 
-  // --- Option 1: move it to the nearest day that clears ---
   for (let offset = 1; offset <= PLAN_HORIZON_DAYS; offset++) {
     const day = plannedDay + offset
     if (constraintOn(plannedSession.sport, day)) continue
@@ -1485,7 +924,6 @@ export function suggestConflictResolution(
     break
   }
 
-  // --- Option 2: a different sport, same day, same load ---
   if (original) {
     const load =
       (plannedSession.durationMinutes ?? 0) * plannedSession.intensity ||
@@ -1494,9 +932,6 @@ export function suggestConflictResolution(
     const alternatives = context.profile.sports
       .filter((s) => s !== plannedSession.sport)
       .map((s) => ({ sport: s, overlap: overlapWeight(s, original.sport, matrix) }))
-      // Only genuinely clear alternatives: anything the matrix rates 2 or 3
-      // against the blocking session would simply move the clash to a different
-      // pair of sports, which is not a resolution.
       .filter((c) => !constraintOn(c.sport, plannedDay))
       .sort((a, b) => a.overlap - b.overlap || a.sport.localeCompare(b.sport))
 

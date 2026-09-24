@@ -1,3 +1,5 @@
+// Stacked bar of time spent in each HR zone this week.
+
 import { useMemo } from 'react'
 import { Text, View } from 'react-native'
 import { HR_ZONES, hrZoneColor } from '../../algorithms/heartRate'
@@ -7,7 +9,6 @@ import { useTheme } from '../../theme/ThemeProvider'
 import type { Palette } from '../../theme/tokens'
 
 interface ZoneDistributionChartProps {
-  /** Sessions from the last 7 days. */
   weekSessions: Session[]
 }
 
@@ -19,11 +20,6 @@ interface ZoneTotal {
   percent: number
 }
 
-/**
- * Horizontal stacked bar of time spent in each HR zone this week. Each session
- * contributes its whole duration to its single estimated zone. Colours come
- * from HR_ZONES so they match the session rows and the log preview.
- */
 export default function ZoneDistributionChart({ weekSessions }: ZoneDistributionChartProps) {
   const { colors } = useTheme()
 
@@ -31,8 +27,6 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
     const minutesByZone = new Map<number, number>()
     for (const session of weekSessions) {
       const zone = session.estimatedHRZone?.zone
-      // Sessions logged before HR estimates existed have no zone — skip them
-      // rather than bucketing them into a wrong zone.
       if (zone == null) continue
       minutesByZone.set(zone, (minutesByZone.get(zone) ?? 0) + session.durationMinutes)
     }
@@ -97,7 +91,6 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
         </View>
       ) : (
         <>
-          {/* Stacked bar */}
           <View
             accessibilityRole="image"
             accessibilityLabel={`Time in each heart-rate zone this week: ${totals
@@ -123,7 +116,6 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
             )}
           </View>
 
-          {/* Per-zone legend with minutes */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 14, gap: 12 }}>
             {totals.map((t) => (
               <View key={t.zone} style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -169,7 +161,6 @@ export default function ZoneDistributionChart({ weekSessions }: ZoneDistribution
   )
 }
 
-/** The card, built per render so it follows the active palette. */
 function cardFor(colors: Palette) {
   return {
     backgroundColor: colors.surface,

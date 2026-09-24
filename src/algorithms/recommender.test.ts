@@ -1,15 +1,5 @@
 // Tests for the recommendation engine.
-//
-// Run with `npm test` — Node's built-in runner, executing this TypeScript
-// directly via type stripping. No test framework is installed and none is
-// needed: the whole module is pure and synchronous, so a test is a call and an
-// assertion. That is the practical dividend of the "rules, not a model" framing
-// and it is worth keeping.
-//
-// The module under test imports only `constants/training`, `utils/calibration`
-// and its own knowledge base, none of which reach React Native or Firebase — so
-// this runs in a bare Node process with no mocking at all. Anything that breaks
-// that import graph will break this file first, which is the intended alarm.
+
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -32,22 +22,10 @@ import { overlapWeight } from './sportInteractions'
 import { ACWR_CEILING, ACWR_FLOOR, DEFAULT_SPORT_INTERACTIONS } from '../constants/training'
 import type { Session, SportType } from '../types/session'
 
-/* ------------------------------------------------------------------ */
-/* Fixtures                                                            */
-/* ------------------------------------------------------------------ */
-
-/** A fixed Wednesday, so weekday names in reasons are stable. */
 const NOW = new Date('2026-09-02T10:00:00')
 
 let nextId = 0
 
-/**
- * One session, `daysAgo` days before {@link NOW}.
- *
- * Dated at local noon deliberately: it puts the session unambiguously inside its
- * own calendar day whatever the runner's timezone, so a test that passes in
- * London does not fail in Auckland.
- */
 function session(
   sport: SportType,
   daysAgo: number,
@@ -75,10 +53,6 @@ const profile = (sports: SportType[]): RecommenderProfile => ({
   sportInteractions: { ...DEFAULT_SPORT_INTERACTIONS },
 })
 
-/**
- * A history with `days` distinct training days, one session per day, walking
- * backwards from `startDaysAgo`. Enough to clear the guard on its own.
- */
 function history(
   sports: SportType[],
   days: number,
@@ -101,19 +75,13 @@ function input(over: Partial<RecommenderInput> & Pick<RecommenderInput, 'session
   }
 }
 
-/** Local calendar-day index, matching the module's own day arithmetic. */
 function dayOf(iso: string): number {
   const d = new Date(`${iso}T12:00:00`)
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000)
 }
 
-/* ------------------------------------------------------------------ */
-/* 1. Load budget                                                      */
-/* ------------------------------------------------------------------ */
-
 describe('load budget', () => {
   test('a fatigued athlete is aimed at the floor', () => {
-    // Form = CTL - ATL = 40 - 70 = -30, well below the -15 fatigue threshold.
     const plan = computeWeeklyPlan(
       input({ sessions: history(['running', 'cycling'], 20), metrics: { ctl: 40, atl: 70 } }),
     )
@@ -122,21 +90,18 @@ describe('load budget', () => {
     if (plan.status !== 'ok') return
 
     assert.equal(plan.budget.stance, 'fatigued')
-    assert.equal(plan.budget.maintenanceLoad, 280) // 40 x 7
+    assert.equal(plan.budget.maintenanceLoad, 280)
     assert.equal(plan.budget.floor, Math.round(280 * ACWR_FLOOR))
     assert.equal(plan.budget.target, plan.budget.floor)
     assert.ok(
       plan.budget.target < plan.budget.maintenanceLoad,
       'a fatigued week must come in under maintenance',
     )
-    // The reason has to carry the numbers that drove it, not a stock sentence.
     assert.match(plan.budget.reason, /-30/)
     assert.match(plan.budget.reason, new RegExp(String(plan.budget.floor)))
   })
 
   test('a detraining athlete is aimed above maintenance', () => {
-    // Fitness built up historically, but the last two weeks are nearly empty:
-    // one short easy session each week, far below the floor.
     const sessions = [
       ...history(['running', 'cycling'], 16, { startDaysAgo: 15 }),
       session('running', 3, { rpe: 3, minutes: 20 }),
@@ -157,7 +122,6 @@ describe('load budget', () => {
   })
 
   test('an athlete training normally is aimed at maintenance', () => {
-    // Weekly load comfortably inside the band, form neutral.
     const sessions = history(['running', 'cycling', 'swimming'], 21, { rpe: 7, minutes: 60 })
     const plan = computeWeeklyPlan(input({ sessions, metrics: { ctl: 50, atl: 48 } }))
 
@@ -176,15 +140,8 @@ describe('load budget', () => {
   })
 })
 
-/* ------------------------------------------------------------------ */
-/* 2. Allocation                                                       */
-/* ------------------------------------------------------------------ */
-
 describe('allocation', () => {
   test('allocated load lands within 5% of the target', () => {
-    // Swept across a wide range of fitness levels and sport mixes, because the
-    // drift comes from rounding inside each sport's duration clamp — so it is
-    // exactly the combinations with awkward arithmetic that could breach it.
     const mixes: SportType[][] = [
       ['running', 'cycling', 'swimming'],
       ['combat', 'running', 'gym'],
@@ -207,7 +164,6 @@ describe('allocation', () => {
 
         const drift = Math.abs(plan.allocatedLoad - plan.budget.target) / plan.budget.target
 
-        // The two sanctioned ways to miss, each of which the plan must declare.
         if (plan.budgetFit === 'below_minimum') {
           assert.equal(plan.sessions.length, 1, 'an over-budget plan is a single session')
           assert.ok(plan.allocatedLoad > plan.budget.target, 'below_minimum must overshoot')
@@ -242,9 +198,6 @@ describe('allocation', () => {
   })
 
   test('a small budget is split into fewer, still-realistic sessions', () => {
-    // CTL 20 is a 140 AU week. Three sessions of anything real already come to
-    // more than that, so the plan must suggest fewer rather than inventing
-    // seven-minute runs to make the arithmetic work.
     const plan = computeWeeklyPlan(
       input({ sessions: history(['running', 'swimming'], 20), metrics: { ctl: 20, atl: 20 } }),
     )
@@ -262,9 +215,6 @@ describe('allocation', () => {
   })
 
   test('a budget the athlete cannot carry in their own sports is declared, not fudged', () => {
-    // One sport, high fitness: the recovery window between repeats leaves room
-    // for fewer sessions than a 1,120 AU week needs, and a single swim tops out
-    // at 75 minutes of RPE 8. The plan must say so rather than quietly missing.
     const plan = computeWeeklyPlan(
       input({
         sessions: history(['swimming'], 20),
@@ -292,11 +242,9 @@ describe('allocation', () => {
   })
 
   test('conflicting sports never land on adjacent days', () => {
-    // Sport sets chosen to be dense in level-2 and level-3 pairings, so the
-    // constraint is under real pressure rather than trivially satisfied.
     const mixes: SportType[][] = [
-      ['combat', 'running', 'football'], // combat_running 3, combat_football 3, football_running 2
-      ['gym', 'strength', 'running'], // gym_strength 3, gym_running 2, running_strength 2
+      ['combat', 'running', 'football'],
+      ['gym', 'strength', 'running'],
       ['combat', 'running', 'gym', 'strength'],
     ]
 
@@ -313,8 +261,6 @@ describe('allocation', () => {
 
         for (let i = 0; i < plan.sessions.length; i++) {
           for (let j = i + 1; j < plan.sessions.length; j++) {
-            // Annotated because `assert.ok` is an assertion function, and TS
-            // will not infer a binding that one of its message templates reads.
             const a: SuggestedSession = plan.sessions[i]
             const b: SuggestedSession = plan.sessions[j]
             const level = DEFAULT_SPORT_INTERACTIONS[[a.sport, b.sport].sort().join('_')] ?? 0
@@ -335,8 +281,6 @@ describe('allocation', () => {
   })
 
   test('a hard recent session pushes its overlapping sport later in the week', () => {
-    // A maximal combat session yesterday. Combat/running is level 3, so running
-    // must not be suggested for tomorrow.
     const sessions = [
       ...history(['running', 'cycling'], 18, { startDaysAgo: 3 }),
       session('combat', 1, { rpe: 9, minutes: 60 }),
@@ -377,10 +321,6 @@ describe('allocation', () => {
   })
 
   test('reasons never claim a level-0 overlap or mis-pluralise a day', () => {
-    // Both were real defects. A repeat of the same sport is spaced on the
-    // fatigue it left behind, but the matrix scores a sport against itself 0 —
-    // so quoting a level there produced "to clear their level-0 overlap", which
-    // states the opposite of why the session moved.
     const mixes: SportType[][] = [
       ['running', 'cycling', 'swimming'],
       ['swimming'],
@@ -406,8 +346,6 @@ describe('allocation', () => {
   })
 
   test('"lowest" is only claimed by the sport that actually holds the minimum', () => {
-    // The superlative is a claim about the whole set, so it must be tested for
-    // rather than asserted by whichever sport happened to be driven by recovery.
     const sports: SportType[] = ['running', 'cycling', 'swimming', 'gym']
     for (const ctl of [35, 55, 85]) {
       const plan = computeWeeklyPlan({
@@ -420,8 +358,6 @@ describe('allocation', () => {
       const minDebt = Math.min(...plan.scores.map((sc) => sc.recoveryDebt))
       for (const s of plan.sessions) {
         if (!s.reason.startsWith('Lowest conflicting fatigue')) continue
-        // Annotated: `assert.ok` is an assertion function, and TS will not infer
-        // a binding that one of its message templates reads.
         const score: SportScore = plan.scores.find((sc) => sc.sport === s.sport)!
         assert.ok(
           score.recoveryDebt <= minDebt,
@@ -432,8 +368,6 @@ describe('allocation', () => {
   })
 
   test('an untrained sport is ranked up by balance and freshness', () => {
-    // Swimming never appears in the history, so it carries no recovery debt, a
-    // full balance deficit and maximum freshness.
     const sessions = history(['running', 'cycling'], 20)
     const plan = computeWeeklyPlan({
       sessions,
@@ -452,28 +386,11 @@ describe('allocation', () => {
   })
 })
 
-/* ------------------------------------------------------------------ */
-/* 3. Recovery windows and status                                      */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* 3b. Shape of the allocation: caps and stance                        */
-/* ------------------------------------------------------------------ */
-
 describe('allocation shape', () => {
-  /**
-   * The cap is an exact property of `allocateShares` and an approximate one of
-   * the finished plan, so it is tested at both levels — exactly where it is
-   * exact, and with the slack named where the slack is real. Asserting the tight
-   * bound end-to-end would be asserting that sessions have no minimum size.
-   */
   const place = (sports: SportType[]): Placement[] =>
     sports.map((sport, i) => ({ sport, dayIndex: i, spacedFrom: null }))
 
   test('the allocator never gives one sport more than its share', () => {
-    // Weights deliberately lopsided: combat outscores the rest three to one,
-    // which is exactly what a neglected sport looks like to the ranking and what
-    // used to hand it ~55% of the week.
     const weights: Record<string, number> = { combat: 0.9, running: 0.3, gym: 0.3 }
     const placements = place(['combat', 'running', 'gym'])
     const shares = allocateShares(placements, (p) => weights[p.sport] ?? 0.01)
@@ -484,7 +401,6 @@ describe('allocation shape', () => {
       shares[0] <= SPORT_SHARE_CAP + 1e-9,
       `combat took ${(shares[0] * 100).toFixed(1)}% despite the cap`,
     )
-    // The excess has to go somewhere, not evaporate.
     assert.ok(shares[1] > 0.25 && shares[2] > 0.25, 'the excess is redistributed, not dropped')
   })
 
@@ -494,8 +410,6 @@ describe('allocation shape', () => {
     const shares = allocateShares(placements, (p) => weights[p.sport] ?? 0.01)
 
     const gym = shares[0] + shares[1]
-    // Two distinct sports, so the cap lifts to an even split — 40% each would
-    // leave a fifth of the week unspent, which is not a better plan.
     assert.ok(gym <= 0.5 + 1e-9, `gym took ${(gym * 100).toFixed(1)}% across two sessions`)
     assert.ok(Math.abs(shares.reduce((a, b) => a + b, 0) - 1) < 1e-9)
   })
@@ -518,8 +432,6 @@ describe('allocation shape', () => {
   })
 
   test('no sport runs away with the finished plan either', () => {
-    // End-to-end, with the slack the session floors and the five-minute grid
-    // genuinely need. Before the cap, combat reached 55% here.
     const mixes: SportType[][] = [
       ['running', 'cycling', 'swimming'],
       ['combat', 'running', 'gym'],
@@ -554,14 +466,7 @@ describe('allocation shape', () => {
     }
   })
 
-  /* ---------------------------------------------------------------- */
-  /* A fatigued week is easier, not just shorter                       */
-  /* ---------------------------------------------------------------- */
-
   test('shapeSession honours an RPE ceiling, and ignores it when absent', () => {
-    // Combat's own range is 6-9, so a ceiling of 6 collapses it to a single
-    // value rather than inverting it — the case that would otherwise return no
-    // candidate at all.
     for (const sport of ['running', 'combat', 'gym', 'cycling'] as const) {
       const free = shapeSession(sport, 600)
       const capped = shapeSession(sport, 600, 6)
@@ -570,15 +475,10 @@ describe('allocation shape', () => {
       assert.equal(capped.durationMinutes * capped.rpe, capped.load)
       assert.ok(free.rpe >= capped.rpe, `${sport}: the ceiling should never raise intensity`)
     }
-    // A hard effort is still reachable when nothing is capping it.
     assert.ok(shapeSession('combat', 700).rpe > 6)
   })
 
   test('a fatigued week lowers intensity, not only volume', () => {
-    // Form -30. The budget already aimed at the floor; the sessions used to be
-    // shaped at whatever RPE hit that load, so the Dashboard could show
-    // "Overreaching. High injury risk. Rest required." directly above a
-    // 90-minute RPE-9 sparring suggestion.
     const plan = computeWeeklyPlan(
       input({
         sessions: history(['running', 'combat', 'gym'], 20, { rpe: 7, minutes: 60 }),
@@ -603,8 +503,6 @@ describe('allocation shape', () => {
   })
 
   test('the ceiling does not leak into a healthy week', () => {
-    // Tied to the stance, so an athlete in balance must still be offered a hard
-    // session when the budget is big enough to want one.
     const plan = computeWeeklyPlan(
       input({
         sessions: history(['running', 'combat', 'gym'], 20, { rpe: 6, minutes: 60 }),
@@ -627,21 +525,15 @@ describe('recovery windows', () => {
     const m = DEFAULT_SPORT_INTERACTIONS
     const w = (a: SportType, b: SportType) => overlapWeight(a, b, m)
 
-    // A level-1 pairing never blocks, at any intensity — matching the conflict
-    // engine, which only fires from level 2 up.
     assert.equal(recoveryWindowDays(w('swimming', 'running'), 10), 0)
 
-    // The engine's own firing point — level 2, RPE 7 — reproduces its 48h window.
     assert.equal(recoveryWindowDays(w('running', 'cycling'), 7), 2)
 
-    // Same pairing, easier session: no wait at all.
     assert.equal(recoveryWindowDays(w('running', 'cycling'), 4), 0)
 
-    // Level 3 after a maximal session is the longest wait, and it is capped.
     const hard = recoveryWindowDays(w('running', 'combat'), 9)
     assert.ok(hard >= 4 && hard <= 5, `expected a long but capped window, got ${hard}`)
 
-    // Intensity is monotonic within a pairing.
     let previous = -1
     for (const rpe of [3, 5, 6, 7, 8, 9, 10]) {
       const days = recoveryWindowDays(w('running', 'combat'), rpe)
@@ -651,7 +543,6 @@ describe('recovery windows', () => {
   })
 
   test('a sport with nothing outstanding reads ready', () => {
-    // All history is old enough that every window has elapsed.
     const sessions = history(['running', 'cycling'], 20, { startDaysAgo: 10, rpe: 5 })
     const statuses = computeRecoveryStatus(
       input({ sessions, profile: profile(['running', 'cycling']) }),
@@ -681,17 +572,13 @@ describe('recovery windows', () => {
     assert.equal(running.blockedBy.interactionLevel, 3)
     assert.ok(running.daysRemaining > 0)
     assert.ok(dayOf(running.readyOn) > dayOf(new Date(NOW).toISOString().slice(0, 10)))
-    // The explanation must quote the real level, RPE and window.
     assert.match(running.reason, /level-3/)
     assert.match(running.reason, /RPE 9/)
     assert.match(running.reason, new RegExp(`${running.blockedBy.windowDays} days`))
 
-    // The same maximal session blocks combat itself: a sport overlaps itself
-    // completely, whatever the matrix says about the pair.
     const combat = statuses.find((s) => s.sport === 'combat')!
     assert.equal(combat.status, 'recovering', 'a hard session must block its own sport too')
 
-    // Cycling is only level-2 against combat, so it clears sooner than running.
     const cycling = statuses.find((s) => s.sport === 'cycling')!
     if (cycling.status === 'recovering' && running.status === 'recovering') {
       assert.ok(
@@ -702,10 +589,6 @@ describe('recovery windows', () => {
   })
 })
 
-/* ------------------------------------------------------------------ */
-/* 4. Conflict resolution                                              */
-/* ------------------------------------------------------------------ */
-
 describe('conflict resolution', () => {
   const flagged = {
     sport: 'running' as SportType,
@@ -715,7 +598,6 @@ describe('conflict resolution', () => {
   }
 
   test('offers a reschedule that actually clears, and a substitute', () => {
-    // Maximal combat yesterday; running today is a level-3 clash.
     const sessions = [
       ...history(['cycling'], 18, { startDaysAgo: 4, rpe: 4 }),
       session('combat', 1, { rpe: 9, minutes: 60 }),
@@ -735,8 +617,6 @@ describe('conflict resolution', () => {
     if (reschedule?.kind === 'reschedule') {
       assert.ok(reschedule.daysMoved >= 1)
       assert.ok(dayOf(reschedule.date) > dayOf(flagged.date), 'must move forward')
-      // The proposed day must genuinely be clear: re-running the engine there
-      // should produce no further reschedule need.
       const recheck = computeRecoveryStatus({
         sessions,
         profile: profile(['running']),
@@ -754,13 +634,11 @@ describe('conflict resolution', () => {
       assert.equal(substitute.replaces, 'running')
       assert.notEqual(substitute.sport, 'running')
       assert.equal(substitute.durationMinutes * substitute.rpe, substitute.load)
-      // It must genuinely overlap less than the sport it replaces.
       const replaced = overlapWeight('running', 'combat', DEFAULT_SPORT_INTERACTIONS)
       assert.ok(
         substitute.overlap < replaced,
         `substitute overlap ${substitute.overlap} is not below running's ${replaced}`,
       )
-      // And roughly preserve the week's total.
       const planned = flagged.durationMinutes * flagged.intensity
       assert.ok(
         Math.abs(substitute.load - planned) / planned <= 0.25,
@@ -783,10 +661,6 @@ describe('conflict resolution', () => {
     )
   })
 })
-
-/* ------------------------------------------------------------------ */
-/* 5. Guards                                                           */
-/* ------------------------------------------------------------------ */
 
 describe('insufficient-data guard', () => {
   const thin = history(['running', 'cycling'], RECOMMENDER_MIN_TRAINING_DAYS - 1)
@@ -821,8 +695,6 @@ describe('insufficient-data guard', () => {
   })
 
   test('the bar is distinct training days, not session count', () => {
-    // Thirty sessions crammed onto five days is five training days, and must
-    // still be refused — this is the whole reason the gate counts days.
     const crammed: Session[] = []
     for (let i = 0; i < 30; i++) crammed.push(session('running', i % 5))
     const plan = computeWeeklyPlan(input({ sessions: crammed }))
@@ -841,10 +713,6 @@ describe('insufficient-data guard', () => {
     assert.equal(plan.status, 'insufficient_data')
   })
 })
-
-/* ------------------------------------------------------------------ */
-/* 6. Purity                                                           */
-/* ------------------------------------------------------------------ */
 
 describe('purity', () => {
   test('the same input returns the same plan', () => {

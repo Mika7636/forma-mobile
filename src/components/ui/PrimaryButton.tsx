@@ -1,3 +1,5 @@
+// The app's full-width primary CTA button.
+
 import { ActivityIndicator, Text, type StyleProp, type ViewStyle } from 'react-native'
 import PressableScale from './PressableScale'
 import { MIN_TOUCH, RADIUS } from '../../theme/tokens'
@@ -11,15 +13,6 @@ interface PrimaryButtonProps {
   style?: StyleProp<ViewStyle>
 }
 
-/**
- * The app's full-width teal CTA. Springs down to 0.97 while held, medium haptic
- * on press, and a spinner (replacing the label) while `loading`.
- *
- * Press feedback lives in PressableScale rather than here — partly to keep this
- * to one job, and partly because that's where the "never pass a function to
- * `style`" rule is enforced. NativeWind's interop silently drops the function
- * form, which renders the button with no styling at all and no error anywhere.
- */
 export default function PrimaryButton({
   label,
   onPress,
@@ -35,7 +28,6 @@ export default function PrimaryButton({
     <PressableScale
       onPress={onPress}
       disabled={isDisabled}
-      // A disabled button that still springs would imply something happened.
       variant={isDisabled ? 'none' : 'button'}
       haptic={isDisabled ? null : 'medium'}
       accessibilityRole="button"

@@ -1,11 +1,5 @@
-/**
- * Weekday initials, Sunday-first — index with `Date.getDay()`.
- *
- * Lives here rather than beside the Planner grid that first needed it: the
- * Admin screen's seven-day chart labels its axis with the same letters, and a
- * second copy is how two parts of one app end up disagreeing about whether the
- * week starts on Sunday.
- */
+// Date helpers: local ISO days, week starts, weekday labels.
+
 export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 export function formatDate(date: Date | string): string {
@@ -13,32 +7,10 @@ export function formatDate(date: Date | string): string {
   return d.toISOString().slice(0, 10)
 }
 
-/**
- * A **UTC** calendar date key (`YYYY-MM-DD`).
- *
- * Almost never what you want. Grouping training by day is a question about the
- * athlete's calendar, not Greenwich's: at UTC+7 an early-morning session belongs
- * to the previous UTC day, and west of Greenwich an evening one belongs to the
- * next — so two sessions the athlete did on different days can share a key, and
- * one they did on a single day can be split across two. Use
- * {@link localISODate} for anything that buckets, counts or streaks by day.
- *
- * `buildDailyLoads` used this and was the last place in the app that did; the
- * result was a Form Score that disagreed with the Progress screen by fifty
- * points for every user east of Greenwich. Kept only for a caller that genuinely
- * wants a UTC key.
- */
 export function toISODate(date: Date): string {
   return formatDate(date)
 }
 
-/**
- * Local calendar date key (YYYY-MM-DD) from a Date's *local* components.
- *
- * Unlike {@link toISODate} (which is UTC-based), this places a workout on the
- * calendar day it actually happened in the user's timezone — use it for
- * day-accurate grouping (planner, progress heatmap) rather than UTC aggregates.
- */
 export function localISODate(date: Date): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -68,11 +40,6 @@ export function daysBetween(start: Date | string, end: Date | string): number {
   return Math.round((endDate.getTime() - startDate.getTime()) / msPerDay)
 }
 
-/**
- * Whole days elapsed since an ISO timestamp, floored and never negative.
- * Used for account-age gates (CTL baseline blend, calibration UI). Returns 0
- * for an unparseable/missing input so callers degrade gracefully.
- */
 export function daysSince(iso: string | undefined): number {
   if (!iso) return 0
   const then = new Date(iso).getTime()
@@ -81,18 +48,6 @@ export function daysSince(iso: string | undefined): number {
   return Math.max(0, Math.floor((Date.now() - then) / msPerDay))
 }
 
-/**
- * "Thursday" — the weekday a `YYYY-MM-DD` plan day falls on.
- *
- * Parsed at local **noon**, never at midnight. `new Date('2026-09-03')` is
- * parsed as UTC midnight, which is the previous day for anyone west of
- * Greenwich — so a plan for Thursday would be announced as "Wednesday" for
- * every user in the Americas. Noon is far enough from both boundaries that no
- * offset can move it off its own day.
- *
- * Returns the input unchanged if it is not a parseable day key, so a bad value
- * shows up as itself rather than as "Invalid Date".
- */
 export function weekdayLabel(isoDay: string, style: 'long' | 'short' = 'long'): string {
   const d = new Date(`${isoDay}T12:00:00`)
   if (Number.isNaN(d.getTime())) return isoDay

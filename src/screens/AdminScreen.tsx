@@ -1,40 +1,5 @@
-// Admin — a read-only window on the whole userbase.
-//
-// ## Read-only is a property of the code, not a promise in the copy
-//
-// There is no write path on this screen. It imports no mutation, renders no
-// control that could start one, and its rows are plain `View`s with no press
-// handler — see `AdminUserCard`. The "read-only" pill in the header is a label
-// for something the file already guarantees, and the Firestore rules guarantee
-// it a second time: an admin's grant is `allow read`, so even a future edit
-// button would be denied by the backend.
-//
-// ## Three gates, and only one of them is real
-//
-//  1. `MainTabs` registers this tab only when `isAdmin` is true, so the route
-//     does not exist for anyone else and no deep link can reach it.
-//  2. This component checks again on mount, because gate 1 is navigator state
-//     and gate 2 is the screen refusing to render regardless of how it got here.
-//  3. `firestore.rules` denies every query below to a non-admin.
-//
-// Only (3) is security. (1) and (2) are the UI declining to show a page that
-// would be nothing but an error — a user who forged `isAdmin` in local storage
-// gets past both of them and lands on "This account does not have admin access",
-// because the server is the one that decides.
-//
-// ## Why the page is a `FlatList` with almost everything in its header
-//
-// Seven labelled sections and then a list of every account. The sections are a
-// fixed handful of cards and the account list is unbounded, so the list is the
-// scroll container and the sections ride in `ListHeaderComponent` — the
-// alternative, a `ScrollView` wrapping a `FlatList`, nests two scroll views on
-// the same axis and gives up virtualisation on the only part of the page that
-// needs it.
-//
-// Everything above the accounts is derived from one bounded fetch. See
-// `adminService.fetchAdminOverview` for what that costs and where it is capped;
-// where a cap can change what a section means, the section says so rather than
-// presenting a partial answer as a whole one.
+// Admin: a read-only analytics window on the whole userbase.
+
 import { useCallback, useState } from 'react'
 import { FlatList, Linking, RefreshControl, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -71,8 +36,6 @@ export default function AdminScreen() {
   const { colors } = useTheme()
   const tabPadding = useTabContentPadding()
 
-  // Gate 2 — see the header note. Read from the Firestore profile, defaulted to
-  // false by `toUser` when the field is absent.
   const isAdmin = useAuthStore((s) => s.profile?.isAdmin === true)
 
   const { data, loading, error, refresh } = useAdminOverview()
@@ -100,11 +63,6 @@ export default function AdminScreen() {
     )
   }
 
-  // An error with nothing to fall back on takes the whole page. An error with
-  // stale data behind it does not — see `useAdminOverview`, which keeps the last
-  // good result: blanking a working screen because a refresh failed on a train
-  // is worse than the figures being a few minutes old, so that case renders the
-  // data with a strip above it instead.
   if (error && !data) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -143,8 +101,6 @@ export default function AdminScreen() {
         }
         ListHeaderComponent={
           <View style={{ gap: SPACING.base, marginBottom: SPACING.md }}>
-            {/* A failed refresh over data we still have. Quiet, and above
-                everything, so the figures below it are visibly the old ones. */}
             {error && data ? <StaleStrip error={error} onRetry={refresh} /> : null}
 
             {loading ? (
@@ -212,10 +168,6 @@ export default function AdminScreen() {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Header                                                              */
-/* ------------------------------------------------------------------ */
-
 function AdminHeader() {
   const { colors } = useTheme()
 
@@ -233,10 +185,6 @@ function AdminHeader() {
         Admin
       </Text>
 
-      {/* The pill states the screen's one constraint where it will be read
-          first. Outlined rather than filled: it is a fact about the page, not a
-          status that changes, and a solid chip would compete with the figures
-          below for the eye's first stop. */}
       <View
         style={{
           marginLeft: SPACING.md,
@@ -266,22 +214,6 @@ function AdminHeader() {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Provenance                                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * One line saying what every chart above was computed from.
- *
- * Placed after the sections rather than before them because it is a footnote,
- * not a preamble — but it is not optional. Each section states its own window in
- * its subtitle; this states the *sample*, which is the thing a reader cannot
- * infer and the thing that changes what the charts mean if the cap ever bites.
- *
- * The truncation sentence appears only when it is true. A permanent "may be
- * incomplete" hedge is the kind of caveat readers learn to skip, which is
- * exactly the wrong reflex to train for the day it starts mattering.
- */
 function WindowNote({ overview }: { overview: AdminOverview }) {
   const { colors } = useTheme()
 
@@ -313,10 +245,6 @@ function WindowNote({ overview }: { overview: AdminOverview }) {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* User list heading                                                   */
-/* ------------------------------------------------------------------ */
-
 function UsersHeading({ overview }: { overview: AdminOverview }) {
   const { colors } = useTheme()
 
@@ -327,10 +255,7 @@ function UsersHeading({ overview }: { overview: AdminOverview }) {
       </Text>
       <Text style={{ marginTop: 2, fontSize: TYPE.small, color: colors.textMuted }}>
         {overview.truncated
-          ? // Said plainly, including *which* hundred. The cap is applied by
-            // Firestore before the sort, so this is not "the 100 most recently
-            // active" and claiming otherwise would be a lie the reader can't
-            // check. See the query note in `adminService`.
+          ?
             `Showing ${overview.users.length} of ${overview.kpis.totalUsers} accounts, most recently active first.`
           : 'Most recently active first.'}
       </Text>
@@ -338,11 +263,6 @@ function UsersHeading({ overview }: { overview: AdminOverview }) {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Errors                                                              */
-/* ------------------------------------------------------------------ */
-
-/** What to say, and what — if anything — the reader can do about it. */
 function errorCopy(error: Error): { title: string; message: string; link: string | null } {
   if (error instanceof MissingIndexError) {
     return {
@@ -368,15 +288,6 @@ function errorCopy(error: Error): { title: string; message: string; link: string
   }
 }
 
-/**
- * The full-page failure.
- *
- * The missing-index case is called out by name rather than folded into a generic
- * "something went wrong", because it is the one failure here with a one-click
- * fix — and Firestore hands us the link to it in the error message. Burying that
- * under "try again" would leave an admin retrying a query that cannot succeed
- * until somebody creates an index they were never told about.
- */
 function AdminError({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const { colors } = useTheme()
 
@@ -453,7 +364,6 @@ function AdminError({ error, onRetry }: { error: Error; onRetry: () => void }) {
   )
 }
 
-/** A failed refresh with usable data still on screen. */
 function StaleStrip({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const { colors } = useTheme()
 

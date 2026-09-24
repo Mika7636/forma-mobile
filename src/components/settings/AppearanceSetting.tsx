@@ -1,3 +1,5 @@
+// Light / Dark / Auto theme picker.
+
 import { Pressable, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
 import { useTheme } from '../../theme/ThemeProvider'
@@ -9,14 +11,6 @@ const OPTIONS: { value: ThemeMode; label: string; hint: string }[] = [
   { value: 'auto', label: 'Auto', hint: "Follows your phone's display setting." },
 ]
 
-/**
- * Light / Dark / Auto.
- *
- * There is no Save button and no confirmation, by design: the whole app is
- * already reading from the provider this writes to, so the repaint *is* the
- * feedback. `setMode` sets state first and persists afterwards, so the change
- * lands on the next frame rather than after an AsyncStorage round-trip.
- */
 export default function AppearanceSetting() {
   const { colors, mode, setMode } = useTheme()
   const active = OPTIONS.find((o) => o.value === mode) ?? OPTIONS[2]

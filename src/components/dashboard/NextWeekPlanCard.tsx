@@ -1,26 +1,5 @@
-// The recommendation engine's week, on the dashboard.
-//
-// Two sections in one card, because they answer halves of the same question.
-// The suggestions say what to do; the recovery countdown underneath says what
-// not to do yet, and an athlete who reads "Combat on Thursday" wants the reason
-// combat is not on Tuesday within the same glance. Splitting them into two cards
-// would put a gap between an instruction and its constraint.
-//
-// ## Nothing here decides anything
-//
-// Every figure, every date and every sentence comes from
-// `algorithms/recommender` exactly as computed. This file chooses ordering,
-// spacing and hue and nothing else — it does not round a load, pick a day, or
-// compose a reason. That division is the point of an explainable system: if a
-// suggestion is wrong, it is wrong in one testable pure module rather than
-// somewhere in a render tree.
-//
-// The one thing it deliberately does *not* render is the engine's sport emoji.
-// `sportVisual` carries one and this screen has sworn off them: an OS-supplied
-// bitmap ignores the theme and sits in a themed card as a full-colour sticker.
-// The sport's own accent, as a disc, says the same thing in the palette's voice
-// — and colour standing for a sport is the one place on this card where colour
-// is data rather than decoration.
+// The recommendation engine's week, on the Dashboard.
+
 import { useState } from 'react'
 import { LayoutAnimation, Platform, Pressable, Text, UIManager, View } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
@@ -39,8 +18,6 @@ import type {
 import { RADIUS, SPACING, TYPE, WEIGHT, cardStyle } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-// LayoutAnimation is opt-in on old-architecture Android and a no-op without
-// this. Idempotent, and harmless everywhere it is already on.
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true)
 }
@@ -48,13 +25,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 interface NextWeekPlanCardProps {
   plan: WeeklyPlan
   recovery: RecoveryStatus[]
-  /**
-   * Persist one suggestion as a planned session. Resolves true on success.
-   *
-   * The write lives on the screen rather than in here: it owns the uid, the
-   * toast and the navigator, and a card that reached for Firestore would be a
-   * card that could not be rendered in isolation.
-   */
   onPlanIt: (suggestion: SuggestedSession) => Promise<boolean>
   onRefresh: () => void
   onLogSession: () => void
@@ -94,10 +64,6 @@ export default function NextWeekPlanCard({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Header                                                              */
-/* ------------------------------------------------------------------ */
-
 function Header({ infoOpen, onToggleInfo }: { infoOpen: boolean; onToggleInfo: () => void }) {
   const { colors } = useTheme()
 
@@ -116,8 +82,6 @@ function Header({ infoOpen, onToggleInfo }: { infoOpen: boolean; onToggleInfo: (
       </Text>
       <Pressable
         onPress={onToggleInfo}
-        // A generous hit slop rather than a padded 44pt box, which would push
-        // the title off its own baseline.
         hitSlop={12}
         accessibilityRole="button"
         accessibilityState={{ expanded: infoOpen }}
@@ -135,14 +99,6 @@ function Header({ infoOpen, onToggleInfo }: { infoOpen: boolean; onToggleInfo: (
   )
 }
 
-/**
- * The explanation, behind the icon.
- *
- * `budget.reason` is a full sentence the engine wrote from the figures that
- * chose the target — the form value, the floor, the two weeks it compared. It is
- * printed verbatim rather than paraphrased, because a paraphrase is a second
- * claim that can drift from the first.
- */
 function InfoPanel({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme()
 
@@ -162,18 +118,6 @@ function InfoPanel({ children }: { children: React.ReactNode }) {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Insufficient data                                                   */
-/* ------------------------------------------------------------------ */
-
-/**
- * What the card shows before FORMA knows the athlete well enough.
- *
- * A teaching state, not an empty one, and specifically not a zeroed one. The
- * alternative — the same layout with 0 AU and no rows — reads as a feature that
- * is broken rather than one that is waiting, and it invites the reader to
- * believe a target of zero.
- */
 function InsufficientState({
   plan,
   infoOpen,
@@ -213,7 +157,6 @@ function InsufficientState({
         </InfoPanel>
       ) : null}
 
-      {/* The meter, so "not yet" comes with a distance rather than a refusal. */}
       <View
         style={{
           height: 6,
@@ -240,10 +183,6 @@ function InsufficientState({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* The plan                                                            */
-/* ------------------------------------------------------------------ */
-
 function ReadyState({
   plan,
   recovery,
@@ -261,9 +200,6 @@ function ReadyState({
 
   return (
     <View>
-      {/* The target and the range it sits in. The range matters as much as the
-          number: a single figure reads as a quota to hit exactly, and the whole
-          point of the band is that anywhere inside it is fine. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm }}>
         <Text
           style={{
@@ -282,11 +218,6 @@ function ReadyState({
           </Text>
         </Text>
 
-        {/* Why the target sits where it does in that range. Without this, a
-            fatigued week reads "Aim for ~224 AU (224–364)" and the number looks
-            arbitrary rather than deliberately at the bottom. `maintain` is the
-            default and says nothing, because a chip on every ordinary week is a
-            chip nobody reads. */}
         {stanceLabel(plan.budget.stance) ? (
           <View
             style={{
@@ -354,11 +285,6 @@ function ReadyState({
         </View>
       )}
 
-      {/* Said only when it is true *and* there is something for it to describe.
-          A plan with no placeable session reports `below_minimum` too, and the
-          caveat would then announce that the suggestions above come to 0 AU
-          when there are no suggestions above. A permanent caveat is also one
-          readers learn to skip, which is the wrong reflex to train. */}
       {plan.budgetFit !== 'on_target' && plan.sessions.length > 0 ? (
         <Text
           style={{
@@ -391,21 +317,12 @@ function ReadyState({
   )
 }
 
-/** How a non-default budget stance is named. `maintain` is left unlabelled. */
 function stanceLabel(stance: LoadBudget['stance']): string | null {
   if (stance === 'fatigued') return 'Easing off'
   if (stance === 'detraining') return 'Building back'
   return null
 }
 
-/**
- * One suggestion: what, when, how much, and why.
- *
- * The reason sits under the row in muted type rather than beside it. It is a
- * full sentence and it is the part a reader consults *after* deciding the row
- * looks plausible — putting it in the scan line would make four rows into four
- * paragraphs.
- */
 function SuggestionRow({
   suggestion,
   first,
@@ -421,13 +338,9 @@ function SuggestionRow({
   const visual = sportVisual(suggestion.sport, colors)
 
   const handlePlan = async () => {
-    // Guarded rather than debounced: the handler navigates away on success, and
-    // a second tap during the write would add the same plan twice.
     if (pending) return
     setPending(true)
     const ok = await onPlanIt(suggestion)
-    // Only released on failure. On success this row is leaving the screen, and
-    // re-enabling the button underneath the transition invites a double add.
     if (!ok) setPending(false)
   }
 
@@ -438,13 +351,10 @@ function SuggestionRow({
         alignItems: 'flex-start',
         paddingTop: first ? 0 : SPACING.md,
         marginTop: first ? 0 : SPACING.md,
-        // A hairline between rows rather than a box around each: this is a list
-        // of four comparable things, not four separate objects.
         borderTopWidth: first ? 0 : 1,
         borderTopColor: colors.border,
       }}
     >
-      {/* The sport's own accent, as a disc. Colour is the identifier here. */}
       <View
         style={{
           width: 10,
@@ -511,23 +421,9 @@ function SuggestionRow({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Recovery countdown                                                  */
-/* ------------------------------------------------------------------ */
-
-/**
- * Which sports are clear to train, and when the rest come back.
- *
- * Compact by design — one row per sport, a pill each, and the explanation only
- * for the row you tap. The list is read as a scan ("what can I do today?") and a
- * permanent sentence under every not-ready sport would turn a four-line answer
- * into half a screen.
- */
 function RecoverySection({ recovery }: { recovery: RecoveryStatus[] }) {
   const { colors } = useTheme()
 
-  // The engine returns an entry per sport even when it cannot answer; the card
-  // above already explains that case, so it is not repeated here.
   const rows = recovery.filter((r) => r.status !== 'insufficient_data')
   if (rows.length === 0) return null
 
@@ -572,8 +468,6 @@ function RecoveryRow({ row }: { row: Exclude<RecoveryStatus, { status: 'insuffic
   return (
     <Pressable
       onPress={toggle}
-      // A ready row has nothing to expand, so it is not a button at all rather
-      // than a button that does nothing when pressed.
       accessibilityRole={ready ? 'text' : 'button'}
       accessibilityState={ready ? undefined : { expanded: open }}
       accessibilityLabel={
@@ -613,8 +507,6 @@ function RecoveryRow({ row }: { row: Exclude<RecoveryStatus, { status: 'insuffic
         </View>
       </View>
 
-      {/* The blocking session, named. Built from the engine's own blocker rather
-          than from its prose, so the line stays one short clause at this size. */}
       {!ready && open ? (
         <Animated.Text
           entering={FadeIn.duration(160)}

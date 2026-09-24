@@ -1,3 +1,5 @@
+// Email/password sign-in screen.
+
 import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -34,32 +36,20 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const [submitting, setSubmitting] = useState(false)
   const [demoSubmitting, setDemoSubmitting] = useState(false)
 
-  // Success banner shown after registering (RegisterScreen redirects here).
   const justRegistered = route.params?.registered === true
 
   const passwordRef = useRef<TextInput>(null)
 
-  // Clear any stale error when the screen mounts so a previous failed attempt
-  // doesn't linger.
   useEffect(() => {
     clearError()
   }, [clearError])
 
-  /**
-   * Sign into the pre-seeded demo account.
-   *
-   * Kept entirely separate from {@link handleLogin} rather than reusing it with
-   * arguments: this path must never read the email/password fields, so that
-   * half-typed credentials left in them by a previous tester cannot end up being
-   * submitted by a button labelled "Try Demo".
-   */
   const handleDemo = async () => {
     if (submitting || demoSubmitting) return
     clearError()
     setDemoSubmitting(true)
     try {
       await signInDemo()
-      // RootNavigator swaps to the app; DemoChrome puts the badge up.
     } catch {
       haptics.error()
     } finally {
@@ -80,9 +70,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     setSubmitting(true)
     try {
       await signIn(email, password)
-      // On success RootNavigator swaps to the app; nothing more to do here.
     } catch {
-      // Error message is already in the store; buzz to signal failure.
       haptics.error()
     } finally {
       setSubmitting(false)
@@ -91,7 +79,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* White page — dark status-bar content is what stays legible. */}
       <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -203,14 +190,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             style={{ marginTop: 12 }}
           />
 
-          {/* Secondary, and visibly so: outlined rather than filled, under the
-              real sign-in rather than beside it. It is an escape hatch for
-              somebody who has been handed the phone, not a second front door —
-              a returning athlete should never have to work out which of two
-              equally weighted buttons is theirs.
-
-              Absent entirely from a build that was compiled without the demo
-              credentials, which is every ordinary build. See `config/demo`. */}
           {DEMO_AVAILABLE ? (
             <>
               <Pressable

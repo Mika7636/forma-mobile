@@ -1,8 +1,5 @@
-// Real-time subscription to *all* of the signed-in user's conflicts — resolved
-// and unresolved — for the Conflict History screen. Unlike useConflicts (which
-// powers the dashboard banner and filters to unresolved + dedupes), this keeps
-// every document so the history is complete; sorting and filtering are done by
-// the screen.
+// Real-time subscription to all of the user's conflicts.
+
 import { useEffect, useMemo, useState } from 'react'
 import { collection, onSnapshot } from 'firebase/firestore'
 import { db } from '../config/firebase'
@@ -14,10 +11,8 @@ import { detectedAtDate } from '../utils/conflictInfo'
 import type { Conflict } from '../types/conflict'
 
 interface UseConflictHistory {
-  /** Every conflict for the user, newest first. */
   conflicts: Conflict[]
   loading: boolean
-  /** Mark one conflict resolved; the live snapshot moves it to "Dismissed". */
   dismiss: (id: string) => Promise<void>
 }
 
@@ -35,8 +30,6 @@ export function useConflictHistory(): UseConflictHistory {
 
   useEffect(() => {
     if (!uid) return
-    // Whole collection, unfiltered — ordering is client-side so there's no
-    // composite index to provision.
     const unsubscribe = onSnapshot(
       collection(db, 'users', uid, 'conflicts'),
       (snapshot) => {
@@ -58,10 +51,6 @@ export function useConflictHistory(): UseConflictHistory {
     try {
       await resolveConflict(uid, id)
     } catch {
-      // Every caller invokes this as `void dismiss(id)`, so an escaping
-      // rejection would be an unhandled promise rejection — which a release
-      // build treats as a fatal error, and which in any case left the user with
-      // a card that silently refused to disappear.
       toast.error('Could not dismiss', {
         description: isOffline()
           ? "You're offline — reconnect and try again."

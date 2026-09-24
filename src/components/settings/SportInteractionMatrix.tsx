@@ -1,3 +1,5 @@
+// Editor for how strongly each sport pair competes for recovery.
+
 import { useMemo } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
@@ -8,25 +10,15 @@ import { useTheme } from '../../theme/ThemeProvider'
 import { onColor } from '../../theme/tokens'
 
 interface SportInteractionMatrixProps {
-  /** The user's active sports; only pairs among these are shown. */
   sports: SportType[]
-  /** Current matrix, keyed by alphabetical "a_b" pair. */
   interactions: Record<string, number>
   onChange: (a: SportType, b: SportType, level: number) => void
 }
 
-/** Canonical alphabetical pair key — matches conflictDetector's pairKey(). */
 function pairKey(a: string, b: string): string {
   return [a, b].sort().join('_')
 }
 
-/**
- * Visual editor for how strongly each pair of the user's sports competes for
- * recovery. Each pair gets a None/Low/Medium/High segmented control, colour-coded
- * to line up with the conflict severities (Medium = warning amber, High = danger
- * red). Only pairs among the user's selected sports are shown. Changes are pushed
- * up immediately (the parent saves to Firestore).
- */
 export default function SportInteractionMatrix({
   sports,
   interactions,

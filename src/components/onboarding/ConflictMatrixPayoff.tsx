@@ -1,21 +1,5 @@
-// The last step of onboarding: what FORMA already knows about *you*.
-//
-// ## Why this step exists
-//
-// Every screen before it takes something from the athlete — sports, hours,
-// weight, experience — and gives nothing back but a progress bar. The app then
-// lands them on a dashboard whose headline numbers need 42 logged training days
-// to mean anything, which is a long time to wait to find out whether the thing
-// you signed up for is any good.
-//
-// This closes that gap with the one insight FORMA can give on day zero: their
-// own sports, run through their own interaction matrix. It is not a preview, a
-// sample, or a tour — it is the real output of the real engine, for the real
-// combination they just picked, and it is the same advice the conflict warnings
-// will give them later.
-//
-// The CTA goes to the Planner rather than to Log, because the Planner is where
-// that advice can be *acted on* with nothing logged. See `landingTab`.
+// Onboarding's last step: what FORMA already knows about you.
+
 import { ScrollView, Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import PrimaryButton from '../ui/PrimaryButton'
@@ -28,7 +12,6 @@ import { useTheme } from '../../theme/ThemeProvider'
 
 interface ConflictMatrixPayoffProps {
   sports: SportType[]
-  /** The matrix that will be saved on the profile — usually the seeded default. */
   interactions: Record<string, number>
   ctaLabel: string
   onContinue: () => void
@@ -68,8 +51,6 @@ export default function ConflictMatrixPayoff({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: SPACING.sm }}
       >
-        {/* The sports they picked, restated — this screen is about *these*, and
-            seeing them named is what makes the advice below read as personal. */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: SPACING.lg }}>
           {sports.map((sport) => {
             const { color, icon, label } = sportVisual(sport, colors)
@@ -163,7 +144,6 @@ export default function ConflictMatrixPayoff({
   )
 }
 
-/** The subtitle, which has to be true for one sport and for six. */
 function headline(sportCount: number, clashCount: number): string {
   if (sportCount < 2) {
     return "Here's how FORMA will watch your training — no logging needed."
@@ -203,14 +183,6 @@ function Section({
   )
 }
 
-/**
- * One pair, as a line.
- *
- * The colour comes from `interactionLevels`, which is the same ramp the Settings
- * matrix editor and the conflict severities use — so a red line here is the pair
- * that will raise a red warning later, by construction rather than by
- * coincidence.
- */
 function PairRow({ pair, index }: { pair: SportPairInsight; index: number }) {
   const { colors } = useTheme()
 
@@ -252,13 +224,6 @@ function PairRow({ pair, index }: { pair: SportPairInsight; index: number }) {
   )
 }
 
-/**
- * The one-sport case.
- *
- * There are no pairs to show, and pretending otherwise would be worse than
- * saying so — but the screen still has something true to give: the check that
- * *does* apply to a single sport, which is two hard days too close together.
- */
 function SingleSportNote() {
   const { colors } = useTheme()
   return (

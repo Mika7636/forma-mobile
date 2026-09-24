@@ -1,13 +1,5 @@
-// The sheet that explains a planned clash in full.
-//
-// Deliberately a separate component from `ConflictDetailSheet` rather than a
-// `planned` flag on it. The two sheets answer different questions and end in
-// different places: a logged conflict's sheet explains training that already
-// happened and offers Dismiss, because the only thing left is to acknowledge it.
-// This one describes a week that hasn't been trained yet, so there is nothing to
-// dismiss and everything to change — it ends with "Change the plan", not "Got
-// it". Folding the two together would have meant a Dismiss button that dismissed
-// nothing, on a warning that would reappear the moment the sheet closed.
+// Bottom sheet explaining a planned clash in full.
+
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import ConflictResolutionChips from './ConflictResolutionChips'
 import { plannedSeverityStyle } from '../../constants/conflictColors'
@@ -20,17 +12,8 @@ import type { PlannedSessionChanges } from '../../services/plannedSessionService
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/**
- * What the sheet needs to offer a way out as well as an explanation.
- *
- * Optional as a group: the sheet still works as pure explanation without it,
- * which is what it was before, and a caller that has no write path can leave it
- * off rather than pass a no-op.
- */
 export interface PlannedConflictResolutionContext {
-  /** Every plan on the calendar, for resolving a conflict's two ids. */
   planned: PlannedSession[]
-  /** Logged history — the engine's guard and its constraint checks. */
   sessions: Session[]
   profile: RecommenderProfile
   metrics: RecommenderMetrics
@@ -38,10 +21,8 @@ export interface PlannedConflictResolutionContext {
 }
 
 interface PlannedConflictSheetProps {
-  /** Clashes to explain; the sheet is open while this is non-null. */
   conflicts: PlannedConflict[] | null
   onClose: () => void
-  /** Supplied by the Planner, which owns the write path. */
   resolution?: PlannedConflictResolutionContext
 }
 
@@ -91,10 +72,6 @@ export default function PlannedConflictSheet({
           contentContainerStyle={{ paddingBottom: 4 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* The caller re-derives `conflicts` from the live calendar, so a clash
-              the athlete has just resolved leaves this list on the next
-              snapshot. An empty sheet is therefore a *result*, and says so
-              rather than sitting blank until it is dismissed. */}
           {list.length === 0 ? (
             <View
               style={{
@@ -172,10 +149,6 @@ function PlannedConflictCard({
 
   const style = plannedSeverityStyle(conflict.severity, colors)
 
-  // `plannedIds` is ordered [earlier, later] by `detectPlannedConflicts`. The
-  // *later* plan is the one to change: moving the earlier one backwards does not
-  // separate them, and substituting it would leave the clash pointing at
-  // whatever replaced it.
   const target = resolution?.planned.find((p) => p.id === conflict.plannedIds[1]) ?? null
   const partner = resolution?.planned.find((p) => p.id === conflict.plannedIds[0]) ?? null
   const sports = conflict.sports
@@ -190,8 +163,6 @@ function PlannedConflictCard({
         backgroundColor: style.softBg,
         borderWidth: 1,
         borderColor: style.softBorder,
-        // A dashed edge is the sheet's one structural cue that this describes a
-        // plan. It is the same signal a hollow dot gives on the grid.
         borderStyle: 'dashed',
         padding: SPACING.base,
       }}

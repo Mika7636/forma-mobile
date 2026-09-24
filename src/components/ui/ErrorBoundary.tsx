@@ -1,24 +1,17 @@
+// Catches errors in a subtree and shows a recoverable screen.
+
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 interface ErrorBoundaryProps {
   children: ReactNode
-  /** Shown as the heading, e.g. "Live tracking hit a problem". */
   title?: string
-  /** Shown under the heading. Keep it about what the user can do next. */
   message?: string
-  /** Label for the recovery button. */
   retryLabel?: string
-  /**
-   * Extra escape hatch rendered under the retry button — e.g. the live tracker
-   * offers "Save what we tracked" so a map crash never costs the user their run.
-   */
   secondaryLabel?: string
   onSecondary?: () => void
-  /** Called after the boundary resets, so the parent can re-seed state. */
   onReset?: () => void
-  /** Tag used in the console log, so crashes are attributable in logcat. */
   name?: string
 }
 
@@ -26,22 +19,6 @@ interface ErrorBoundaryState {
   error: Error | null
 }
 
-/**
- * Catches render/lifecycle errors in a subtree and shows a recoverable screen
- * instead of letting the error reach the root.
- *
- * Why this matters on a real device: in a **release** build there is no redbox.
- * An uncaught React error unmounts the entire tree, so the user sees the app
- * blank out or die — indistinguishable from a native crash. A boundary turns
- * that into a contained, retryable message.
- *
- * Caveat worth knowing (it's why the LiveTracker fixes are defensive rather than
- * relying on this): a boundary only catches errors thrown *during React
- * rendering, lifecycle and constructors*. It does **not** catch errors inside
- * async callbacks (a GPS listener firing outside React's call stack), and it
- * cannot catch a crash inside a native module. Those must be prevented at the
- * source — see `utils/geo.ts` coordinate validation.
- */
 export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null }
 
@@ -50,8 +27,6 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Keep this — on-device this is the only trace of what happened, and it is
-    // what `adb logcat` will show when diagnosing a user-reported crash.
     console.error(`[ErrorBoundary${this.props.name ? `: ${this.props.name}` : ''}]`, error, info.componentStack)
   }
 
@@ -78,18 +53,6 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
   }
 }
 
-/**
- * The fallback card.
- *
- * Split out of the boundary because a boundary has to be a class — there is no
- * hook form of `componentDidCatch` — and a class cannot call `useTheme`. This
- * is the seam: the class catches, this function paints, and because it is a
- * function it re-renders when the user switches theme like everything else.
- *
- * It relies on a `<ThemeProvider>` being mounted *above* the boundary. That
- * holds by construction: the outermost boundary in `App.tsx` is inside the
- * provider, and every other one is inside a screen.
- */
 function ErrorFallback({
   error,
   title = 'Something went wrong',
@@ -151,8 +114,6 @@ function ErrorFallback({
           {message}
         </Text>
 
-        {/* The message itself, in small print. Genuinely useful when a user
-            screenshots this for a bug report. */}
         <ScrollView style={{ maxHeight: 90, marginTop: SPACING.md }}>
           <Text
             style={{

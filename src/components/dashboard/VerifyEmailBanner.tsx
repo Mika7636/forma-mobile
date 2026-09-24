@@ -1,25 +1,5 @@
-// "Verify your email" — the one piece of account hygiene FORMA asks for.
-//
-// ## Informational, not a warning
-//
-// The obvious thing to reach for here is the amber the conflict banner uses, and
-// it would be wrong. Nothing is broken while an address is unverified: every
-// screen works, sessions log, the model runs. An amber slab under the greeting
-// says *something has gone wrong with your training* — which on this particular
-// dashboard is a sentence with a specific meaning — and a new user would read it
-// as their first impression of the app.
-//
-// So this is the `info` family: a blue wash, a hairline, and a shield. It reads
-// as a note, sits below the conflict banners in the scroll order, and never
-// competes with them for attention. Colour is doing the same job it does
-// everywhere else in FORMA — saying what kind of thing this is, never carrying
-// the message on its own. The words do that.
-//
-// ## And dismissible, because it is not urgent
-//
-// The × is the difference between a nudge and a nag. Dismissal is session-scoped
-// (see `verificationDismissed` in the auth store) so it comes back tomorrow, and
-// Settings shows the same state permanently for anyone who wants it back sooner.
+// Dashboard "verify your email" banner.
+
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated'
 import TabIcon from '../ui/TabIcon'
@@ -28,9 +8,7 @@ import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 interface VerifyEmailBannerProps {
-  /** True while a send is in flight. */
   sending: boolean
-  /** Seconds until another send is allowed; 0 when the button is live. */
   cooldown: number
   onResend: () => void
   onDismiss: () => void
@@ -52,9 +30,6 @@ export default function VerifyEmailBanner({
     <Animated.View
       entering={FadeInDown.duration(240)}
       exiting={FadeOutUp.duration(180)}
-      // `status`, not `alert`. An alert interrupts a screen reader mid-sentence,
-      // which is the correct rudeness for an injury-risk warning and the wrong
-      // one for a housekeeping note.
       accessibilityRole="summary"
       style={{
         marginTop: SPACING.base,
@@ -120,9 +95,6 @@ export default function VerifyEmailBanner({
             paddingHorizontal: 14,
             borderRadius: RADIUS.pill,
             borderWidth: 1,
-            // The countdown greys the border as well as the label. A live-looking
-            // button that does nothing for another forty seconds is worse than a
-            // visibly-waiting one.
             borderColor: disabled ? colors.border : colors.infoBorder,
             backgroundColor: colors.surface,
           }}
@@ -147,9 +119,6 @@ export default function VerifyEmailBanner({
         }}
         accessibilityRole="button"
         accessibilityLabel="Dismiss email verification reminder"
-        // Generous slop rather than a 44pt box: the glyph is small on purpose —
-        // a dismiss control the size of the resend button would read as the
-        // banner's primary action.
         hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
         style={{
           marginLeft: SPACING.sm,

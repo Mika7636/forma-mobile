@@ -1,24 +1,5 @@
-// Progress Analytics.
-//
-// ## One window, one question
-//
-// The screen used to open with a Daily / Weekly / Monthly switch. Each option
-// defined its own window — a fortnight, a quarter, a year — so every axis, the
-// band, and the verdict all changed meaning the moment it was touched, and
-// nothing the athlete saw could be compared with anything they had seen a
-// moment before. Three readings, all true, none comparable.
-//
-// It is now one fixed window: the last twelve weeks, one bar per week, forever.
-// A fixed axis is what makes a chart legible over time — next week's chart is
-// this chart with one more bar on it, and the athlete comes to know the shape of
-// their own quarter. What varies instead is *which* training is in view, via the
-// sport chips at the top, which changes the subject without moving the frame.
-//
-// The order down the page answers one question at a time: what have I done this
-// week, how does the last quarter look, is that sensible, how consistent have I
-// been, where did it come from, and did any of it clash. The CTL/ATL/Form model
-// still runs underneath all of it (conflict detection reads the same numbers);
-// it lives verbatim in the Advanced expander at the foot of the page.
+// Progress analytics.
+
 import { useCallback, useMemo, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -53,13 +34,6 @@ import { RADIUS, SPACING, TYPE, WEIGHT } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
 import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
-/**
- * The window, spelled out under the title.
- *
- * Worth stating even though it never changes: "Progress" alone does not say how
- * far back you are looking, and the dates are how the athlete places the bars
- * against their own memory of the block.
- */
 function formatRange(start: Date, end: Date): string {
   const sameYear = start.getFullYear() === end.getFullYear()
   const startText = start.toLocaleDateString(undefined, {
@@ -77,26 +51,14 @@ function formatRange(start: Date, end: Date): string {
 
 export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   const { colors } = useTheme()
-  // Reserve room for the tab bar, which is drawn over the end of this list —
-  // tab-bar height plus the gesture-bar inset, plus the page's own end margin.
   const tabPadding = useTabContentPadding()
 
   const [sport, setSport] = useState<SportFilter>('all')
-  // Weekly by default. A week is the unit training is planned and judged in, and
-  // it is the zoom at which the band and the verdict are computed — Daily is the
-  // detail view you drop into, not the one you should have to climb out of.
   const [granularity, setGranularity] = useState<Granularity>('weekly')
   const { data, totalSessions, loading, refresh } = useProgressData(sport)
   const [refreshing, setRefreshing] = useState(false)
 
-  // The conflict timeline links straight into the conflict that a sport pairing
-  // caused, so it needs the full history (resolved included) rather than the
-  // dashboard's unresolved-only feed — a conflict from six weeks ago is still
-  // the reason those two sports are worth looking at together.
   const { conflicts: allConflicts } = useConflictHistory()
-  // `sessions` (windowed to 42 days) feeds the conflict sheet; the gate below it
-  // takes the un-windowed counts instead, because it spans all history. See
-  // `utils/calibration`.
   const { sessions, trainingDays, totalSessions: loggedSessions } = useSessionHistory()
   const baseline = getBaselineState({ trainingDays, sessionsLogged: loggedSessions })
   const [openConflicts, setOpenConflicts] = useState<Conflict[] | null>(null)
@@ -121,9 +83,6 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
     navigation.navigate('Log')
   }, [navigation])
 
-  // Sparse data makes trend charts misleading, so keep the cold-start guard until
-  // there's enough history to say something honest. Only after the first snapshot
-  // (so we never flash the guard over data that's about to load).
   if (!loading && totalSessions < PROGRESS_UNLOCK_SESSIONS) {
     return <ProgressPrimer logged={totalSessions} onLogSession={goToLog} />
   }
@@ -164,12 +123,6 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
           <>
             <ThisWeekBlock summary={data.thisWeek} />
 
-            {/* The band is derived from CTL, so on an account younger than the
-                baseline window it is still mostly the onboarding seed. The chart
-                is worth showing — the line is real training — but the range it is
-                read against is not settled yet, and saying so is cheaper than
-                letting an athlete take a verdict from it and later find it
-                moved. */}
             {baseline.building ? (
               <SettlingRangeNote baseline={baseline} />
             ) : null}
@@ -178,12 +131,6 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
 
             <TrainingLoadChart
               series={data.trends[granularity]}
-              // Weekly only, and only once the baseline has settled. The same
-              // rule the Advanced expander below applies to the very same
-              // series: while CTL is still mostly the onboarding seed fading
-              // out, a six-week "fitness up 14" is a description of the blend
-              // rather than of the athlete, and it is the one number here that
-              // would be quoted back.
               model={granularity === 'weekly' && !baseline.building ? data.model : null}
             />
 
@@ -191,8 +138,6 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
 
             <SportBalance sports={data.sports} />
 
-            {/* Only present when the engine actually flagged something in the
-                window; renders nothing otherwise. */}
             <ConflictTimeline
               weeks={data.weeks}
               conflicts={rangeConflicts}
@@ -203,11 +148,6 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
               title="Advanced — training model"
               subtitle="Fitness, Fatigue and Form, the way the engine sees them"
             >
-              {/* Same rule as the Dashboard hero: under 42 days of training
-                  the CTL/ATL/Form series is the ramp of its own averages rather
-                  than a picture of the athlete, so it is withheld and the
-                  window's progress shown in its place — behind the same expander,
-                  so one replaces the other where the reader went looking. */}
               {baseline.building ? (
                 <BuildingBaselineBlock baseline={baseline} />
               ) : (
@@ -227,20 +167,8 @@ export default function ProgressScreen({ navigation }: ProgressScreenProps) {
   )
 }
 
-/**
- * The caveat above the load chart while the baseline window is still filling.
- *
- * Deliberately a note beside the chart rather than a flag threaded into
- * `TrainingLoadChart`. That component's job is to draw a band and classify
- * points against it; teaching it a second mode in which the band is provisional
- * would put "this might be wrong" inside the thing whose whole purpose is to be
- * read as right. The line stays exactly as it is — it is real training — and the
- * qualification sits where the reader meets it, before the chart.
- */
 function SettlingRangeNote({ baseline }: { baseline: BaselineState }) {
   const { colors } = useTheme()
-  // The same span the Dashboard hero counts, so the two screens never quote
-  // different numbers at each other.
   const { daysCovered, target } = baseline
 
   return (

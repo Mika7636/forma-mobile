@@ -1,7 +1,5 @@
-// The one bottom sheet that explains a conflict in full — its message, the two
-// sessions involved, when it was detected, and (optionally) a Dismiss action.
-// Shared by the dashboard banner tap, the planner day ⚠️, and the history list,
-// so "what does this warning mean?" always looks and reads the same.
+// Bottom sheet explaining one logged-session conflict in full.
+
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
 import { severityStyle } from '../../constants/conflictColors'
@@ -12,20 +10,12 @@ import type { Session } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
 
 interface ConflictDetailSheetProps {
-  /** Conflicts to explain; the sheet is open while this is non-null. */
   conflicts: Conflict[] | null
-  /** Sessions to resolve the "involved" pairing from (best-effort). */
   sessions?: Session[]
   onClose: () => void
-  /** When provided, each still-active conflict shows a Dismiss button. */
   onDismiss?: (id: string) => void
 }
 
-/**
- * A slide-up sheet listing one or more conflicts with the full coaching
- * explanation. Non-alarming, educational framing: what happened, which sessions,
- * and what to consider.
- */
 export default function ConflictDetailSheet({
   conflicts,
   sessions = [],
@@ -140,7 +130,6 @@ function ConflictCard({
 
       <Text style={{ fontSize: 14, color: colors.textBody, lineHeight: 21 }}>{conflict.message}</Text>
 
-      {/* The two sessions involved, when we can resolve them. */}
       {pair.from || pair.to ? (
         <View
           style={{

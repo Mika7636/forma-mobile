@@ -1,18 +1,11 @@
+// Planner first-load placeholder month grid.
+
 import { View } from 'react-native'
 import { Skeleton } from '../ui/Skeleton'
 import { SPACING } from '../../theme/tokens'
 import { WEEKDAY_INITIALS } from '../../utils/dates'
 
-/**
- * Placeholder month grid, matching MonthGrid's real geometry (weekday header,
- * six rows of date circles) so the calendar doesn't jump when the two Firestore
- * listeners behind `useMonthPlan` deliver.
- *
- * Six rows rather than the month's real height: the placeholder can't know the
- * shape yet, and shrinking is less jarring than growing into content.
- */
 const ROWS = 6
-/** Same circle size MonthGrid uses, so nothing shifts on swap. */
 const CIRCLE = 34
 
 export default function PlannerSkeleton() {
@@ -34,7 +27,6 @@ export default function PlannerSkeleton() {
               style={{ flex: 1, alignItems: 'center', paddingTop: 6, paddingBottom: 4 }}
             >
               <Skeleton width={CIRCLE} height={CIRCLE} radius={CIRCLE / 2} />
-              {/* Empty spacer standing in for the session-dot row. */}
               <View style={{ height: 6, marginTop: 4 }} />
             </View>
           ))}

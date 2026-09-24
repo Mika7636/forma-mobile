@@ -1,12 +1,5 @@
-// The app's one loading placeholder primitive. Every screen that waits on
-// Firestore builds its skeleton out of these, so "loading" looks the same
-// everywhere instead of a spinner here and a grey box there.
-//
-// Two rules that make skeletons feel professional rather than cheap, both baked
-// in here so callers can't get them wrong:
-//   - the placeholder must match the real content's box exactly, or the page
-//     visibly reflows the moment data lands;
-//   - it must animate, or it reads as a broken render.
+// The app's loading-placeholder primitives.
+
 import { memo, useEffect, useState } from 'react'
 import { View, type DimensionValue, type StyleProp, type ViewStyle } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -22,22 +15,12 @@ import { useTheme } from '../../theme/ThemeProvider'
 interface SkeletonProps {
   width?: DimensionValue
   height: number
-  /** Defaults to the small-element radius; pass RADIUS.pill for avatars/bars. */
   radius?: number
   style?: StyleProp<ViewStyle>
 }
 
 const SWEEP_DURATION = 1150
 
-/**
- * A shimmering placeholder block.
- *
- * The highlight is a gradient swept across the block on the UI thread. It needs
- * the block's pixel width to know how far to travel, which percentage-based
- * transforms can't express — hence the `onLayout` measure. Until that first
- * layout arrives the block simply renders flat, which is invisible in practice
- * because it lasts a single frame.
- */
 function SkeletonBase({ width = '100%', height, radius = RADIUS.sm, style }: SkeletonProps) {
   const { colors } = useTheme()
 
@@ -84,14 +67,8 @@ function SkeletonBase({ width = '100%', height, radius = RADIUS.sm, style }: Ske
   )
 }
 
-/** Memoised: skeletons re-render whenever their parent screen does, and none of
- *  their props change while loading. */
 export const Skeleton = memo(SkeletonBase)
 
-/**
- * A skeleton wrapped in the app's standard card, so a placeholder card has the
- * same radius, border, padding and shadow as the real one it replaces.
- */
 export function SkeletonCard({
   children,
   style,
@@ -103,7 +80,6 @@ export function SkeletonCard({
   return <View style={[cardStyle(colors), style]}>{children}</View>
 }
 
-/** Two or three stacked lines — the common "title + subtitle" placeholder. */
 export function SkeletonLines({
   lines = 2,
   widths = ['70%', '45%'],

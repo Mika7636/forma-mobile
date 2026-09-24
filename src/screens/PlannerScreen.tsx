@@ -1,23 +1,5 @@
-// Training calendar — the whole month on one surface, Apple Calendar style.
-// Swipe (or tap the arrows) to move between months, tap a day to open it.
-//
-// ## The screen now looks forward as well as back
-//
-// It used to be a read-only view of what had already happened: the Log tab owned
-// every write, and a day with nothing in it was simply blank. That made the
-// Planner useless to the one person who most needs it — someone who signed up
-// this morning, has logged nothing, and has no history for any of FORMA's
-// analytics to describe.
-//
-// So a day now holds two things: sessions that happened, and sessions that are
-// *planned*. Plans are cheap to enter (sport, duration, intensity) and they are
-// enough to run FORMA's signature check forward instead of backward — a hard
-// Combat session pencilled in for Tuesday and a hard run for Wednesday raise a
-// conflict the moment the second one is added, on an account with no history at
-// all. That warning is the product's whole differentiator, and this is where a
-// brand-new user meets it.
-//
-// Logged training is still read-only here; the Log tab keeps that job.
+// Training calendar: the whole month on one surface.
+
 import { useCallback, useMemo, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -63,58 +45,33 @@ import { MIN_TOUCH, RADIUS, SPACING, TYPE, WEIGHT } from '../theme/tokens'
 import { useTheme } from '../theme/ThemeProvider'
 import { useTabContentPadding } from '../hooks/useTabContentPadding'
 
-/** Horizontal drag needed to commit a month change. */
 const SWIPE_THRESHOLD = 70
-/** How far the grid slides during a month transition. */
 const SLIDE_DISTANCE = 60
-/** Months in a year — the step the year chevrons take. */
 const YEAR = 12
 
 export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   const { colors } = useTheme()
-  // Reserve room for the tab bar, which is drawn over the end of this list.
   const tabPadding = useTabContentPadding()
 
   const uid = useAuthStore((s) => s.user?.uid)
   const sports = useAuthStore((s) => s.profile?.sports)
   const sportInteractions = useAuthStore((s) => s.profile?.sportInteractions)
 
-  // The recommendation engine's three inputs, for the resolution chips on a
-  // planned clash. `usePlannedSessions` is called directly rather than read off
-  // the month grid because a resolution needs the *whole* calendar: a clash can
-  // pair a plan on screen with one just past the edge of the visible month, and
-  // the grid would hand over only half of it. That is the direct-call case the
-  // hook's own header describes; the second subscription is on a collection of a
-  // few dozen documents that Firestore serves from the same query target.
   const { planned: allPlanned, plannedConflicts: livePlannedConflicts } = usePlannedSessions()
   const { sessions: loggedSessions, ctl, atl } = useMetrics()
 
   const [monthOffset, setMonthOffset] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
-  /** The day ringed on the grid — set by any tap, including empty days. */
   const [selectedIso, setSelectedIso] = useState<string | null>(null)
-  /** Whether the selected day's card is showing. */
   const [dayListOpen, setDayListOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const [conflictSheet, setConflictSheet] = useState<Conflict[] | null>(null)
-  /**
-   * Which planned clashes the sheet is showing, by id.
-   *
-   * Ids rather than the objects themselves, so the sheet's contents are
-   * re-derived from the live calendar on every render. Holding the objects
-   * would freeze the sheet at the moment it opened — an athlete who applied a
-   * resolution would watch the grid behind them update while the card in front
-   * of them went on describing a clash that no longer existed.
-   */
   const [plannedSheetIds, setPlannedSheetIds] = useState<string[] | null>(null)
-  /** The day the "plan a session" sheet is collecting for, if open. */
   const [planningIso, setPlanningIso] = useState<string | null>(null)
 
   const plannedSheet = useMemo(() => {
     if (!plannedSheetIds) return null
     const byId = new Map(livePlannedConflicts.map((c) => [c.id, c]))
-    // Resolved clashes drop out; the sheet renders its own "clash resolved"
-    // state when every one of them has.
     return plannedSheetIds.map((id) => byId.get(id)).filter((c): c is PlannedConflict => !!c)
   }, [plannedSheetIds, livePlannedConflicts])
 
@@ -126,25 +83,17 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   const plan = useMonthPlan(monthOffset)
   const { weeks, monthName, year, totalHours, totalLoad, sessionCount, plannedCount } = plan
 
-  // Flattened month sessions, so the conflict detail sheet can resolve the two
-  // sessions each conflict involves.
   const monthSessions = useMemo(() => weeks.flat().flatMap((d) => d.sessions), [weeks])
 
   const translateX = useSharedValue(0)
   const opacity = useSharedValue(1)
 
-  /**
-   * Move to `next` month, sliding the grid out in the direction of travel and
-   * back in from the opposite edge. The offset state flips at the midpoint so
-   * the new month is what slides in.
-   */
   const goToMonth = useCallback(
     (next: number) => {
       if (next === monthOffset) return
       haptics.light()
       const exitTo = next > monthOffset ? -SLIDE_DISTANCE : SLIDE_DISTANCE
 
-      // A day sheet left open would now belong to a month that isn't on screen.
       setDayListOpen(false)
       setSelectedIso(null)
 
@@ -160,8 +109,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     [monthOffset, opacity, translateX],
   )
 
-  // Month swipe. Constrained to clearly-horizontal drags so the ScrollView (and
-  // a chip's own swipe-to-delete, in the day sheet) keep their gestures.
   const monthSwipe = useMemo(
     () =>
       Gesture.Pan()
@@ -191,9 +138,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
       try {
         await deleteSession(uid, session.id)
       } catch {
-        // Swipe-to-delete fires this without awaiting, so a failed write would
-        // otherwise be an unhandled rejection — and the chip would spring back
-        // with no explanation.
         toast.error('Could not delete session', {
           description: isOffline()
             ? "You're offline — reconnect and try again."
@@ -204,36 +148,17 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     [uid],
   )
 
-  /**
-   * Tapping a day opens its card — always, including an empty one.
-   *
-   * It used to open only for a day holding more than one session, because there
-   * was nothing to do on an empty day. There is now: an empty future day is
-   * where you plan, and the card is where planning happens.
-   */
   const handleDayPress = useCallback((day: CalendarDay) => {
     haptics.light()
     setSelectedIso(day.isoDate)
     setDayListOpen(true)
   }, [])
 
-  // The selection is held as a date key, not as the CalendarDay object that was
-  // tapped: the sheet and the bar have to follow Firestore, so an edit or a
-  // delete made from inside them updates what they're showing instead of
-  // stranding a stale snapshot on screen.
   const selectedDay = useMemo(
     () => (selectedIso ? (weeks.flat().find((d) => d.isoDate === selectedIso) ?? null) : null),
     [weeks, selectedIso],
   )
 
-  /**
-   * The week the summary line speaks for: the row holding the selected day, or
-   * the row holding today, or the first row of the month on screen.
-   *
-   * A week rather than the whole month on purpose. "You have four planned
-   * conflicts in August" is a statistic; "Combat Tue → Running Wed" is something
-   * an athlete can act on this afternoon, and a week is the unit they plan in.
-   */
   const focusWeek = useMemo(() => {
     if (weeks.length === 0) return []
     const containsSelected = selectedIso
@@ -242,8 +167,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     return containsSelected ?? weeks.find((week) => week.some((d) => d.isToday)) ?? weeks[0]
   }, [weeks, selectedIso])
 
-  // De-duplicated: a clash spans two days and both of them are usually in the
-  // same row, so a naive flatMap would list every conflict twice.
   const weekPlannedConflicts = useMemo(() => {
     const seen = new Set<string>()
     const out: PlannedConflict[] = []
@@ -262,19 +185,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     [focusWeek],
   )
 
-  /**
-   * Apply one of the engine's resolutions to a plan.
-   *
-   * An update rather than a delete-and-add, so the plan keeps its id and the
-   * card the athlete is looking at does not lose the document underneath it
-   * mid-tap. Nothing is recomputed here: the date, sport, duration and intensity
-   * written are exactly what `suggestConflictResolution` returned.
-   *
-   * No imperative re-check afterwards either. The plans listener re-runs
-   * `detectPlannedConflicts` over the whole calendar on the next snapshot, so
-   * the warning clears itself — a second check here would be a second source of
-   * truth about the same week.
-   */
   const handleApplyResolution = useCallback(
     async (target: PlannedSession, changes: PlannedSessionChanges): Promise<boolean> => {
       if (!uid) return false
@@ -295,19 +205,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     [uid],
   )
 
-  /**
-   * The engine's inputs, held stable across renders.
-   *
-   * Memoised rather than built inline in the JSX. `ConflictResolutionChips`
-   * memoises the call to `suggestConflictResolution` on these objects, and a
-   * fresh `profile` and `metrics` literal on every render would give that memo
-   * new identities every time — recomputing the resolutions, and a new `now`
-   * with them, on every keystroke-level re-render of the screen.
-   *
-   * `undefined` until the profile carries an interaction matrix: without it the
-   * engine has no knowledge base to reason from, and the sheet falls back to
-   * being the pure explanation it was before.
-   */
   const resolutionContext = useMemo(
     () =>
       sportInteractions
@@ -329,10 +226,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         await addPlannedSession(uid, input)
         setPlanningIso(null)
         haptics.success()
-        // No "conflict?" check here: the live snapshot re-runs
-        // `detectPlannedConflicts` over the whole calendar, so the warning (or
-        // its absence) lands on the grid and in the week summary by itself. A
-        // second, imperative check would be a second source of truth.
         toast.success('Added to your plan')
       } catch {
         toast.error('Could not save the plan', {
@@ -345,19 +238,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     [uid],
   )
 
-  /**
-   * Hand a day off to the Log tab.
-   *
-   * The Planner deliberately owns no logging UI — the Log screen is where a
-   * session's real inputs live, and duplicating that here would give the app two
-   * places to log from that could drift apart. It routes with the day as a
-   * param, which the Log screen already understands and now shows in an editable
-   * Date field.
-   *
-   * The sheet is closed first: it is a plain in-screen overlay rather than a
-   * modal, so it would otherwise still be sitting over the Planner when the user
-   * came back from logging.
-   */
   const handleLogForDay = useCallback(
     (isoDate: string) => {
       setDayListOpen(false)
@@ -380,14 +260,11 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     [uid],
   )
 
-  // Deleting the last item of an open day still leaves a card worth showing —
-  // it holds the "plan a session" action — so the sheet stays until dismissed.
   const sheetDay = dayListOpen ? selectedDay : null
 
   const isCurrentMonth = monthOffset === 0
   const monthIsEmpty = !plan.loading && sessionCount === 0 && plannedCount === 0
 
-  /** Where the empty state's CTA plans: today, or the 1st of the month on screen. */
   const defaultPlanIso = isCurrentMonth
     ? localISODate(new Date())
     : localISODate(plan.monthStart)
@@ -396,7 +273,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <ThemedStatusBar />
 
-      {/* --- Header --------------------------------------------------- */}
       <View
         style={{
           backgroundColor: colors.surface,
@@ -407,7 +283,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
           borderBottomColor: colors.border,
         }}
       >
-        {/* Year stepper (left) + jump-to-today (right). */}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Chevron
             direction="left"
@@ -466,7 +341,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
           </Pressable>
         </View>
 
-        {/* Month name + month stepper. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
           <Animated.Text
             key={monthOffset}
@@ -489,18 +363,11 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
           />
         </View>
 
-        {/* Month summary — the only aggregate on the screen, kept to one line. */}
         <Text style={{ marginTop: 2, fontSize: 12.5, color: colors.textSubtle }}>
           {monthSummary(sessionCount, totalHours, totalLoad, plannedCount)}
         </Text>
       </View>
 
-      {/* --- The week, summarised ------------------------------------- */}
-      {/* Pinned under the header rather than dropped below the grid: the grid
-          claims every spare pixel of the page, so anything after it is off the
-          bottom of a tall month — and a summary you have to scroll to find is
-          not a summary. It tracks the selected week, so tapping around the
-          calendar re-reads it. */}
       {!plan.loading ? (
         <View style={{ paddingHorizontal: 20 }}>
           <PlannedConflictSummary
@@ -511,7 +378,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         </View>
       ) : null}
 
-      {/* --- Calendar -------------------------------------------------- */}
       <GestureDetector gesture={monthSwipe}>
         <ScrollView
           contentContainerStyle={{
@@ -530,12 +396,7 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
             />
           }
         >
-          {/* The grid stretches to fill the page — except on an empty month,
-              where the space belongs to the empty state underneath it. */}
           <Animated.View style={[gridStyle, monthIsEmpty ? null : { flex: 1 }]}>
-            {/* First load: show the grid's shape rather than a month of empty
-                cells, which would read as "you trained nothing" right before
-                the real data replaces it. */}
             {plan.loading ? (
               <PlannerSkeleton />
             ) : (
@@ -559,16 +420,12 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         </ScrollView>
       </GestureDetector>
 
-      {/* --- Selected day bar ------------------------------------------ */}
       <SelectedDayBar
         day={selectedDay}
         onPress={() => selectedDay && handleDayPress(selectedDay)}
         onPlan={() => setPlanningIso(selectedDay?.isoDate ?? defaultPlanIso)}
       />
 
-      {/* Day card. Rendered before the modals below on purpose — it's a plain
-          overlay, so the real <Modal>s stack above it and closing one drops the
-          user back onto the day they came from. */}
       <DaySessionsSheet
         day={sheetDay}
         onClose={() => setDayListOpen(false)}
@@ -593,9 +450,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
         sessions={monthSessions}
         onClose={() => setConflictSheet(null)}
         onDismiss={(id) => {
-          // Catch attached at the call site: a bare `void promise` whose write
-          // fails is an unhandled rejection, which a release build treats as
-          // fatal.
           if (uid) {
             resolveConflict(uid, id).catch(() => {
               toast.error('Could not dismiss', {
@@ -625,7 +479,6 @@ export default function PlannerScreen({ navigation }: PlannerScreenProps) {
   )
 }
 
-/** "4 sessions · 5.2 h · 1,840 AU · 3 planned" — whichever halves exist. */
 function monthSummary(
   sessionCount: number,
   totalHours: number,
@@ -644,13 +497,6 @@ function monthSummary(
   return parts.length > 0 ? parts.join(' · ') : 'Nothing logged or planned'
 }
 
-/* ------------------------------------------------------------------ */
-/* Selected day summary                                                */
-/* ------------------------------------------------------------------ */
-/**
- * The strip under the grid. It is the way back into a day whose card was closed,
- * and — for a day with nothing on it — the shortest route to planning one.
- */
 function SelectedDayBar({
   day,
   onPress,
@@ -665,8 +511,6 @@ function SelectedDayBar({
   return (
     <View
       style={{
-        // Fixed height whatever it's showing, so tapping around the grid never
-        // makes the calendar above it jump.
         height: 54,
         flexDirection: 'row',
         alignItems: 'center',
@@ -747,9 +591,6 @@ function dayBarSummary(day: CalendarDay): string {
   return parts.length > 0 ? parts.join(' · ') : 'Nothing yet'
 }
 
-/* ------------------------------------------------------------------ */
-/* Navigation chevron                                                  */
-/* ------------------------------------------------------------------ */
 function Chevron({
   direction,
   label,
@@ -759,8 +600,6 @@ function Chevron({
   direction: 'left' | 'right'
   label: string
   onPress: () => void
-  /** The quieter treatment used by the year stepper, which shouldn't compete
-   *  with the month arrows next to the month name. */
   subtle?: boolean
 }) {
   const { colors } = useTheme()

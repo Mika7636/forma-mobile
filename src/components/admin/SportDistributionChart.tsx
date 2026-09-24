@@ -1,21 +1,5 @@
-// Section 3 — sessions by sport, as a donut.
-//
-// ## Why a donut rather than a pie
-//
-// The hole is not styling. A pie asks the eye to compare wedge *areas*, which
-// people are measurably bad at; a donut turns the same data into arc lengths
-// along one ring, which they are much better at, and it buys a centre worth
-// using — the total every percentage below is a share of. Without that figure a
-// legend reading "41%" is unanchored: 41% of a hundred sessions and of four are
-// the same number and different facts.
-//
-// ## Colour here *is* data
-//
-// Each slice takes its sport's own accent from `sportVisual`, which is the one
-// place in the app a sport's colour is resolved, so a wedge here is the same
-// green as that sport's dot in the Planner and its chip on Progress. The single
-// exception is the merged "Other" bucket, which is not a sport and takes a
-// neutral grey — giving it a sport's hue would claim it was one.
+// Admin section 3: sessions by sport, as a donut.
+
 import { Text, View } from 'react-native'
 import Svg, { G, Path } from 'react-native-svg'
 import ChartCard from '../progress/ChartCard'
@@ -28,26 +12,15 @@ import { formatThousands } from '../../utils/formatting'
 import { SPACING, TYPE, WEIGHT, type Palette } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/** The ring's outer size and how much of its radius is hole. */
 const SIZE = 168
 const INNER_RATIO = 0.62
 
-/** A hair of blank between slices, so two similar hues do not fuse into one. */
 const GAP_DEGREES = 1.4
 
 function sliceColor(slice: SportSlice, colors: Palette): string {
   return slice.isOther ? colors.textMuted : sportVisual(slice.key as SportType, colors).color
 }
 
-/**
- * SVG path for one annulus segment, drawn clockwise from 12 o'clock.
- *
- * Written out rather than pulled from a chart library: the app has no charting
- * dependency and this is one arc command in each direction. `sweep` decides the
- * large-arc flag, which is the only thing that goes wrong when a single sport
- * holds more than half the sessions — a common enough case here to be worth
- * getting right rather than discovering.
- */
 function donutSlice(
   cx: number,
   cy: number,
@@ -57,8 +30,6 @@ function donutSlice(
   endDeg: number,
 ): string {
   const sweep = endDeg - startDeg
-  // A full ring has no start and end to join, and drawing it as one arc collapses
-  // to nothing. Two half-arcs is the standard workaround.
   if (sweep >= 359.999) {
     return (
       `M ${cx} ${cy - rOuter} A ${rOuter} ${rOuter} 0 1 1 ${cx} ${cy + rOuter} ` +
@@ -135,8 +106,6 @@ function Donut({ slices, total }: { slices: SportSlice[]; total: number }) {
   const rOuter = SIZE / 2
   const rInner = rOuter * INNER_RATIO
 
-  // A gap between every pair of slices, but never inside a lone slice — a single
-  // sport should close the ring rather than show a seam.
   const gap = slices.length > 1 ? GAP_DEGREES : 0
   let cursor = 0
 
@@ -153,9 +122,6 @@ function Donut({ slices, total }: { slices: SportSlice[]; total: number }) {
             const start = cursor + gap / 2
             const end = cursor + sweep - gap / 2
             cursor += sweep
-            // A slice too thin to survive its own gap is drawn as a hairline
-            // rather than as an inverted arc, which is what `end < start` would
-            // otherwise produce.
             const safeEnd = Math.max(end, start + 0.4)
             return (
               <Path
@@ -168,8 +134,6 @@ function Donut({ slices, total }: { slices: SportSlice[]; total: number }) {
         </G>
       </Svg>
 
-      {/* The total, in the hole the donut exists to provide. Positioned rather
-          than drawn as SVG text so it takes the app's own type scale. */}
       <View
         pointerEvents="none"
         style={{
@@ -193,14 +157,6 @@ function Donut({ slices, total }: { slices: SportSlice[]; total: number }) {
   )
 }
 
-/**
- * Sport, count and percentage, one row each.
- *
- * A full legend rather than labels on the wedges: at this size a thin slice has
- * no room for its own text, and leader lines out to it would cost more ink than
- * the chart. Rows are in the donut's own order, so scanning down the list walks
- * clockwise around the ring.
- */
 function Legend({ slices }: { slices: SportSlice[] }) {
   const { colors } = useTheme()
 
@@ -237,8 +193,6 @@ function Legend({ slices }: { slices: SportSlice[] }) {
           >
             {formatThousands(slice.count)}
           </Text>
-          {/* Fixed width, right-aligned: the percentages are a column and a
-              ragged one makes the eye work to compare them. */}
           <Text
             style={{
               width: 46,

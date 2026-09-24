@@ -1,3 +1,5 @@
+// Post-workout summary: hero map, stats, title and save.
+
 import { useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -35,15 +37,6 @@ import type { Conflict } from '../../types/conflict'
 import type { RoutePoint, SportType } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/* ------------------------------------------------------------------ */
-/* Default title                                                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * The noun each sport takes in a workout title. Strava's convention, and it
- * reads far better than the sport's settings-screen label: "Morning Ride", not
- * "Morning Cycling".
- */
 const SPORT_NOUN: Record<SportType, string> = {
   running: 'Run',
   cycling: 'Ride',
@@ -63,58 +56,34 @@ function timeOfDay(at: Date): string {
   return 'Night'
 }
 
-/**
- * "Night Run", "Morning Ride". Derived from when the session *started*, not from
- * now — a run that finishes at 12:04 was a morning run, and the athlete sitting
- * on this screen for ten minutes must not watch its name change.
- */
 export function defaultWorkoutTitle(sport: SportType, startedAt: number): string {
   const at = startedAt > 0 ? new Date(startedAt) : new Date()
   return `${timeOfDay(at)} ${SPORT_NOUN[sport] ?? 'Workout'}`
 }
 
-/* ------------------------------------------------------------------ */
-/* Props                                                               */
-/* ------------------------------------------------------------------ */
-
 export interface WorkoutSummaryProps {
   sport: SportType
   sportLabel: string
-  /** Wall clock. Drives training load; never the pace denominator. */
   elapsedMs: number
-  /** Elapsed minus established stops. The pace denominator. */
   movingTimeMs: number
   distanceKm: number
   route: RoutePoint[]
   startedAt: number
   weightKg?: number
 
-  /** Current Form score, for the post-save forecast. */
   currentForm: number
-  /**
-   * Conflicts this session would raise, recomputed as the RPE changes. Empty
-   * until an effort has been chosen — a conflict is a function of load, and
-   * there is no load without an RPE.
-   */
   conflicts: Conflict[]
 
   title: string
   onTitleChange: (value: string) => void
-  /**
-   * The sports this athlete trains, for the overflow menu's "Change sport".
-   * A live workout can be started under the wrong one, and noticing that at the
-   * summary is much more likely than noticing it at the start line.
-   */
   sportOptions: SportOption[]
   onSportChange: (value: SportType) => void
-  /** Null until the athlete picks one. Save stays disabled while it is. */
   rpe: number | null
   onRpeChange: (value: number) => void
   notes: string
   onNotesChange: (value: string) => void
 
   saving: boolean
-  /** True once the write has landed, for the button's checkmark beat. */
   saved: boolean
   onSave: () => void
   onDiscard: () => void
@@ -122,23 +91,9 @@ export interface WorkoutSummaryProps {
 
 const NOTES_MAX = 500
 
-/** Entrance stagger. 60ms is enough to read as sequence, not as lag. */
 const STEP_MS = 60
 const entrance = (index: number) => FadeInDown.delay(index * STEP_MS).duration(320).springify().damping(18)
 
-/* ------------------------------------------------------------------ */
-/* Screen                                                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * The finished-workout screen.
- *
- * Structured to answer, in order: *what did I just do* (hero, title, the three
- * numbers that matter), *how did it break down* (secondary stats, splits), and
- * then the one thing only FORMA asks — *how hard was it* — which is the block
- * everything downstream depends on and is therefore given the most visual weight
- * on the page.
- */
 export default function WorkoutSummary(props: WorkoutSummaryProps) {
   const { colors } = useTheme()
 
@@ -170,8 +125,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
   const [splitsOpen, setSplitsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [sportPickerOpen, setSportPickerOpen] = useState(false)
-  // The overflow's "Edit title" and a tap on the title itself are the same
-  // action, so both go through the input's own focus rather than a mode flag.
   const titleRef = useRef<TextInput>(null)
   const insets = useSafeAreaInsets()
 
@@ -186,8 +139,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
   const calories = estimateCalories(sport, elapsedMs / 60000, rpe ?? 5, weightKg)
   const load = rpe != null ? calculateLoadScore(durationMinutes, rpe) : 0
 
-  // Average pace over MOVING time, which is the whole point of Bug 1: elapsed
-  // charges every red light to the athlete's pace.
   const avgPaceSecPerKm = hasGps && movingTimeMs > 0 ? movingTimeMs / 1000 / distanceKm : null
   const avgSpeedKmh = hasGps ? calculateSpeed(movingTimeMs / 1000, distanceKm) : 0
   const bestSplit = useMemo(
@@ -236,15 +187,11 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* 1 · Hero, full-bleed and edge to edge. */}
           <HeroRouteMap coordinates={route} sportIcon={sportIcon} />
 
-          {/* 2 · Title, pulled up over the gradient. */}
           <Animated.View
             entering={entrance(0)}
             style={{
-              // Shared with the hero's scrim, which guarantees an opaque band at
-              // least this tall. See TITLE_OVERLAP.
               marginTop: -TITLE_OVERLAP,
               paddingHorizontal: SPACING.lg,
             }}
@@ -255,7 +202,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             </Text>
           </Animated.View>
 
-          {/* 3 · The three numbers that matter. */}
           <Animated.View
             entering={entrance(1)}
             style={{
@@ -281,13 +227,10 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
                 />
               </>
             ) : (
-              // No GPS: distance and pace would be blanks pretending to be data.
-              // One centred number is the honest layout.
               <PrimaryStat label="Moving Time" value={formatDuration(movingTimeMs)} centred />
             )}
           </Animated.View>
 
-          {/* 4 · Secondary stats. */}
           <Animated.View
             entering={entrance(2)}
             style={{
@@ -312,7 +255,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             />
           </Animated.View>
 
-          {/* 5 · Splits. */}
           {splits.length > 0 && distanceKm >= 1 ? (
             <Animated.View entering={entrance(3)} style={{ marginTop: SPACING.lg }}>
               <Splits
@@ -326,7 +268,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             </Animated.View>
           ) : null}
 
-          {/* 6 · The block this whole app is built on. */}
           <Animated.View entering={entrance(4)}>
             <TrainingLoadBlock
               rpe={rpe}
@@ -338,7 +279,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
             />
           </Animated.View>
 
-          {/* 7 · Notes. */}
           <Animated.View entering={entrance(5)} style={{ paddingHorizontal: SPACING.lg, marginTop: SPACING.lg }}>
             <SectionLabel>Notes</SectionLabel>
             <View
@@ -384,8 +324,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
           </Animated.View>
         </ScrollView>
 
-        {/* 8 · Sticky CTA. Outside the ScrollView so it never scrolls away — the
-            athlete must be able to save from anywhere on the page. */}
         <View
           style={{
             paddingHorizontal: SPACING.lg,
@@ -430,9 +368,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Overflow, pinned to the screen rather than scrolling with the hero.
-          `edges` excludes 'top' here — the map is deliberately full-bleed — so
-          the inset has to be applied by hand or this lands under the clock. */}
       <View style={{ position: 'absolute', top: insets.top + SPACING.xs, right: SPACING.md }}>
         <OverflowButton onImagery onPress={() => setMenuOpen(true)} />
       </View>
@@ -452,10 +387,6 @@ export default function WorkoutSummary(props: WorkoutSummaryProps) {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Pieces                                                              */
-/* ------------------------------------------------------------------ */
-
 function formatStartedAt(startedAt: number): string {
   const at = startedAt > 0 ? new Date(startedAt) : new Date()
   return at.toLocaleString(undefined, {
@@ -467,17 +398,6 @@ function formatStartedAt(startedAt: number): string {
   })
 }
 
-/**
- * The workout's name.
- *
- * There used to be a ✏️ next to it. An emoji is the wrong thing to hang an
- * affordance on — it is a full-colour OS bitmap that cannot take the theme's
- * ink, is drawn differently by every Android version, and at 14pt next to a
- * 26pt heading it reads as a leftover rather than a control. The affordance is
- * now the underline: the field looks like a heading, and the hairline under it
- * says it is also a text box. The overflow menu's "Edit title" focuses this
- * same input, so there is one edit path rather than two.
- */
 function TitleField({
   value,
   onChange,
@@ -507,8 +427,6 @@ function TitleField({
         paddingTop: 0,
         paddingHorizontal: 0,
         paddingBottom: SPACING.xs,
-        // Subtle at rest, the accent while editing — the same grammar as every
-        // other input in the app, just without a box around it.
         borderBottomWidth: 1.5,
         borderBottomColor: focused ? colors.accent : colors.border,
       }}
@@ -568,7 +486,6 @@ function SecondaryStat({ label, value, unit }: { label: string; value: string; u
   return (
     <View
       style={{
-        // Two per row, accounting for the 12pt gap between them.
         width: '47.5%',
         flexGrow: 1,
         backgroundColor: colors.surfaceAlt,
@@ -616,8 +533,6 @@ function SectionLabel({ children }: { children: string }) {
   )
 }
 
-/* ---- Splits -------------------------------------------------------- */
-
 function Splits({
   splits,
   open,
@@ -629,9 +544,6 @@ function Splits({
 }) {
   const { colors } = useTheme()
 
-  // Bars are scaled against the SLOWEST split, so the fastest is the longest bar
-  // and the eye reads "longer = better" consistently down the column. Scaling by
-  // pace directly would invert that and make the best kilometre the stub.
   const slowest = Math.max(...splits.map((s) => s.paceSecPerKm))
   const fastest = Math.min(...splits.map((s) => s.paceSecPerKm))
 
@@ -652,7 +564,6 @@ function Splits({
         <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
           {splits.map((split) => {
             const isFastest = split.paceSecPerKm === fastest
-            // Floor at 12% so the slowest kilometre is still a bar, not a sliver.
             const ratio = slowest > 0 ? Math.max(0.12, fastest / split.paceSecPerKm) : 1
             return (
               <View key={split.km} style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -709,17 +620,6 @@ function Splits({
   )
 }
 
-/* ---- Training load ------------------------------------------------- */
-
-/**
- * How much a single session's load moves Form.
- *
- * Form is `CTL − ATL`, CTL is a 42-day mean of daily load and ATL a 7-day mean
- * (see `store/metricsStore` and `algorithms/ctlAtl`). Adding `load` to today
- * therefore lifts CTL by `load/42` and ATL by `load/7`, so Form moves by
- * `load/42 − load/7`, i.e. down by `load × 5/42`. Training makes you tired
- * before it makes you fit; that ratio is the whole shape of the model.
- */
 const FORM_DELTA_PER_LOAD = 1 / 42 - 1 / 7
 
 function TrainingLoadBlock({
@@ -750,9 +650,6 @@ function TrainingLoadBlock({
         marginHorizontal: SPACING.lg,
         backgroundColor: colors.surface,
         borderRadius: RADIUS.card,
-        // The accent rail is what marks this out as FORMA's block rather than
-        // another stat card — it is the one thing on this screen no other
-        // tracking app asks for.
         borderLeftWidth: 3,
         borderLeftColor: colors.accent,
         padding: SPACING.base,
@@ -777,9 +674,6 @@ function TrainingLoadBlock({
         <RpeScale value={rpe} onChange={onRpeChange} />
       </View>
 
-      {/* Live consequences of the rating. Shown only once there is a rating —
-          a load of 0 AU and a flat forecast would be noise, and worse, would
-          imply the numbers had already been computed. */}
       {rpe != null ? (
         <View
           style={{
@@ -839,9 +733,6 @@ function TrainingLoadBlock({
         </View>
       ) : null}
 
-      {/* The signature feature. Deliberately styled as part of this card rather
-          than as a floating alert: it is an expected, informative outcome of the
-          training model, not an error the athlete has to dismiss. */}
       {worst ? (
         <View
           style={{
@@ -874,8 +765,6 @@ function TrainingLoadBlock({
   )
 }
 
-/* ---- Save button --------------------------------------------------- */
-
 function SaveButton({
   enabled,
   saving,
@@ -904,8 +793,6 @@ function SaveButton({
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
-        // Muted rather than hidden while unrated: the athlete can see what they
-        // are working towards, and the helper text below says what is missing.
         backgroundColor: active ? colors.accent : colors.surfaceAlt,
         opacity: pressed && enabled ? 0.85 : 1,
       }}

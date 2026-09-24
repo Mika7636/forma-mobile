@@ -1,3 +1,5 @@
+// "This week", as three plain figures.
+
 import { Text, View } from 'react-native'
 import { formatThousands, formatZoneMinutes } from '../../utils/formatting'
 import type { WeekSummary } from '../../utils/progressMetrics'
@@ -8,25 +10,6 @@ interface ThisWeekBlockProps {
   summary: WeekSummary
 }
 
-/**
- * "This week", as three plain figures.
- *
- * ## Label above value
- *
- * Which is the opposite of the usual convention, and deliberate. A summary row
- * is read as a *set* — the athlete wants all three at once, not one of them —
- * and putting the small grey labels on a shared upper line gives the three big
- * numbers an unbroken baseline to sit on. Values under labels scan as one row of
- * figures; values over labels scan as three separate stacked items.
- *
- * ## No boxes
- *
- * This was six bordered, shadowed tiles with an emoji on each: six cards, six
- * hairlines and six drop shadows spent on six numbers, which was the heaviest
- * furniture on the screen wrapped around its lightest content. A number and its
- * label are already a legible unit; a box around them adds weight and no
- * meaning. The card underneath is the only container the block needs.
- */
 export default function ThisWeekBlock({ summary }: ThisWeekBlockProps) {
   const { colors } = useTheme()
 

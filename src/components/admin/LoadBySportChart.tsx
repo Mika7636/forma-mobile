@@ -1,24 +1,5 @@
-// Section 4 — total training load by sport, as horizontal bars.
-//
-// ## Why this is not the donut again
-//
-// It is the same sessions and a different quantity. Load is duration × RPE, so a
-// sport's share of the *load* and its share of the *sessions* come apart
-// wherever session length or intensity varies between them — twelve half-hour
-// gym visits against four long rides is the ordinary case, not a corner one, and
-// the pair of charts read together is the actual insight: which sports the
-// userbase does *often*, against which ones it spends its training stress on.
-//
-// One chart carrying both would have to decide what a wedge's angle meant, and
-// whichever it picked the other quantity would be the one somebody misread.
-//
-// ## Why horizontal
-//
-// The category labels are sport names — "Combat Sports", "Strength Training" —
-// and vertical bars would either truncate them, rotate them, or set them at a
-// size nobody reads. Horizontal bars give every label a full line at body size
-// and the bar grows away from it, which is also the direction the sorted order
-// reads in.
+// Admin section 4: training load by sport, as horizontal bars.
+
 import { Text, View } from 'react-native'
 import ChartCard from '../progress/ChartCard'
 import { ChartEmpty } from './AdminSection'
@@ -29,7 +10,6 @@ import { formatThousands } from '../../utils/formatting'
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/** Track height. Chunky enough to carry a sport's colour legibly. */
 const BAR_H = 10
 
 export default function LoadBySportChart({
@@ -102,8 +82,6 @@ function LoadRow({ bar, share }: { bar: SportLoadBar; share: number }) {
         </Text>
       </View>
 
-      {/* The track is drawn in full, so a short bar reads as a small share of a
-          known whole rather than as a stub floating on the card. */}
       <View
         style={{
           height: BAR_H,
@@ -114,11 +92,6 @@ function LoadRow({ bar, share }: { bar: SportLoadBar; share: number }) {
       >
         <View
           style={{
-            // Scaled against the largest bar rather than against the total, so
-            // the longest one always fills the track. Scaling to the total would
-            // leave every bar in a seven-sport spread under a fifth of the width
-            // and make the chart unreadable precisely when it has the most to
-            // say. The percentage below carries the share-of-total instead.
             width: `${Math.max(bar.fraction, 0.01) * 100}%`,
             height: '100%',
             borderRadius: RADIUS.pill,

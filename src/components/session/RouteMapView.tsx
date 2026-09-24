@@ -1,3 +1,5 @@
+// The only place react-native-maps is imported; loaded lazily.
+
 import { useEffect, useRef, useState } from 'react'
 import { Platform, View } from 'react-native'
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps'
@@ -8,7 +10,6 @@ import type { MapRegion } from '../../utils/maps'
 import type { RoutePoint } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
 interface RouteMapViewProps {
-  /** Already validated and decimated by {@link RouteMap}. Never empty. */
   points: RoutePoint[]
   targetRegion: MapRegion
   height: number
@@ -16,7 +17,6 @@ interface RouteMapViewProps {
   showMarkers: boolean
 }
 
-/** A region is only safe to hand to the native map if every field is finite. */
 function isValidRegion(r: MapRegion | undefined): r is Region {
   return (
     !!r &&
@@ -28,28 +28,6 @@ function isValidRegion(r: MapRegion | undefined): r is Region {
   )
 }
 
-/**
- * The actual Google/Apple map surface.
- *
- * **This file is the only place `react-native-maps` is imported**, and it is
- * loaded lazily by {@link RouteMap} — never at module scope. That is deliberate:
- * on a build with no Google Maps API key, mounting this component can take down
- * the process from native code (see `utils/maps.ts`), so the gate upstream must
- * be able to decide *not to load it at all* rather than merely not render it.
- *
- * Two further choices, both from the live-tracking crash work:
- *
- * 1. **The region is uncontrolled.** Passing `region` as a prop makes MapView a
- *    controlled component: React re-issues a camera command on *every* render
- *    whose region differs, and react-native-maps fights the user/animator for
- *    control of the camera. During a run that was a camera move per GPS fix on
- *    top of a re-render several times a second. Now the map mounts with
- *    `initialRegion` and is nudged imperatively when the target actually moves.
- *
- * 2. **The region is validated again here**, next to the native boundary. A
- *    non-finite latitude reaching `Polyline` or a camera call throws inside the
- *    Google Maps SDK — a native crash no JS error boundary can catch.
- */
 export default function RouteMapView({
   points,
   targetRegion,
@@ -60,28 +38,18 @@ export default function RouteMapView({
   const { colors, scheme } = useTheme()
 
   const mapRef = useRef<MapView | null>(null)
-  // MapView paints a flat grey rectangle for a beat before its tiles arrive,
-  // which looks like a failed image. Cover that with the app's shimmer instead.
   const [mapReady, setMapReady] = useState(false)
 
-  // Captured once, for the initial camera. Later changes go through the effect
-  // below; re-reading this on every render would have no effect anyway, since
-  // `initialRegion` is only consulted when the native view is created.
   const initialRegionRef = useRef<Region | null>(null)
   if (initialRegionRef.current === null && isValidRegion(targetRegion)) {
     initialRegionRef.current = targetRegion
   }
 
-  // Follow the target imperatively. Cheap when nothing moved (the identity check
-  // upstream means this only fires on a real new fix) and it never re-renders.
   useEffect(() => {
     if (!mapReady || !mapRef.current || !isValidRegion(targetRegion)) return
     try {
       mapRef.current.animateToRegion(targetRegion, 500)
     } catch {
-      // A camera command on a torn-down or unauthorised map surface throws.
-      // The map is cosmetic here — the workout data is unaffected, so swallow it
-      // rather than let it bubble into the tracking screen.
     }
   }, [mapReady, targetRegion])
 
@@ -95,12 +63,6 @@ export default function RouteMapView({
         style={{ flex: 1 }}
         onMapReady={() => setMapReady(true)}
         initialRegion={initialRegionRef.current ?? undefined}
-        // The two platforms take the basemap's appearance by different routes:
-        // Android wants an explicit style array (empty in light mode, which is
-        // Google's own default styling), while iOS ignores `customMapStyle`
-        // altogether and follows `userInterfaceStyle`. Both are driven from the
-        // same resolved scheme, or the map becomes the only light thing on a
-        // dark screen — which is exactly how this looked before.
         customMapStyle={Platform.OS === 'android' ? (colors.mapStyle as unknown as never) : undefined}
         userInterfaceStyle={scheme}
         scrollEnabled={interactive}
@@ -111,8 +73,6 @@ export default function RouteMapView({
         showsUserLocation={false}
         pointerEvents={interactive ? 'auto' : 'none'}
       >
-        {/* A single point is a degenerate polyline; skip it and let the markers
-            carry the "you are here" job until there's a real segment to draw. */}
         {points.length > 1 ? (
           <Polyline coordinates={points} strokeColor={colors.accent} strokeWidth={3} />
         ) : null}

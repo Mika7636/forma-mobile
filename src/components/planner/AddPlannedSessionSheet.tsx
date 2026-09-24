@@ -1,10 +1,5 @@
-// "Plan a session" — the Planner's one write path.
-//
-// Kept deliberately small: sport, how long, how hard. Those three are exactly
-// what the conflict engine reads, and nothing else on this form would change its
-// answer, so asking for more would be asking the athlete to fill in fields that
-// buy them nothing. The rest of what makes a session (distance, notes, a route)
-// is something you find out by *doing* it, and belongs to the Log screen.
+// "Plan a session" sheet: the Planner's one write path.
+
 import { useEffect, useState, type ReactNode } from 'react'
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import Slider from '@react-native-community/slider'
@@ -17,13 +12,10 @@ import type { PlannedSessionInput } from '../../types/planned'
 import { MIN_TOUCH, RADIUS, SPACING, TYPE, WEIGHT, onColor, rpeLabel } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/** Duration presets, in minutes. A plan is a rough shape, not a stopwatch. */
 const DURATIONS = [30, 45, 60, 90, 120]
 
 interface AddPlannedSessionSheetProps {
-  /** The day being planned (`YYYY-MM-DD`); the sheet is open while non-null. */
   isoDate: string | null
-  /** The athlete's sports, from onboarding — the only ones offered. */
   sports: SportType[]
   onClose: () => void
   onSave: (input: PlannedSessionInput) => Promise<void>
@@ -42,10 +34,8 @@ export default function AddPlannedSessionSheet({
   const [intensity, setIntensity] = useState(7)
   const [saving, setSaving] = useState(false)
 
-  // Reset on each open, so yesterday's answers don't pre-fill tomorrow's plan.
   useEffect(() => {
     if (isoDate) {
-      // Pre-select when there is only one honest answer.
       setSport(sports.length === 1 ? sports[0] : null)
       setDuration(60)
       setIntensity(7)
@@ -71,10 +61,6 @@ export default function AddPlannedSessionSheet({
     }
   }
 
-  // Onboarding guarantees at least one sport, but a profile that failed to load
-  // (or an account from before the sports step existed) would otherwise reach a
-  // form with nothing to pick and a permanently disabled button. Offering the
-  // full list is a strictly better dead end than no list.
   const chosen = SPORT_OPTIONS.filter((o) => sports.includes(o.value))
   const options = chosen.length > 0 ? chosen : SPORT_OPTIONS
 
@@ -218,9 +204,6 @@ export default function AddPlannedSessionSheet({
             maximumTrackTintColor={colors.border}
             thumbTintColor={colors.accent}
           />
-          {/* The one sentence that explains why this field is on the form at
-              all — otherwise "how hard" reads as bookkeeping rather than as the
-              input the whole conflict check turns on. */}
           <Text
             style={{
               fontSize: TYPE.caption,

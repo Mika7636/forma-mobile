@@ -1,11 +1,5 @@
-// A single toast card. ToastContainer owns the list; this owns one item's
-// lifecycle — enter, count down, and exit (by timer, by tap, or by swipe).
-//
-// The exit animation is driven manually rather than with Reanimated's `exiting`
-// prop because three different things can start it, and in every case the item
-// must stay in the store until the animation has actually finished. So the flow
-// is always: play the exit here → `runOnJS(onDismiss)` → the store drops it →
-// this unmounts.
+// A single toast card; ToastContainer owns the list.
+
 import { useCallback, useEffect } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -41,7 +35,6 @@ function look(colors: Palette): Record<ToastType, ToastLook> {
   }
 }
 
-/** Horizontal travel past which releasing the swipe dismisses instead of snapping back. */
 const SWIPE_THRESHOLD = 88
 
 export default function Toast({ item, onDismiss }: ToastProps) {
@@ -56,7 +49,6 @@ export default function Toast({ item, onDismiss }: ToastProps) {
 
   const remove = useCallback(() => onDismiss(item.id), [onDismiss, item.id])
 
-  /** Slides the card away in `direction` (0 = straight down) then removes it. */
   const exit = useCallback(
     (direction: number) => {
       'worklet'
@@ -65,8 +57,6 @@ export default function Toast({ item, onDismiss }: ToastProps) {
       } else {
         translateX.value = withTiming(direction * 420, { duration: MOTION.fast })
       }
-      // The removal hangs off the fade because that leg runs whichever way the
-      // card leaves, so it fires exactly once.
       opacity.value = withTiming(0, { duration: MOTION.fast }, (finished) => {
         if (finished) runOnJS(remove)()
       })
@@ -75,22 +65,16 @@ export default function Toast({ item, onDismiss }: ToastProps) {
   )
 
   useEffect(() => {
-    // Enter: rise into place with a spring, fade in on a plain timing curve so
-    // the text never looks like it's wobbling.
     opacity.value = withTiming(1, { duration: MOTION.base })
     translateY.value = withSpring(0, MOTION.spring)
-    // The progress rail doubles as the countdown — linear so it reads as a clock.
     progress.value = withTiming(0, { duration: item.duration, easing: Easing.linear })
 
     const timer = setTimeout(() => exit(0), item.duration)
     return () => clearTimeout(timer)
-    // Intentionally mount-only: `item` is immutable once shown.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const pan = Gesture.Pan()
-    // Only claim clearly-horizontal drags, so a vertical scroll that starts on a
-    // toast still reaches whatever is underneath it.
     .activeOffsetX([-12, 12])
     .failOffsetY([-14, 14])
     .onUpdate((event) => {
@@ -110,7 +94,6 @@ export default function Toast({ item, onDismiss }: ToastProps) {
   }))
 
   const progressStyle = useAnimatedStyle(() => ({
-    // Scale rather than width: width animations can't run on the UI thread.
     transform: [{ scaleX: progress.value }],
   }))
 
@@ -137,7 +120,6 @@ export default function Toast({ item, onDismiss }: ToastProps) {
         accessibilityRole="alert"
         accessibilityLabel={`${item.type}: ${item.message}`}
       >
-        {/* Colour rail — carries the type even before you read the words. */}
         <View
           style={{
             position: 'absolute',
@@ -193,7 +175,6 @@ export default function Toast({ item, onDismiss }: ToastProps) {
           </Text>
         </Pressable>
 
-        {/* Countdown rail, pinned to the bottom edge. */}
         <Animated.View
           style={[
             {
@@ -204,7 +185,6 @@ export default function Toast({ item, onDismiss }: ToastProps) {
               height: 2,
               backgroundColor: appearance.accent,
               opacity: 0.35,
-              // Shrink toward the left edge rather than the centre.
               transform: [{ scaleX: 1 }],
               transformOrigin: 'left',
             },

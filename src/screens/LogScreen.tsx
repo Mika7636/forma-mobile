@@ -1,3 +1,5 @@
+// Log a session: quick entry, or live GPS tracking.
+
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   FlatList,
@@ -73,31 +75,18 @@ import { sportVisual } from '../utils/sportMeta'
 
 type LogMode = 'quick' | 'live'
 
-/** Local midnight of a date — the day, with the clock stripped off it. */
 function startOfDay(date: Date): Date {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   return d
 }
 
-/**
- * The timestamp to persist for a session.
- *
- * The chosen calendar day, stamped with an actual wall-clock time (from `at`,
- * defaulting to now). The time matters even though the athlete never picks one:
- * without it every backdated session would land at the noon we parse a day
- * string to, and a day holding three of them would show three workouts all at
- * "12:00 PM". `at` lets a live session pass its true start time instead.
- *
- * For today — the default — this is simply now.
- */
 function resolveSessionDate(day: Date, at: Date = new Date()): Date {
   const d = startOfDay(day)
   d.setHours(at.getHours(), at.getMinutes(), at.getSeconds(), at.getMilliseconds())
   return d
 }
 
-/** "Mon, 25 Aug 2026" — the date as the field and the save button show it. */
 function formatSessionDay(day: Date): string {
   return day.toLocaleDateString(undefined, {
     weekday: 'short',
@@ -106,8 +95,6 @@ function formatSessionDay(day: Date): string {
     year: 'numeric',
   })
 }
-
-/* --- RPE zones -------------------------------------------------------- */
 
 interface RpeZone {
   label: string
@@ -133,7 +120,6 @@ const RPE_DESCRIPTIONS: Record<number, string> = {
   10: 'Maximum — all-out effort',
 }
 
-/* --- Training-load severity ------------------------------------------- */
 function loadSeverity(load: number, colors: Palette): { color: string; label: string } {
   if (load > 600) return { color: colors.danger, label: 'Very hard session' }
   if (load >= 400) return { color: colors.palette.orange, label: 'Hard session' }
@@ -143,47 +129,27 @@ function loadSeverity(load: number, colors: Palette): { color: string; label: st
 
 const DURATION_MAX = 300
 
-/** Hex colour + "10% opacity" alpha suffix for soft zone tints. */
 function tint(hex: string): string {
   return `${hex}1A`
 }
 
 export default function LogScreen({ route, navigation }: LogScreenProps) {
   const { colors } = useTheme()
-  // Reserve room for the tab bar, which is drawn over the end of this list.
   const tabPadding = useTabContentPadding()
 
   const user = useAuthStore((s) => s.user)
   const profile = useAuthStore((s) => s.profile)
   const setProfile = useAuthStore((s) => s.setProfile)
-  // Count-based calibration gate: a user with < 7 sessions gets gentler conflict
-  // detection (no volume warnings, sensitivity one notch softer).
   const { sessions } = useSessionHistory()
 
-  // A date handed over from the Planner seeds the field and sends the user back
-  // there after saving. Parse at local noon so the calendar day never slips
-  // (a `YYYY-MM-DD` read as UTC midnight lands on the day before, west of
-  // Greenwich).
   const paramDate = route.params?.date
   const fromPlanner = paramDate != null
 
-  /**
-   * The day this session happened, as a calendar day.
-   *
-   * State rather than a prop derived from the route, because the athlete can now
-   * change it — which is the whole point of the field. Someone who has been
-   * training for months should not have to log 42 fresh training days for a Form
-   * Score when they can enter the ones they already trained.
-   */
   const [sessionDay, setSessionDay] = useState<Date>(() =>
     paramDate ? new Date(`${paramDate}T12:00:00`) : new Date(),
   )
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  // Re-seed when the Planner hands over a *different* day. Guarded on the param
-  // itself so it cannot clobber a date the athlete picked by hand: the blur
-  // listener below clears the param on the way out, and an unguarded effect
-  // would read that as "go back to today" on the next focus.
   useEffect(() => {
     if (paramDate) setSessionDay(new Date(`${paramDate}T12:00:00`))
   }, [paramDate])
@@ -203,48 +169,20 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const [avgBpm, setAvgBpm] = useState('')
 
   const [saving, setSaving] = useState(false)
-  /**
-   * True for the beat between a live session landing in Firestore and this
-   * screen routing away. It is what turns the Save button into "✓ Saved" — the
-   * write is the one irreversible step in the flow, and acknowledging it before
-   * the screen changes is the difference between "did that work?" and knowing.
-   */
   const [liveSaved, setLiveSaved] = useState(false)
   const [conflicts, setConflicts] = useState<Conflict[] | null>(null)
-  /** The session behind the one-time first-save celebration, while it is up. */
   const [celebrated, setCelebrated] = useState<Session | null>(null)
   const [savedSessionId, setSavedSessionId] = useState<string | null>(null)
   const [undoing, setUndoing] = useState(false)
 
   const lastRpe = useRef(rpe)
-  // Deferred "go back after the toast lands" navigation must not outlive the
-  // screen — switching tabs inside that window used to navigate and setState on
-  // a torn-down component.
   const schedule = useSafeTimeout()
   const isMounted = useIsMounted()
 
-  // Live-tracking crash recovery. `liveSnapshot` is written by LiveTracker on
-  // every tick; if its error boundary trips we remount the tracker seeded with
-  // that snapshot (bumping `liveBoundaryKey` clears the boundary's error state)
-  // so the athlete lands on the summary and can still save the run.
   const liveSnapshot = useRef<LiveSnapshot | null>(null)
   const [recoveredLive, setRecoveredLive] = useState<LiveSnapshot | null>(null)
   const [liveBoundaryKey, setLiveBoundaryKey] = useState(0)
 
-  // Put the athlete back on their run.
-  //
-  // Tracking now survives the screen going off *and* FORMA's process being
-  // killed — the workout lives in `liveTrackingStore`, mirrored to AsyncStorage,
-  // and the OS keeps feeding it through the background location task. So a
-  // relaunch (from the app icon, or from tapping the "FORMA is tracking your
-  // run" notification) can easily land here with a run still in progress. Show
-  // them the tracking screen rather than an empty log form for a workout that is
-  // still recording.
-  //
-  // Re-run on focus as well as on mount. Tapping the live notification routes to
-  // this tab, and a bottom-tab screen the athlete has already visited is still
-  // mounted — so a mount-only effect would leave them staring at the quick-log
-  // form while their run kept recording in the shade.
   useEffect(() => {
     let cancelled = false
     const restore = async () => {
@@ -265,14 +203,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     }
   }, [navigation])
 
-  // A tab's params outlive the visit that set them, so a date handed over by the
-  // Planner would still be pinned here days later — the user would tap the Log
-  // tab and be told they're logging for last Tuesday. Drop it on the way out,
-  // *and* put the field back to today: clearing the param alone no longer
-  // undoes the handoff now that the date lives in state, and the seeding effect
-  // above deliberately ignores an absent param so it cannot clobber a manual
-  // pick. Scoped to a param-sourced visit, so a date the athlete chose by hand
-  // during an ordinary visit is not what this resets.
   useEffect(
     () =>
       navigation.addListener('blur', () => {
@@ -288,15 +218,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const avgBpmNum = avgBpm ? parseInt(avgBpm, 10) : undefined
   const showDistance = isDistanceSport(sport)
 
-  // Recomputed per render rather than memoised on mount: the screen can sit
-  // open across midnight, and a "today" cached yesterday would start rejecting
-  // a session logged this morning as being in the future.
   const today = startOfDay(new Date())
   const isToday = startOfDay(sessionDay).getTime() === today.getTime()
-  // The picker's `maximumDate` already makes this unreachable by tapping. It is
-  // still checked, because the state can also arrive from the Planner's route
-  // param — which is how a future day *can* land here, since planning ahead is
-  // exactly what that screen is for.
   const isFutureDay = startOfDay(sessionDay).getTime() > today.getTime()
 
   const canSave =
@@ -315,7 +238,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const load = estimates?.loadScore ?? 0
   const severity = loadSeverity(load, colors)
 
-  // Pulse the load number whenever it changes.
   const loadScale = useSharedValue(1)
   useEffect(() => {
     loadScale.value = withSequence(
@@ -330,9 +252,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const resetForm = () => {
     setSport(null)
     setMode('quick')
-    // Back to today: the next session logged from a cleared form is almost
-    // always the one happening now, and a date left pinned to last Tuesday is
-    // the bug the Planner param's blur handler already exists to prevent.
     setSessionDay(new Date())
     setDuration('')
     setDistance('')
@@ -342,17 +261,10 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     setAdvancedOpen(false)
   }
 
-  /**
-   * Android fires this for both a pick and a dismissal, and keeps the dialog
-   * mounted until it is unmounted from here — hence closing on every event
-   * rather than only on a selection.
-   */
   const handleDateChange = (event: DateTimePickerEvent, picked?: Date) => {
     setPickerOpen(false)
     if (event.type !== 'set' || !picked) return
     haptics.selection()
-    // Clamp rather than trust: `maximumDate` is enforced by the OS dialog, and
-    // the OS is not this app's input validator.
     const day = startOfDay(picked)
     setSessionDay(day.getTime() > today.getTime() ? today : day)
   }
@@ -360,8 +272,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   const handleSelectSport = (value: SportType) => {
     haptics.light()
     setSport(value)
-    // Live tracking only makes sense for distance sports; reset the mode when a
-    // non-distance sport (combat, football, gym…) is picked.
     if (!isDistanceSport(value)) {
       setDistance('')
       setMode('quick')
@@ -382,14 +292,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     }
   }
 
-  /**
-   * Hide the bottom tab bar while the finished-workout summary is up.
-   *
-   * That screen is full-bleed and carries its own sticky Save/Discard bar; a tab
-   * bar under it puts a second, competing set of destinations next to the one
-   * action the athlete is there to take, and cuts the design off at the ankles.
-   * Passing `undefined` restores whatever the navigator's `screenOptions` set.
-   */
   const handleSummaryChange = useCallback(
     (inSummary: boolean) => {
       navigation.setOptions({ tabBarStyle: inSummary ? { display: 'none' } : undefined })
@@ -397,8 +299,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     [navigation],
   )
 
-  // Belt to `handleSummaryChange`'s braces: leaving live mode by any route —
-  // discard, exit, a save that navigated away — puts the bar back.
   useEffect(() => {
     if (mode !== 'live') navigation.setOptions({ tabBarStyle: undefined })
   }, [mode, navigation])
@@ -409,32 +309,14 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     else resetForm()
   }
 
-  /**
-   * Retire the one-time first-session gate, and say whether the moment is
-   * actually due.
-   *
-   * Two conditions, doing two different jobs. The profile flag is the "only ever
-   * once" guarantee and is cleared on the first save either way — that is what
-   * quietly retires the gate for an athlete who already had months of history
-   * when this shipped. The empty-window check is what makes it *their first
-   * session* rather than merely their first since the feature existed.
-   *
-   * The write is fire-and-forget: a celebration is not worth blocking a
-   * successful save on, and the local `setProfile` (which mirrors to the profile
-   * cache) is what the rest of this session reads.
-   */
   const claimFirstSessionMoment = (firstInWindow: boolean): boolean => {
     if (!user || !profile || profile.firstSessionCelebrated) return false
     setProfile({ ...profile, firstSessionCelebrated: true })
     void updateUserProfile(user.uid, { firstSessionCelebrated: true }).catch(() => {
-      // Worst case the flag is only local and a reinstall replays the moment
-      // once. Not worth an error toast on an otherwise successful save.
     })
     return firstInWindow
   }
 
-  // Shared write path for both Quick Log and Live Tracking. Persists the
-  // session, then either surfaces conflicts or shows the success toast + resets.
   const logAndHandle = async (input: LogSessionInput) => {
     if (!user || !profile || saving) return
     Keyboard.dismiss()
@@ -443,47 +325,23 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
       const { session, conflicts: detected } = await logSession(user.uid, input, profile, {
         calibrating: sessions.length < CALIBRATION_SESSION_TARGET,
       })
-      // The write can outlive the screen (tab switch or logout mid-save). The
-      // session is safely persisted either way; there's just no UI left to
-      // update, and the conflict modal below would be mounted into nothing.
-      // The run is now safely in Firestore, so the live-tracking store — and the
-      // AsyncStorage snapshot behind it — can go. Deliberately *after* the write
-      // rather than when the athlete taps Save: a failed save must leave every
-      // background-tracked metre intact and retryable. Fire-and-forget, and done
-      // before the mounted check because it has nothing to do with the UI.
       if (input.trackingMode === 'live') {
         void clearLiveSession()
-        // The run is saved; nothing should still be counting in the shade. Stop
-        // also takes it down, so this is the belt to that braces — it covers the
-        // save landing after this screen has been torn down.
         void stopLiveNotification()
       }
 
       if (!isMounted.current) return
       setSaving(false)
 
-      // Local notifications for what just happened. Fire-and-forget so a
-      // notification failure can never block the save UI — the in-app modal and
-      // toast below are the primary feedback; these are the "you backgrounded
-      // the app" safety net.
-      //
-      // The store's snapshot hasn't landed yet, so prepend the new session to
-      // get an accurate streak. The repeating schedules (daily reminder copy,
-      // streak-at-risk) re-sync automatically once that snapshot arrives and
-      // changes the session count.
       const prefs = withPreferenceDefaults(profile.notificationPreferences)
       const withNew = [session, ...sessions]
       if (detected.length > 0) {
-        // One notification, for the most serious conflict — a burst of them
-        // would be exactly the spam this feature is meant to avoid.
         const worst =
           detected.find((c) => c.severity === 'danger') ?? detected[0]
         void sendConflictNotification(worst, prefs)
       }
       void checkAndNotifyStreak(withNew, prefs)
 
-      // Captured before the modal branches below, because `sessions` is the
-      // pre-save snapshot: empty means nothing had been logged until now.
       const isFirstEver = claimFirstSessionMoment(sessions.length === 0)
 
       if (detected.length > 0) {
@@ -492,29 +350,17 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
         return
       }
 
-      // The toast fires the success haptic itself — see toastStore.
       toast.success('Session saved', {
         description: `${session.loadScore} AU · ${session.estimatedCalories} kcal`,
       })
 
-      // The first-ever save gets its moment, and owns the navigation that
-      // follows: the auto-return below would unmount the modal under the reader.
-      // A first session cannot clash with anything (there is nothing to clash
-      // with), so this can never be competing with the conflict modal above.
       if (isFirstEver) {
-        // Live saves acknowledge the write on the Save button itself; hold that
-        // "✓ Saved" state behind the modal so the summary underneath still reads
-        // as finished rather than as though the tap did nothing.
         if (input.trackingMode === 'live') setLiveSaved(true)
         setCelebrated(session)
         return
       }
 
       if (input.trackingMode === 'live') {
-        // Hold the summary on screen with the button in its "Saved" state, then
-        // send them to the Dashboard — a live workout's payoff is what it did to
-        // their Form, and that is what the Dashboard shows. Deliberately not the
-        // empty log form they just finished with.
         setLiveSaved(true)
         schedule(() => {
           setLiveSaved(false)
@@ -538,7 +384,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     }
   }
 
-  /** Close the first-session moment and run the navigation it deferred. */
   const handleCelebrationDone = () => {
     const wasLive = celebrated?.trackingMode === 'live'
     setCelebrated(null)
@@ -570,8 +415,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     if (!sport) return
     logAndHandle({
       sport,
-      // Live sessions are stamped with when tracking actually started, not when
-      // the summary was saved (which can be many minutes later).
       date: resolveSessionDate(
         sessionDay,
         result.startedAt != null ? new Date(result.startedAt) : new Date(),
@@ -592,11 +435,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     })
   }
 
-  /**
-   * Recover from a live-tracking crash: remount the tracker on the summary
-   * screen with whatever was collected. Falls back to the quick log when there
-   * was nothing meaningful recorded (crashed before tracking started).
-   */
   const handleRecoverLive = () => {
     const snap = liveSnapshot.current
     if (!snap || snap.elapsedSec < 1) {
@@ -619,9 +457,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     const kept = conflicts ?? []
     setConflicts(null)
     setSavedSessionId(null)
-    // Keeping a flagged session is a decision, not a plain save — the toast says
-    // so, and stays amber, so the warning doesn't vanish with the modal. The
-    // modal itself carries the detail; this is the receipt.
     if (kept.length > 0) {
       const worst = worstSeverity(kept)
       toast.warning('Saved with a conflict', {
@@ -642,7 +477,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     try {
       await deleteSession(user.uid, savedSessionId)
     } catch {
-      // Best-effort: still close the modal so the user isn't stuck.
     } finally {
       if (!isMounted.current) return
       setUndoing(false)
@@ -653,9 +487,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
     }
   }
 
-  // Full-screen live tracker. Rendered instead of the log form while the user is
-  // in Live mode; the conflict modal rides along so save feedback still shows
-  // over it. Toasts come from the app-root container, which is already above this.
   if (mode === 'live' && sport) {
     return (
       <>
@@ -713,7 +544,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Header */}
             <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
               <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text }}>
                 Log Session
@@ -723,7 +553,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </Text>
             </View>
 
-            {/* Sport selector */}
             <SectionLabel style={{ marginTop: 24, paddingHorizontal: 20 }}>
               Sport
             </SectionLabel>
@@ -757,10 +586,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               />
             )}
 
-            {/* Date. Directly under Sport and above everything the session is
-                *made* of, because it answers a different question — not "what
-                did you do" but "when" — and because a backdated session has to
-                announce itself before the athlete has filled the form in. */}
             <View style={{ paddingHorizontal: 20 }}>
               <SectionLabel style={{ marginTop: 24 }}>Date</SectionLabel>
               <Pressable
@@ -778,9 +603,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                   backgroundColor: colors.fieldBg,
                   borderRadius: 12,
                   borderWidth: 1.5,
-                  // The field carries the error, not a toast or an alert: the
-                  // thing that is wrong is *this value*, and the correction is
-                  // one tap away inside this row.
                   borderColor: isFutureDay ? colors.danger : colors.border,
                 }}
               >
@@ -823,14 +645,11 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                 value={sessionDay}
                 mode="date"
                 display="calendar"
-                // The OS dialog refuses tomorrow outright, which is a better
-                // answer than letting it be picked and then complaining.
                 maximumDate={today}
                 onChange={handleDateChange}
               />
             ) : null}
 
-            {/* Mode toggle — Quick Log vs Track Live (distance sports only) */}
             {showDistance ? (
               <Animated.View
                 entering={FadeInDown.duration(200)}
@@ -847,7 +666,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </Animated.View>
             ) : null}
 
-            {/* Duration */}
             <View style={{ paddingHorizontal: 20 }}>
               <SectionLabel style={{ marginTop: 24 }}>Duration (minutes)</SectionLabel>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -893,7 +711,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               ) : null}
             </View>
 
-            {/* Distance (conditional, animated) */}
             {showDistance ? (
               <Animated.View
                 entering={FadeInDown.duration(200)}
@@ -914,7 +731,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
                     value={distance}
                     onChangeText={(t) => {
                       const cleaned = t.replace(/[^0-9.]/g, '')
-                      // allow only one decimal point
                       const parts = cleaned.split('.')
                       setDistance(
                         parts.length > 2
@@ -931,7 +747,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </Animated.View>
             ) : null}
 
-            {/* RPE */}
             <View
               style={{
                 marginTop: 24,
@@ -993,8 +808,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </Text>
             </View>
 
-            {/* Prominent live calorie estimate — updates as duration/RPE change,
-                for every sport (Part 4/5). */}
             {estimates && durationNum > 0 ? (
               <Animated.View
                 entering={FadeIn.duration(200)}
@@ -1018,7 +831,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </Animated.View>
             ) : null}
 
-            {/* Training load */}
             <View
               style={{
                 marginTop: 20,
@@ -1082,7 +894,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </View>
             </View>
 
-            {/* Estimated stats */}
             {estimates && durationNum > 0 ? (
               <Animated.View
                 entering={FadeIn.duration(200)}
@@ -1108,7 +919,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </Animated.View>
             ) : null}
 
-            {/* Notes */}
             <View style={{ paddingHorizontal: 20 }}>
               <SectionLabel style={{ marginTop: 24 }}>Notes (optional)</SectionLabel>
               <View
@@ -1139,7 +949,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               </View>
             </View>
 
-            {/* Advanced (collapsible) */}
             <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
               <Pressable
                 onPress={() => {
@@ -1194,14 +1003,8 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
               ) : null}
             </View>
 
-            {/* Save */}
             <View style={{ paddingHorizontal: 20, marginTop: 28 }}>
               <PrimaryButton
-                // Names the day whenever it isn't today, so a backdated save
-                // can't happen by accident — the button is the last thing read
-                // before the write, and it is where a wrong date is cheapest to
-                // catch. Short form ("Save to Mon, 25 Aug"): the year is in the
-                // field above and would push this to two lines.
                 label={
                   isToday
                     ? 'Save Session'
@@ -1235,9 +1038,6 @@ export default function LogScreen({ route, navigation }: LogScreenProps) {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Sport card — horizontal selector with a scale animation on select   */
-/* ------------------------------------------------------------------ */
 function SportCard({
   option,
   selected,
@@ -1290,9 +1090,6 @@ function SportCard({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Mode toggle — Quick Log vs Track Live segmented control              */
-/* ------------------------------------------------------------------ */
 function ModeToggle({
   mode,
   onSelect,
@@ -1350,9 +1147,6 @@ function ModeToggle({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Estimated-stat mini card                                            */
-/* ------------------------------------------------------------------ */
 function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
   const { colors } = useTheme()
 
@@ -1398,9 +1192,6 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Section label                                                       */
-/* ------------------------------------------------------------------ */
 function SectionLabel({
   children,
   style,

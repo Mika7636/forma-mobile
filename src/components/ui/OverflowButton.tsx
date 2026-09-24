@@ -1,3 +1,5 @@
+// The three-dot overflow button.
+
 import { Pressable, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
 import TabIcon from './TabIcon'
@@ -6,25 +8,10 @@ import { IMAGERY_INK, IMAGERY_SCRIM, MIN_TOUCH, RADIUS } from '../../theme/token
 
 interface OverflowButtonProps {
   onPress: () => void
-  /**
-   * Draw a translucent disc behind the glyph.
-   *
-   * The workout summary puts this over a live route map, where a bare glyph is
-   * three dots on whatever the satellite happened to see. On a plain surface the
-   * disc is unnecessary chrome.
-   */
   onImagery?: boolean
-  /** Overrides the glyph colour. Rarely needed — see `onImagery`. */
   color?: string
 }
 
-/**
- * The three-dot overflow button.
- *
- * A real vector glyph rather than a `⋯` character or an emoji: it takes the
- * theme's colour, holds its shape at 22pt on a dim panel, and is the same
- * drawing on every Android version. See `TabIcon`.
- */
 export default function OverflowButton({ onPress, onImagery, color }: OverflowButtonProps) {
   const { colors } = useTheme()
 

@@ -1,3 +1,5 @@
+// Daily Fitness, Fatigue and Form on one scrubbable axis.
+
 import { useMemo, useState } from 'react'
 import { Text, View, type GestureResponderEvent } from 'react-native'
 import Svg, {
@@ -15,8 +17,6 @@ import ChartCard from './ChartCard'
 import { formatCompact, niceScale, smoothPath, type Point } from './chartUtils'
 import type { DailyPoint } from '../../utils/progressMetrics'
 import { useTheme } from '../../theme/ThemeProvider'
-// The one place the Fitness/Fatigue/Form colour language is defined. Blue reads
-// as "building capacity", red as "cost/fatigue", teal is FORMA's own Form brand.
 
 const PLOT_H = 232
 const PAD_L = 34
@@ -29,12 +29,6 @@ interface FitnessChartProps {
   delay?: number
 }
 
-/**
- * The hero chart: daily Fitness (CTL), Fatigue (ATL) and Form on one shared
- * axis. Fitness is a solid blue line, Fatigue a red dashed line, and Form a teal
- * line with a soft area fill toward the zero reference line — the visual story of
- * "built here, overreached here, recovered here". Tap or drag to scrub a tooltip.
- */
 export default function FitnessChart({ daily, delay = 0 }: FitnessChartProps) {
   return (
     <ChartCard
@@ -97,7 +91,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
       lo = Math.min(lo, d.ctl, d.atl, d.form)
       hi = Math.max(hi, d.ctl, d.atl, d.form)
     }
-    // Always include zero so the reference line and Form's sign are visible.
     lo = Math.min(lo, 0)
     hi = Math.max(hi, 0)
     const scale = niceScale(lo, hi, 5)
@@ -115,7 +108,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
       2,
     )} L ${formPts[0].x.toFixed(2)} ${y0.toFixed(2)} Z`
 
-    // Weekly-ish x labels: fewer as the range widens, so they never collide.
     const step = n > 60 ? 21 : n > 30 ? 14 : 7
     const xLabels: { x: number; label: string }[] = []
     for (let i = 0; i < n; i += step) {
@@ -140,9 +132,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
 
   return (
     <View
-      // Claim the gesture only when it *starts* on the plot, so a tap or a drag
-      // that begins here scrubs — but a vertical page-scroll passing over the
-      // chart isn't hijacked (that needs onMoveShouldSetResponder, omitted).
       onStartShouldSetResponder={() => true}
       onResponderGrant={onTouch}
       onResponderMove={onTouch}
@@ -156,7 +145,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
           </LinearGradient>
         </Defs>
 
-        {/* Gridlines + y labels */}
         {geom.scale.ticks.map((t) => {
           const y = geom.yAt(t)
           return (
@@ -182,7 +170,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
           )
         })}
 
-        {/* Zero reference line (Form baseline) */}
         <Line
           x1={PAD_L}
           y1={geom.y0}
@@ -193,7 +180,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
           strokeDasharray="2 3"
         />
 
-        {/* Form area + lines (Form drawn under CTL/ATL so they stay readable) */}
         <Path d={geom.formArea} fill="url(#formFill)" />
         <Path d={smoothPath(geom.formPts)} stroke={colors.accent} strokeWidth={2} fill="none" />
         <Path
@@ -205,7 +191,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
         />
         <Path d={smoothPath(geom.ctlPts)} stroke={colors.palette.sky} strokeWidth={2.5} fill="none" />
 
-        {/* X labels */}
         {geom.xLabels.map((l, i) => (
           <SvgText
             key={i}
@@ -219,7 +204,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
           </SvgText>
         ))}
 
-        {/* Scrub crosshair + markers */}
         {active != null ? (
           <G>
             <Line
@@ -236,7 +220,6 @@ function FitnessPlot({ daily, width }: { daily: DailyPoint[]; width: number }) {
           </G>
         ) : null}
 
-        {/* Transparent hit layer already handled by the wrapping View */}
         <Rect x={0} y={0} width={width} height={PLOT_H} fill="transparent" />
       </Svg>
 
@@ -260,10 +243,6 @@ function Tooltip({ point, x, width }: { point: DailyPoint; x: number; width: num
         top: 4,
         left,
         width: BUBBLE_W,
-        // A raised dark surface with a hairline, not the near-black slab this
-        // was. `colors.text` used to be #111827 and made a perfectly good
-        // tooltip; it is now the *lightest* colour in the palette, so this
-        // rendered as a white card with white body copy on it.
         backgroundColor: colors.surfaceAlt,
         borderWidth: 1,
         borderColor: colors.border,
@@ -317,7 +296,6 @@ function NotEnough() {
   )
 }
 
-/** "Jun 23" from a YYYY-MM-DD key, in local time. */
 function shortLabel(dateISO: string): string {
   const [y, m, d] = dateISO.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })

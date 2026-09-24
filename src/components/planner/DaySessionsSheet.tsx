@@ -1,16 +1,5 @@
-// The day card: everything on one calendar day — what was trained, what is
-// planned, and anything FORMA has flagged about either.
-//
-// It opens for any tapped day now, not just a day holding several sessions. That
-// changed when the Planner gained a forward half: an empty future Tuesday is not
-// a dead end any more, it is where you plan Tuesday, and the sheet is where that
-// happens.
-//
-// Deliberately *not* a React Native <Modal>: SessionDetailModal is one, and a
-// native modal covers every sibling overlay in the tree — stacking two of them
-// leaves the detail sheet either invisible or unreachable on iOS. An in-screen
-// absolute overlay stays behind the real modal, which is exactly the layering
-// this flow wants.
+// Day card: everything trained or planned on one calendar day.
+
 import { useMemo } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated, {
@@ -36,7 +25,6 @@ import { MIN_TOUCH, RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 interface DaySessionsSheetProps {
-  /** The day to show; the sheet is open while this is non-null. */
   day: CalendarDay | null
   onClose: () => void
   onSessionPress: (session: Session) => void
@@ -44,41 +32,16 @@ interface DaySessionsSheetProps {
   onConflictPress: (conflicts: Conflict[]) => void
   onPlannedConflictPress: (conflicts: PlannedConflict[]) => void
   onPlanSession: (isoDate: string) => void
-  /** Opens the Log tab with this day pre-filled. */
   onLogSession: (isoDate: string) => void
   onPlannedDelete: (planned: PlannedSession) => void
 }
 
-/**
- * What the day's add-button should offer, if anything.
- *
- * ## Why this is a function of the date
- *
- * The sheet used to offer "+ Plan a session" on every day, which on a Tuesday
- * three weeks gone is an offer to plan the past. The two verbs are not
- * interchangeable: you *plan* what hasn't happened and *log* what has, and the
- * calendar already knows which side of that line a day falls on.
- *
- *  - **future** — plan it. Nothing has happened yet; this is the whole point of
- *    the forward half of the planner.
- *  - **today** — log it. A session today is either done or not yet done, and
- *    "plan the next four hours" is not a thing anyone opens a calendar to do.
- *  - **past, nothing logged** — log it, backdated. This is the day someone
- *    trained and forgot to record, and it is the single most useful thing the
- *    sheet can offer them.
- *  - **past, already logged** — nothing. The day is accounted for; a button
- *    here would only invite duplicates. The list is the answer.
- *
- * Keyed on logged sessions, not on plans: a past day holding only a stale plan
- * is still a day with nothing recorded on it.
- */
 function dayAction(day: CalendarDay): 'plan' | 'log' | null {
   if (day.isFuture) return 'plan'
   if (day.isToday) return 'log'
   return day.sessions.length === 0 ? 'log' : null
 }
 
-/** The line shown when a day holds nothing at all, matched to its action. */
 function emptyCopy(day: CalendarDay): string {
   if (day.isFuture) {
     return "Nothing here yet. Plan a session and FORMA will check it against the rest of your week."
@@ -100,8 +63,6 @@ export default function DaySessionsSheet({
 }: DaySessionsSheetProps) {
   const { colors } = useTheme()
 
-  // Which chip to tint: a conflict names up to two sessions, and `danger`
-  // always wins over a `warning` already recorded for the same one.
   const severityBySession = useMemo(() => {
     const map = new Map<string, ConflictSeverity>()
     for (const c of day?.conflicts ?? []) {
@@ -113,9 +74,6 @@ export default function DaySessionsSheet({
     return map
   }, [day])
 
-  // The same, for plans. Kept as a separate map rather than merged with the one
-  // above: the two id spaces are different collections, and a shared map would
-  // let a session id collide with a plan id and tint the wrong chip.
   const severityByPlanned = useMemo(() => {
     const map = new Map<string, ConflictSeverity>()
     for (const c of day?.plannedConflicts ?? []) {
@@ -187,9 +145,6 @@ export default function DaySessionsSheet({
             </Text>
           </View>
 
-          {/* Two badges, never merged. A logged conflict and a planned one mean
-              different things and lead to different actions, so collapsing them
-              into a single count would produce a number that answers neither. */}
           {plannedConflicts.length > 0 ? (
             <ConflictBadge
               count={plannedConflicts.length}
@@ -234,8 +189,6 @@ export default function DaySessionsSheet({
 
           {planned.length > 0 ? (
             <>
-              {/* Only labelled when both halves are present — a day holding
-                  nothing but plans needs no heading to tell them apart. */}
               {sessions.length > 0 ? (
                 <Text
                   style={{
@@ -293,9 +246,6 @@ export default function DaySessionsSheet({
               minHeight: MIN_TOUCH,
               borderRadius: RADIUS.md,
               borderWidth: 1.5,
-              // Dashed for a plan, solid for a log — the same "provisional vs
-              // recorded" grammar the chips and the grid dots use, applied to
-              // the button that produces each.
               borderStyle: action === 'plan' ? 'dashed' : 'solid',
               borderColor: action === 'plan' ? colors.accentBorder : colors.accent,
               backgroundColor: colors.accentSoft,
@@ -315,7 +265,6 @@ export default function DaySessionsSheet({
   )
 }
 
-/** "2 sessions · 1.5 h · 620 AU · 1 planned" — whichever halves exist. */
 function summaryLine(day: CalendarDay): string {
   const parts: string[] = []
   if (day.sessions.length > 0) {

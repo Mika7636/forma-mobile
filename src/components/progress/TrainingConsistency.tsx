@@ -1,3 +1,5 @@
+// Twelve weeks of consistency, counted in load not attendance.
+
 import { Text, View } from 'react-native'
 import { standingColor } from './TrainingLoadChart'
 import type { WeekBucket } from '../../utils/progressMetrics'
@@ -5,37 +7,14 @@ import { useTheme } from '../../theme/ThemeProvider'
 import { SPACING, TYPE, WEIGHT, cardStyle, type Palette } from '../../theme/tokens'
 
 const DOT = 15
-/** The dot's cell. Bigger than the dot so the current week's ring has room. */
 const CELL = 23
 const GAP = 5
 
 interface TrainingConsistencyProps {
-  /** The same twelve weeks the chart is drawn from. */
   weeks: WeekBucket[]
   streak: number
 }
 
-/**
- * The streak card — but counted in load, not attendance.
- *
- * ## Why this is not Strava's streak
- *
- * A streak counter asks "did you show up?", which is a question about
- * discipline. FORMA already knows what each week was worth *against this
- * athlete's own fitness*, so it can ask the better question: was it the right
- * amount? A week of three sensible sessions extends this; a week of one enormous
- * one does not, and neither does a week of six easy ones. That is a measure an
- * attendance app structurally cannot compute, because it has no model of what
- * this person can absorb.
- *
- * It is also the honest counterweight to the chart above it. The chart shows
- * twelve bars and invites the reader to admire the tallest; this says the
- * tallest bar was never the point.
- *
- * The dots are the *same twelve weeks* as the chart, in the same order and the
- * same colours — so the grid is a second reading of the plot the athlete has
- * just looked at, not a new dataset to decode.
- */
 export default function TrainingConsistency({ weeks, streak }: TrainingConsistencyProps) {
   const { colors } = useTheme()
 
@@ -49,9 +28,6 @@ export default function TrainingConsistency({ weeks, streak }: TrainingConsisten
       </Text>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.base }}>
-        {/* The count, at hero scale. This is the one figure the card exists to
-            carry, and at anything less than display size it reads as another
-            stat rather than as an achievement. */}
         <View style={{ minWidth: 92 }}>
           <Text
             accessibilityLabel={`${streak} ${streak === 1 ? 'week' : 'weeks'} in range`}
@@ -100,15 +76,6 @@ export default function TrainingConsistency({ weeks, streak }: TrainingConsisten
   )
 }
 
-/**
- * How one week is drawn.
- *
- * Filled accent for a week inside the range, warn for one above it, and a hollow
- * ring for one below — hollow rather than a third fill, because "below" is the
- * absence of the thing being counted and an empty dot says that without needing
- * a legend. The two fills come from the chart's own `standingColor`, so a dot
- * can never disagree with the bar it stands for.
- */
 function dotStyle(week: WeekBucket, colors: Palette) {
   const standing = week.standingSoFar
   if (standing === 'inside' || standing === 'above') {
@@ -117,7 +84,6 @@ function dotStyle(week: WeekBucket, colors: Palette) {
   return { fill: 'transparent', hollow: true }
 }
 
-/** Twelve weeks, oldest → newest, wrapping to two rows on a narrow phone. */
 function DotGrid({ weeks }: { weeks: WeekBucket[] }) {
   const { colors } = useTheme()
 
@@ -143,10 +109,6 @@ function DotGrid({ weeks }: { weeks: WeekBucket[] }) {
               borderRadius: CELL / 2,
               alignItems: 'center',
               justifyContent: 'center',
-              // The current week is *ringed*, not recoloured: it is the same
-              // kind of thing as the weeks before it, just the one you are
-              // standing in — so it keeps whatever fill it has earned so far
-              // and gains a halo around it.
               borderWidth: week.partial ? 1.5 : 0,
               borderColor: colors.borderStrong,
             }}

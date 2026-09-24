@@ -1,3 +1,5 @@
+// Read-only detail card for one past session.
+
 import { Text, View } from 'react-native'
 import RouteMap from './RouteMap'
 import { SPORT_OPTIONS } from '../../constants/training'
@@ -5,12 +7,6 @@ import { formatDistanceKm } from '../../utils/formatting'
 import type { Session } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/**
- * Read-only detail for a single (past) session. If the session was live-tracked
- * and has `routeCoordinates`, a static route map is drawn above the stats;
- * quick-logged sessions just show the stats. Drop this into a session-detail
- * screen once a session list exists to open one.
- */
 export default function SessionDetailCard({ session }: { session: Session }) {
   const { colors } = useTheme()
 
@@ -18,7 +14,6 @@ export default function SessionDetailCard({ session }: { session: Session }) {
   const hasRoute =
     Array.isArray(session.routeCoordinates) && session.routeCoordinates.length > 1
 
-  // Prefer the live-tracked pace/speed; fall back to the generic `pace` string.
   const paceValue =
     session.averageSpeed != null
       ? `${session.averageSpeed.toFixed(1)} km/h`
@@ -33,7 +28,6 @@ export default function SessionDetailCard({ session }: { session: Session }) {
 
   return (
     <View style={{ padding: 20 }}>
-      {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={{ fontSize: 34, marginRight: 12 }}>{option?.icon ?? '🏅'}</Text>
         <View>
@@ -47,14 +41,12 @@ export default function SessionDetailCard({ session }: { session: Session }) {
         </View>
       </View>
 
-      {/* Route map — only when we have GPS breadcrumbs */}
       {hasRoute ? (
         <View style={{ marginTop: 16 }}>
           <RouteMap coordinates={session.routeCoordinates!} height={220} showMarkers />
         </View>
       ) : null}
 
-      {/* Stats */}
       <View
         style={{
           marginTop: 16,

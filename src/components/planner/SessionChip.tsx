@@ -1,5 +1,5 @@
-// A single session inside a planner day card: tap to open the detail sheet,
-// swipe left to reveal (or fling past the threshold to trigger) delete.
+// A logged session inside a planner day card.
+
 import { Alert, Pressable, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -18,29 +18,19 @@ import type { Session } from '../../types/session'
 import { useTheme } from '../../theme/ThemeProvider'
 import { onColor } from '../../theme/tokens'
 
-/** How far the row rests open once the delete button is revealed. */
 const ACTION_WIDTH = 92
-/** Drag distance at which the delete button counts as "revealed" (haptic). */
 const REVEAL_AT = 34
-/** Past this, releasing fires the delete without tapping the button. */
 const AUTO_DELETE_AT = 190
-/** Hard stop so the row can't be dragged off into space. */
 const MAX_DRAG = 240
 
 interface SessionChipProps {
   session: Session
-  /** Severity of the worst unresolved conflict naming this session, if any —
-   *  tints the chip border and shows a matching icon. Undefined = no conflict. */
   conflictSeverity?: ConflictSeverity
-  /** Prefix the meta line with the session's time — used when a day holds more
-   *  than one session so their order/spacing is clear at a glance. */
   showTime?: boolean
   onPress: (session: Session) => void
-  /** Runs the actual Firestore delete; resolve/reject decides the animation. */
   onDelete: (session: Session) => Promise<void>
 }
 
-/** "2:30 PM · 45 min · RPE 7 · 412 kcal" (time only when requested) */
 function metaLine(session: Session, showTime: boolean): string {
   const parts: string[] = []
   if (showTime) {
@@ -71,7 +61,6 @@ export default function SessionChip({
   const conflictStyle = conflicted ? severityStyle(conflictSeverity, colors) : null
 
   const translateX = useSharedValue(0)
-  // Drag bookkeeping, kept on the UI thread so the gesture never waits on React.
   const startX = useSharedValue(0)
   const buzzed = useSharedValue(false)
 
@@ -81,10 +70,6 @@ export default function SessionChip({
     translateX.value = withSpring(0, { damping: 18, stiffness: 220 })
   }
 
-  /**
-   * Confirm, then delete. The row stays swiped open under the alert so it's
-   * obvious which session is about to go; cancelling springs it back.
-   */
   const confirmDelete = () => {
     Alert.alert(
       'Delete Session?',
@@ -98,8 +83,6 @@ export default function SessionChip({
             haptics.warning()
             try {
               await onDelete(session)
-              // The Firestore listener removes the chip; slide it out so the
-              // gap doesn't just pop.
               translateX.value = withTiming(-MAX_DRAG, { duration: 160 })
             } catch {
               haptics.error()
@@ -112,8 +95,6 @@ export default function SessionChip({
   }
 
   const handlePress = () => {
-    // A tap on an open row closes it instead of opening the sheet — standard
-    // swipeable-row behaviour.
     if (translateX.value < -4) {
       close()
       return
@@ -123,8 +104,6 @@ export default function SessionChip({
   }
 
   const pan = Gesture.Pan()
-    // Only claim clearly-horizontal drags: vertical ones belong to the
-    // ScrollView, and a slow diagonal belongs to the week-swipe gesture above.
     .activeOffsetX([-10, 10])
     .failOffsetY([-14, 14])
     .onBegin(() => {
@@ -132,7 +111,6 @@ export default function SessionChip({
       buzzed.value = translateX.value < -REVEAL_AT
     })
     .onUpdate((e) => {
-      // Left only, and never past the hard stop.
       const next = Math.min(0, Math.max(startX.value + e.translationX, -MAX_DRAG))
       translateX.value = next
       if (!buzzed.value && next < -REVEAL_AT) {
@@ -144,7 +122,6 @@ export default function SessionChip({
     })
     .onEnd(() => {
       if (translateX.value <= -AUTO_DELETE_AT) {
-        // Flung far enough — treat it as pressing Delete.
         runOnJS(confirmDelete)()
       } else if (translateX.value <= -ACTION_WIDTH / 2) {
         translateX.value = withSpring(-ACTION_WIDTH, { damping: 18, stiffness: 220 })
@@ -157,23 +134,16 @@ export default function SessionChip({
     if (success) runOnJS(handlePress)()
   })
 
-  // Pan wins outright: a drag must never also register as a tap.
   const gesture = Gesture.Exclusive(pan, tap)
 
   const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }))
 
-  // The underlay only fades in as the row actually moves, so it never peeks out
-  // from behind a resting chip.
   const actionStyle = useAnimatedStyle(() => ({
     opacity: interpolate(-translateX.value, [0, REVEAL_AT], [0, 1], 'clamp'),
   }))
 
   return (
-    // The row clips its own bounds so a swiped chip slides out of view cleanly
-    // instead of bleeding across the day card's padding.
     <View style={{ marginBottom: 8, borderRadius: 12, overflow: 'hidden' }}>
-      {/* Delete underlay — revealed as the row slides left, and tappable once
-          it is (the chip itself covers it at rest, so it can't be hit early). */}
       <Animated.View
         style={[
           {
@@ -222,7 +192,6 @@ export default function SessionChip({
             rowStyle,
           ]}
         >
-          {/* Sport colour bar */}
           <View
             style={{
               position: 'absolute',

@@ -1,3 +1,5 @@
+// Onboarding step progress bar.
+
 import { useEffect } from 'react'
 import { Text, View } from 'react-native'
 import Animated, {
@@ -7,12 +9,10 @@ import Animated, {
 } from 'react-native-reanimated'
 import { useTheme } from '../../theme/ThemeProvider'
 interface ProgressBarProps {
-  /** Current step, 1-indexed. */
   step: number
   totalSteps: number
 }
 
-/** Thin teal-filled progress bar with a "Step X of N" caption. */
 export default function ProgressBar({ step, totalSteps }: ProgressBarProps) {
   const { colors } = useTheme()
 

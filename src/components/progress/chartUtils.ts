@@ -1,6 +1,4 @@
-// Small, dependency-free maths shared by the SVG progress charts: nice axis
-// scales, Catmull-Rom smoothing, and compact number formatting. Kept pure so the
-// charts themselves stay declarative.
+// Axis scales and SVG path maths shared by the Progress charts.
 
 export interface Point {
   x: number
@@ -8,15 +6,11 @@ export interface Point {
 }
 
 export interface Scale {
-  /** Rounded lower bound of the axis. */
   min: number
-  /** Rounded upper bound of the axis. */
   max: number
-  /** Evenly-spaced gridline values from min to max. */
   ticks: number[]
 }
 
-/** Round a range up to a "nice" 1/2/5×10ⁿ number (Heckbert's algorithm). */
 function niceNum(range: number, round: boolean): number {
   const exp = Math.floor(Math.log10(range))
   const frac = range / Math.pow(10, exp)
@@ -35,15 +29,8 @@ function niceNum(range: number, round: boolean): number {
   return nf * Math.pow(10, exp)
 }
 
-/**
- * A human-friendly axis scale spanning [min, max] with roughly `maxTicks`
- * gridlines landing on round values. Handles a flat series (min === max) and
- * negative ranges (Form crosses zero) without producing NaNs.
- */
 export function niceScale(min: number, max: number, maxTicks = 5): Scale {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
-    // Degenerate input (no data, or one flat value): give a small symmetric band
-    // around the value so a line still renders mid-chart.
     const base = Number.isFinite(min) ? min : 0
     return { min: base - 1, max: base + 1, ticks: [base - 1, base, base + 1] }
   }
@@ -58,34 +45,14 @@ export function niceScale(min: number, max: number, maxTicks = 5): Scale {
   return { min: niceMin, max: niceMax, ticks }
 }
 
-/**
- * An axis that ends just above the data rather than at the next round number.
- *
- * {@link niceScale} rounds the *domain* up, which is right for a line chart that
- * should breathe but wrong for a bar chart: a 3,100 AU peak became a 4,000 AU
- * ceiling, so the tallest bar filled 78% of the frame and a typical one filled a
- * tenth of it. The chart was mostly empty plot.
- *
- * Here the ceiling is exactly `max × headroom` — the tallest bar always reaches
- * ~87% of the plot height — and only the *gridlines* are rounded, placed at a
- * nice step and stopping below the ceiling. The axis therefore fits the window
- * it is drawn for, and re-fits when the window changes.
- */
 export function paddedScale(max: number, headroom = 1.15, targetTicks = 4): Scale {
   const top = Number.isFinite(max) && max > 0 ? max * headroom : 1
   const step = niceNum(top / Math.max(1, targetTicks), true)
   const ticks: number[] = []
-  // `1e-9` guards the float drift that otherwise drops the last gridline when
-  // the step divides the ceiling exactly.
   for (let v = 0; v <= top + 1e-9; v += step) ticks.push(Math.round(v * 1000) / 1000)
   return { min: 0, max: top, ticks }
 }
 
-/**
- * A smooth SVG path through `points` using a Catmull-Rom → cubic-Bézier
- * conversion (tension 1/6). Endpoints are duplicated so the curve doesn't
- * overshoot at the edges. Returns an empty string for no points.
- */
 export function smoothPath(points: Point[]): string {
   if (points.length === 0) return ''
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`
@@ -104,17 +71,11 @@ export function smoothPath(points: Point[]): string {
   return d
 }
 
-/** Straight polyline path through `points`. */
 export function linePath(points: Point[]): string {
   if (points.length === 0) return ''
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ')
 }
 
-/**
- * SVG path for a bar with only its top two corners rounded, anchored to the
- * baseline. `yTop` is the bar's top edge, `yBase` the axis; `r` is clamped so it
- * never exceeds half the bar's width or height (short bars stay clean).
- */
 export function roundedTopBar(
   x: number,
   yTop: number,
@@ -134,10 +95,6 @@ export function roundedTopBar(
   )
 }
 
-/**
- * Compact axis label: 1240 → "1.2k", 15000 → "15k", 42 → "42". Keeps y-axis
- * ticks from crowding on the big load/calorie charts.
- */
 export function formatCompact(value: number): string {
   const abs = Math.abs(value)
   if (abs >= 1000) {

@@ -1,7 +1,4 @@
-// Maps Firebase Auth error codes to short, human-readable messages we can show
-// directly under the inputs. Firebase throws a `FirebaseError` whose `.code`
-// looks like "auth/wrong-password"; we key off that. Anything unrecognised
-// falls back to a generic message so we never surface a raw code to the user.
+// Maps Firebase Auth error codes to readable messages.
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/invalid-email': 'That email address looks invalid.',
@@ -17,7 +14,6 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/network-request-failed': 'Network error. Check your connection.',
 }
 
-/** Extracts a Firebase Auth error `code` if the thrown value carries one. */
 function getAuthErrorCode(error: unknown): string | undefined {
   if (typeof error === 'object' && error !== null && 'code' in error) {
     const code = (error as { code?: unknown }).code

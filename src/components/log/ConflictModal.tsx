@@ -1,3 +1,5 @@
+// Post-save sheet showing the conflicts a new session raised.
+
 import { useEffect } from 'react'
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
@@ -10,23 +12,12 @@ import { useTheme } from '../../theme/ThemeProvider'
 interface ConflictModalProps {
   visible: boolean
   conflicts: Conflict[]
-  /** Sessions for resolving the "involved sessions" line (best-effort). */
   sessions?: Session[]
-  /** True while the "Undo session" delete is in flight. */
   undoing?: boolean
-  /** Keep the session; just dismiss. */
   onKeep: () => void
-  /** Delete the session + its conflicts, then dismiss. */
   onUndo: () => void
 }
 
-/**
- * The moment that sells FORMA: a native sheet that slides up right after a
- * session is saved when it clashes with recent training. Each conflict shows the
- * coach's explanation, the two sessions involved, and a severity-coloured border.
- * The athlete decides — keep it, or undo it (deleting the session + its
- * conflicts). Educational, not alarming.
- */
 export default function ConflictModal({
   visible,
   conflicts,
@@ -39,7 +30,6 @@ export default function ConflictModal({
 
   const overall = severityStyle(worstSeverity(conflicts), colors)
 
-  // Warn the athlete physically the moment the sheet appears.
   useEffect(() => {
     if (visible) {
       haptics.warning()

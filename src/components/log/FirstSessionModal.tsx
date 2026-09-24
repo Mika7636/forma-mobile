@@ -1,18 +1,5 @@
-// The one-time moment after an athlete's first ever saved session.
-//
-// ## What it is for
-//
-// The first save is the only point in the product where a number appears that
-// the athlete has personally caused, and it is also the point at which "sRPE
-// load" arrives with no explanation — a session they know as "45 easy minutes"
-// comes back as 270 AU. Left unexplained, that figure reads as arbitrary, and an
-// arbitrary number is worse than none: it is the first reason to distrust
-// everything else the app computes.
-//
-// So this does three things and stops: shows the load, says in one sentence what
-// load *is*, and names the next thing that unlocks. It is not a tour and not a
-// tutorial — one screen, one dismiss, and never again (see
-// `User.firstSessionCelebrated`).
+// One-time moment after an athlete's first saved session.
+
 import { Modal, Pressable, Text, View } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 import PrimaryButton from '../ui/PrimaryButton'
@@ -23,7 +10,6 @@ import { MOTION, RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 interface FirstSessionModalProps {
-  /** The session just saved; the modal is open while this is non-null. */
   session: Session | null
   onDismiss: () => void
 }
@@ -34,7 +20,6 @@ export default function FirstSessionModal({ session, onDismiss }: FirstSessionMo
   if (!session) return null
 
   const { icon, label } = sportVisual(session.sport, colors)
-  // The first session is session one, so this is always the full remainder.
   const remaining = Math.max(0, PROGRESS_UNLOCK_SESSIONS - 1)
 
   return (
@@ -83,7 +68,6 @@ export default function FirstSessionModal({ session, onDismiss }: FirstSessionMo
             {icon} {label} · {session.durationMinutes} min
           </Text>
 
-          {/* The number itself, given the room a first result deserves. */}
           <Animated.View
             entering={FadeInDown.delay(120).duration(MOTION.slow)}
             style={{

@@ -1,9 +1,5 @@
-// FORMA's home screen: one glance should answer "where does my training stand
-// right now?" — form, load, budget, zones and recent activity.
-//
-// Everything here is live. The sessions store holds a Firestore snapshot
-// listener, which feeds the metrics store, so a session logged on the Log tab
-// (or on the web app, or another device) lands here with no refresh.
+// FORMA's home screen: where the athlete's training stands now.
+
 import { useCallback, useMemo, useState } from 'react'
 import { RefreshControl, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -52,7 +48,6 @@ function getGreeting(hour: number): string {
 
 export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const { colors } = useTheme()
-  // Reserve room for the tab bar, which is drawn over the end of this list.
   const tabPadding = useTabContentPadding()
 
   const displayName = useAuthStore((s) => s.user?.displayName)
@@ -85,15 +80,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const { byDay: plannedByDay, conflictsByDay: plannedConflictsByDay } = usePlannedSessions()
   const verification = useEmailVerification()
 
-  /**
-   * Under 42 days of actual *training*, the Form Score is an artefact of the
-   * CTL/ATL ramp rather than a measurement, so the hero shows how far along the
-   * baseline is instead of publishing a number the app can't stand behind.
-   *
-   * Fed from the un-windowed counts rather than from `sessions`, which is cut to
-   * the last 42 calendar days — see `utils/calibration` for why that difference
-   * decides whether the gate can ever open.
-   */
   const baseline = getBaselineState({ trainingDays, sessionsLogged: totalSessions })
 
   const [refreshing, setRefreshing] = useState(false)
@@ -103,9 +89,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
 
   const firstName = displayName?.split(' ')[0] ?? 'Athlete'
-  // Recomputed per render rather than memoised on mount: the screen re-renders
-  // as data streams in, and a greeting cached at 11:59 shouldn't say "morning"
-  // for the rest of the session.
   const now = new Date()
   const greeting = getGreeting(now.getHours())
   const todayLabel = now.toLocaleDateString(undefined, {
@@ -114,9 +97,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     day: 'numeric',
   })
 
-  // Most severe first (danger before warning); the hook already hands them over
-  // newest-first, and Array.sort is stable, so that ordering survives within a
-  // severity band.
   const sortedConflicts = useMemo(
     () =>
       [...conflicts].sort(
@@ -134,18 +114,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     navigation.navigate('Planner')
   }, [navigation])
 
-  /**
-   * Turn one suggestion into a plan on the calendar.
-   *
-   * The suggestion already carries a date, a duration and a target RPE that
-   * multiply back to its share of the week's budget, so nothing is recomputed
-   * here — the values written are the values the card showed. Resolves false on
-   * failure so the row can re-enable its button.
-   *
-   * Routing to the Planner on success is the point: a plan the athlete cannot
-   * see is indistinguishable from a tap that did nothing, and the Planner is
-   * where it can be moved, hardened or deleted.
-   */
   const handlePlanIt = useCallback(
     async (suggestion: SuggestedSession): Promise<boolean> => {
       if (!uid) return false
@@ -172,9 +140,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     [uid, goToPlanner],
   )
 
-  // What the "available now" panel shows a zero-session account: the plan for
-  // today, and any clash the engine has already found in the next two days. Both
-  // are real output on an account with no history — that is the point of them.
   const todayIso = localISODate(now)
   const tomorrowIso = localISODate(new Date(now.getTime() + 86_400_000))
   const todayPlanned = useMemo(
@@ -196,21 +161,12 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const handleRefresh = useCallback(async () => {
     haptics.medium()
     setRefreshing(true)
-    // The snapshot listener means the session data is already current, so this
-    // is a safety net rather than a fetch. What it does do genuinely: recompute
-    // the time-windowed figures ("this week", streak, CTL/ATL), which drift as
-    // the clock crosses a day boundary while the app sits open.
     useMetricsStore.getState().recalculate(sessions)
-    // Hold the spinner briefly so the gesture reads as acknowledged instead of
-    // snapping back instantly.
     await new Promise((resolve) => setTimeout(resolve, 400))
-    // Switching tabs mid-pull unmounts this before the delay is up.
     if (!isMounted.current) return
     setRefreshing(false)
   }, [sessions, isMounted])
 
-  // Never "0 sessions this week": a zero is a fact about the app's storage, not
-  // about the athlete, and on a first run it is the first thing they read.
   const sessionsLabel =
     sessionCount === 0
       ? 'Nothing logged this week yet'
@@ -218,8 +174,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      {/* The header sits on the light page background, not on the hero gradient,
-          so dark status-bar content is what stays legible here. */}
       <ThemedStatusBar />
 
       <ScrollView
@@ -234,7 +188,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           />
         }
       >
-        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ fontSize: TYPE.heading, fontWeight: '800', color: colors.text }}>
@@ -273,7 +226,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           </PressableScale>
         </View>
 
-        {/* Couldn't reach Firestore — say so rather than implying zero training. */}
         {error ? (
           <View
             style={{
@@ -291,14 +243,12 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           </View>
         ) : null}
 
-        {/* Conflict banners — FORMA's signature injury-risk warnings. */}
         {visibleConflicts.length > 0 ? (
           <View style={{ marginTop: 16, gap: 8 }}>
             {visibleConflicts.map((conflict, index) => (
               <ConflictBanner
                 key={conflict.conflictId}
                 conflict={conflict}
-                // Only the top banner advertises the hidden ones.
                 extraCount={index === 0 && !showAllConflicts ? sortedConflicts.length - 1 : 0}
                 onDismiss={dismissConflict}
                 onShowMore={() => setShowAllConflicts(true)}
@@ -308,11 +258,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           </View>
         ) : null}
 
-        {/* Account hygiene, deliberately *below* the conflict banners: an
-            unverified address is a housekeeping note and a flagged clash is an
-            injury risk, and if both are on screen the risk is the one that
-            should be read first. Suppressed entirely in demo mode — see
-            `useEmailVerification`. */}
         {verification.showBanner ? (
           <VerifyEmailBanner
             sending={verification.sending}
@@ -322,7 +267,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           />
         ) : null}
 
-        {/* Body */}
         <View style={{ marginTop: 20 }}>
           {loading ? (
             <DashboardSkeleton />
@@ -334,10 +278,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
               onPlanWeek={goToPlanner}
             />
           ) : (
-            // 20pt between the hero and the grid under it. The hero is a
-            // saturated object and the stat cards are white ones; at the 16pt
-            // the rest of the page uses they crowd, and the grid reads as part
-            // of the card above it rather than as the next section.
             <Animated.View entering={FadeIn.duration(280)} style={{ gap: SPACING.lg - 4 }}>
               {baseline.building ? (
                 <CalibratingFormCard baseline={baseline} onLogSession={goToLog} />
@@ -345,11 +285,6 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                 <FormScoreCard form={formScore} ctl={ctl} atl={atl} />
               )}
 
-              {/* Directly under the hero, because it is the only thing on this
-                  screen that says what to do *next*. Everything below it —
-                  grid, zones, recent activity — reports what has already
-                  happened. `null` while the profile is still loading; the card
-                  handles its own insufficient-data state. */}
               {weekPlan ? (
                 <NextWeekPlanCard
                   plan={weekPlan}

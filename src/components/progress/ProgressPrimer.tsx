@@ -1,17 +1,5 @@
 // The Progress screen before there is enough history to chart.
-//
-// ## What it replaces
-//
-// A locked card reading "Keep logging! Progress charts unlock after 5 sessions",
-// with an unlock meter. Everything on it was about the *app's* state — what it
-// would not yet do, and how many more sessions would make it relent. Nothing on
-// it said what the screen was for, so the only way to find out whether it was
-// worth unlocking was to unlock it.
-//
-// The meter stays, because knowing how far off you are is genuinely useful. What
-// changes is what sits above it: the real chart's frame, its sustainable band,
-// and the sentence explaining what that band means. See
-// `SustainableRangePreview`.
+
 import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import SustainableRangePreview from './SustainableRangePreview'
@@ -23,7 +11,6 @@ import { RADIUS, SPACING, TYPE, WEIGHT, cardStyle } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 interface ProgressPrimerProps {
-  /** Sessions logged so far — the meter's numerator. */
   logged: number
   onLogSession: () => void
 }

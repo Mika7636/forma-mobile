@@ -1,3 +1,5 @@
+// Session load score: duration times RPE.
+
 export function calculateLoadScore(durationMinutes: number, rpe: number): number {
   if (durationMinutes <= 0) {
     throw new Error('durationMinutes must be greater than 0')

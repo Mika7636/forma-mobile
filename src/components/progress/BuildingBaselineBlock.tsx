@@ -1,15 +1,5 @@
-// The Advanced expander's contents while the baseline gate is still closed.
-//
-// Fitness, Fatigue and Form are three exponentially-weighted averages, and
-// until 42 days of training have gone into them a chart of them is mostly a
-// picture of those averages charging up from their seeds. Drawing it would put a confident line
-// on screen that says more about the maths than about the athlete — and it is
-// the same line the Dashboard hero refuses to reduce to a Form Score, so
-// showing it here would let one screen contradict the other.
-//
-// It shows where the gate has got to instead, from the same `getBaselineState`
-// the Dashboard reads, so the two screens never quote different numbers at each
-// other.
+// Advanced expander contents while the baseline gate is closed.
+
 import { Text, View } from 'react-native'
 import { type BaselineState } from '../../utils/calibration'
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
@@ -62,7 +52,6 @@ export default function BuildingBaselineBlock({ baseline }: { baseline: Baseline
           }}
         />
       </View>
-      {/* The raw count beneath the clock, matching the Dashboard hero's caption. */}
       <Text style={{ marginTop: SPACING.sm, fontSize: TYPE.micro, color: colors.textMuted }}>
         {sessionsLogged} session{sessionsLogged === 1 ? '' : 's'} logged
       </Text>

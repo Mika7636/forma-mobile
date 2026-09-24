@@ -1,3 +1,5 @@
+// Account creation screen.
+
 import { useEffect, useRef, useState } from 'react'
 import {
   KeyboardAvoidingView,
@@ -18,8 +20,6 @@ import { useAuthStore } from '../store/authStore'
 import type { RegisterScreenProps } from '../navigation/types'
 import { useTheme } from '../theme/ThemeProvider'
 
-// Basic email shape check so we can give a friendly message before hitting
-// Firebase.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function RegisterScreen({ navigation }: RegisterScreenProps) {
@@ -63,7 +63,6 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     try {
       await signUp(email, password, name)
       haptics.success()
-      // Spec: do NOT auto-login. Send the user to Login with a success banner.
       navigation.navigate('Login', { registered: true })
     } catch {
       haptics.error()
@@ -74,7 +73,6 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* White page — dark status-bar content is what stays legible. */}
       <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}

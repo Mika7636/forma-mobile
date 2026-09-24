@@ -1,11 +1,5 @@
 // One empty state, used everywhere.
-//
-// Dashboard, Planner, Progress and Conflict History had each grown their own
-// near-identical version of this card; they're unified here so an empty screen
-// always looks like the same app. The shape is deliberate: an emoji in a soft
-// teal disc (friendly, not an error icon), a short headline, one sentence of
-// context, and — where there's something useful to do — a single CTA. Never a
-// dead end.
+
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import PrimaryButton from './PrimaryButton'
@@ -14,36 +8,19 @@ import { MOTION, RADIUS, SPACING, TYPE } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 export interface EmptyStateProgress {
-  /** How far along the user is, e.g. sessions logged so far. */
   current: number
-  /** What unlocks the feature. */
   target: number
-  /** Caption above the meter, e.g. "3 of 5 sessions". */
   label: string
 }
 
 interface EmptyStateProps {
-  /**
-   * A drawn glyph in the disc, in the accent colour.
-   *
-   * Preferred over {@link emoji} on any screen that has sworn off emoji: unlike
-   * an OS-supplied bitmap this takes the theme's ink, so the disc and its
-   * contents are one object rather than a full-colour sticker sitting in a
-   * tinted circle. Takes precedence when both are given.
-   */
   icon?: TabIconName
   emoji?: string
   title: string
   message: string
   actionLabel?: string
   onAction?: () => void
-  /** Renders a teal unlock meter between the copy and the CTA. */
   progress?: EmptyStateProgress
-  /**
-   * `quiet` drops the card chrome and shrinks everything — for empty states
-   * that are normal rather than notable (an empty past week in the Planner),
-   * where a full hero card would over-dramatise "you rested".
-   */
   tone?: 'card' | 'quiet'
   style?: StyleProp<ViewStyle>
 }

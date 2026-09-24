@@ -1,51 +1,21 @@
-// The Progress chart before there is anything to chart.
-//
-// ## Why a frame and not a blank card
-//
-// The screen used to hold a locked card: an icon, "Keep logging!", and an unlock
-// meter. It told the athlete they couldn't have the feature yet without ever
-// telling them what the feature *was*, so the only way to find out whether
-// twelve weeks of logging would be worth it was to do twelve weeks of logging.
-//
-// This draws the real chart's frame instead — the same axis, the same twelve
-// weekly slots, the same dashed sustainable band, the same colour rules — with
-// the bars replaced by faint ghosts and one line of type over them saying what
-// will fill them. The band is explicitly labelled a sample, because the athlete's
-// real one is derived from their own fitness and this one cannot be.
-//
-// The geometry is deliberately a small standalone copy rather than
-// `TrainingLoadChart` with an `empty` flag. That component's whole job is to
-// scale an axis to real data, classify each bar against a real band, and place a
-// tooltip on tap; threading "there is no data and the band is invented" through
-// all of it would put a demo mode inside the component that draws the athlete's
-// actual training — which is the last place a plausible-looking fake belongs.
+// The Progress load chart before there is anything to chart.
+
 import { useState } from 'react'
 import { Text, View, type LayoutChangeEvent } from 'react-native'
 import Svg, { G, Line, Rect, Text as SvgText } from 'react-native-svg'
 import { useTheme } from '../../theme/ThemeProvider'
 import { RADIUS, SPACING, TYPE, WEIGHT, cardStyle } from '../../theme/tokens'
 
-/** Matches TrainingLoadChart's plot geometry, so the two read as one chart. */
 const PAD_T = 14
 const PAD_B = 22
 const PLOT_H = 160 + PAD_T + PAD_B
 const PAD_L = 34
 const PAD_R = 8
 
-/** Twelve slots, the same window the real chart is fixed to. */
 const SLOTS = 12
 
-/**
- * The ghost bars' heights as a fraction of the plot.
- *
- * Shaped like a plausible training block — a build, a down week, a build — so
- * the frame reads as a chart rather than as a random bar pattern. They are drawn
- * at low opacity and are never labelled with a number, so there is no figure here
- * that could be mistaken for the athlete's own.
- */
 const GHOSTS = [0.34, 0.46, 0.52, 0.3, 0.5, 0.6, 0.66, 0.4, 0.58, 0.68, 0.74, 0.44]
 
-/** The sample band, as a fraction of the plot height (bottom-up). */
 const BAND_LOW = 0.42
 const BAND_HIGH = 0.68
 
@@ -56,7 +26,6 @@ export default function SustainableRangePreview() {
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width
-    // Only re-render on a real change — avoids a render loop from sub-pixel jitter.
     if (Math.abs(w - width) > 0.5) setWidth(w)
   }
 
@@ -80,8 +49,6 @@ export default function SustainableRangePreview() {
         {width > 0 ? (
           <View>
             <Svg width={width} height={PLOT_H}>
-              {/* Gridlines. Unlabelled on purpose: a y-axis with numbers on it
-                  would be inventing units for an athlete who has none yet. */}
               {[0, 0.25, 0.5, 0.75, 1].map((t) => (
                 <Line
                   key={t}
@@ -94,8 +61,6 @@ export default function SustainableRangePreview() {
                 />
               ))}
 
-              {/* The sample band, drawn exactly as the real one is: a wash
-                  between two dashed accent edges. */}
               <G>
                 <Rect
                   x={PAD_L}
@@ -130,8 +95,6 @@ export default function SustainableRangePreview() {
                 </SvgText>
               </G>
 
-              {/* Ghost bars — the shape of the answer, at a weight that cannot be
-                  misread as data. */}
               {GHOSTS.map((h, i) => {
                 const top = yBase - h * plotH
                 return (
@@ -149,8 +112,6 @@ export default function SustainableRangePreview() {
               })}
             </Svg>
 
-            {/* The one line of type over the frame. Centred on the plot rather
-                than the card so it sits on the bars it is about. */}
             <View
               pointerEvents="none"
               style={{
@@ -188,7 +149,6 @@ export default function SustainableRangePreview() {
         ) : null}
       </View>
 
-      {/* What the band means, in the place the real verdict line occupies. */}
       <View
         style={{
           flexDirection: 'row',

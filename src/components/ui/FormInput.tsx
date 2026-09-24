@@ -1,3 +1,5 @@
+// Labelled text field, with an eye toggle for passwords.
+
 import { forwardRef, useState } from 'react'
 import {
   Pressable,
@@ -9,14 +11,9 @@ import {
 import { useTheme } from '../../theme/ThemeProvider'
 interface FormInputProps extends TextInputProps {
   label: string
-  /** When true, renders as a password field with a show/hide eye toggle. */
   password?: boolean
 }
 
-/**
- * Labelled text field with a subtle focus ring and, for passwords, an eye
- * toggle. Forwards its ref so screens can chain focus between inputs.
- */
 const FormInput = forwardRef<TextInput, FormInputProps>(function FormInput(
   { label, password = false, style, ...props },
   ref,

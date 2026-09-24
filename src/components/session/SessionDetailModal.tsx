@@ -1,3 +1,5 @@
+// Full session detail sheet, with edit and delete.
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -47,9 +49,7 @@ interface SessionDetailModalProps {
   visible: boolean
   session: Session | null
   onClose: () => void
-  /** Called after a successful delete so the host can toast + refresh. */
   onDeleted?: () => void
-  /** Called after a successful edit save (host may toast). */
   onUpdated?: (session: Session) => void
 }
 
@@ -59,12 +59,6 @@ function rpeColor(rpe: number, colors: Palette): string {
   return colors.danger
 }
 
-/**
- * Full-screen, swipe-to-dismiss detail sheet for a single session. Opens from
- * anywhere a session is tapped (dashboard recent activity today, planner chips
- * later). View mode shows every derived stat + the route; Edit mode turns the
- * inputs editable and recomputes load/calories/zone/pace live before saving.
- */
 export default function SessionDetailModal({
   visible,
   session,
@@ -83,7 +77,6 @@ export default function SessionDetailModal({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  // Edit-form state.
   const [sport, setSport] = useState<SportType>('running')
   const [date, setDate] = useState<Date>(new Date())
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -95,13 +88,10 @@ export default function SessionDetailModal({
   const [title, setTitle] = useState('')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  // Focused when the overflow's "Edit title" is chosen, so that item lands the
-  // user on the field rather than merely somewhere on the edit form.
   const titleRef = useRef<TextInput>(null)
 
   const translateY = useRef(new Animated.Value(0)).current
 
-  // Seed everything from the tapped session whenever it (re)opens.
   useEffect(() => {
     if (!visible || !session) return
     setCurrent(session)
@@ -123,8 +113,6 @@ export default function SessionDetailModal({
     setAdvancedOpen(s.avgBpm != null)
   }
 
-  // Drag-to-dismiss, wired only to the grab handle so the ScrollView keeps its
-  // own vertical gestures.
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -157,7 +145,6 @@ export default function SessionDetailModal({
   const editShowsDistance = isDistanceSport(sport)
   const canSave = durationNum >= 1 && durationNum <= 300
 
-  // Live recompute in edit mode — mirrors the Log screen preview.
   const liveEstimates = useMemo(() => {
     if (mode !== 'edit') return null
     return computeEstimates(
@@ -168,8 +155,6 @@ export default function SessionDetailModal({
 
   const profileSports = useMemo<SportType[]>(() => {
     const list = profile?.sports ?? []
-    // Always include the session's own sport even if it's since been removed
-    // from the profile, so editing never silently drops it.
     return list.includes(sport) ? list : [sport, ...list]
   }, [profile?.sports, sport])
 
@@ -208,7 +193,6 @@ export default function SessionDetailModal({
       )
       setCurrent(updated)
       setMode('view')
-      // Toasts fire their own haptic — see toastStore.
       toast.success('Session updated')
       onUpdated?.(updated)
     } catch {
@@ -255,7 +239,6 @@ export default function SessionDetailModal({
 
   const data = current
   if (!data) {
-    // Nothing to show yet; keep the Modal mounted so open/close still animates.
     return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} />
   }
 
@@ -273,20 +256,11 @@ export default function SessionDetailModal({
       ? `${data.averageSpeed.toFixed(1)} km/h`
       : data.averagePace ?? data.pace ?? null
 
-  /**
-   * The same three actions the workout summary offers, so editing a session
-   * feels like one thing whether it is done straight after the workout or a
-   * week later. Both of the first two drop into the edit form — which is where
-   * a saved session's fields live — and "Edit title" additionally puts the
-   * cursor in the title box.
-   */
   const menuItems: ActionSheetItem[] = [
     {
       label: 'Edit title',
       onPress: () => {
         handleEdit()
-        // After the form has mounted; focusing a field that is not on screen yet
-        // is a no-op that looks like the menu item doing nothing.
         requestAnimationFrame(() => titleRef.current?.focus())
       },
     },
@@ -296,7 +270,6 @@ export default function SessionDetailModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      {/* Dim backdrop — tap to dismiss. */}
       <Pressable
         onPress={onClose}
         style={{ flex: 1, backgroundColor: colors.scrim }}
@@ -316,7 +289,6 @@ export default function SessionDetailModal({
           overflow: 'hidden',
         }}
       >
-        {/* Grab handle + close (the drag zone). */}
         <View {...panResponder.panHandlers} style={{ paddingTop: 10 }}>
           <View
             style={{
@@ -352,7 +324,6 @@ export default function SessionDetailModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View
                 style={{
@@ -368,10 +339,6 @@ export default function SessionDetailModal({
                 <Text style={{ fontSize: 30 }}>{meta.icon}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                {/* The workout's own name when it has one — live sessions are
-                    saved with one — falling back to the sport. A title set on
-                    the summary screen was previously written and then never
-                    shown again anywhere in the app. */}
                 <Text
                   style={{ fontSize: 24, fontWeight: '800', color: colors.text }}
                   numberOfLines={2}
@@ -441,7 +408,6 @@ export default function SessionDetailModal({
             onChange={(_e, picked) => {
               setShowDatePicker(false)
               if (picked) {
-                // Preserve the original time-of-day; only the calendar day moves.
                 const next = new Date(picked)
                 next.setHours(date.getHours(), date.getMinutes(), 0, 0)
                 setDate(next)
@@ -450,25 +416,14 @@ export default function SessionDetailModal({
           />
         ) : null}
 
-        {/* RN's <Modal> is its own native window, so the app-root container is
-            drawn *behind* this and would be invisible. Same store, so nothing
-            is duplicated — only one of the two is ever on screen. */}
         <ToastContainer insideModal />
       </Animated.View>
 
-      {/* A sibling of the sheet rather than a child of it, so its scrim covers
-          the whole modal window instead of stopping at the sheet's top edge —
-          and inside this <Modal> rather than at the app root, because RN's
-          <Modal> is its own native window and anything outside it is drawn
-          behind. */}
       <ActionSheet visible={menuOpen} items={menuItems} onClose={() => setMenuOpen(false)} />
     </Modal>
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* View mode                                                           */
-/* ------------------------------------------------------------------ */
 function ViewMode({
   session,
   isDistance,
@@ -492,14 +447,12 @@ function ViewMode({
   const zone = session.estimatedHRZone
   return (
     <View>
-      {/* Route map */}
       {hasRoute ? (
         <View style={{ marginTop: 18 }}>
           <RouteMap coordinates={session.routeCoordinates!} height={200} showMarkers />
         </View>
       ) : null}
 
-      {/* Stat grid */}
       <View
         style={{
           marginTop: 18,
@@ -539,7 +492,6 @@ function ViewMode({
         ) : null}
       </View>
 
-      {/* Notes */}
       {session.notes ? (
         <View
           style={{
@@ -562,7 +514,6 @@ function ViewMode({
         </View>
       ) : null}
 
-      {/* Actions */}
       <View style={{ marginTop: 24 }}>
         <PrimaryButton label="Edit" onPress={onEdit} />
         <Pressable
@@ -657,9 +608,6 @@ function StatTile({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Edit mode                                                           */
-/* ------------------------------------------------------------------ */
 function EditMode({
   title,
   setTitle,
@@ -720,8 +668,6 @@ function EditMode({
   const zoneCol = rpeColor(rpe, colors)
   return (
     <Reanimated.View entering={FadeIn.duration(200)} style={{ marginTop: 18 }}>
-      {/* Title. First field on the form because it is the one the header shows,
-          and the one the overflow menu's "Edit title" jumps to. */}
       <FieldLabel>Title</FieldLabel>
       <TextInput
         ref={titleRef}
@@ -743,7 +689,6 @@ function EditMode({
         }}
       />
 
-      {/* Sport selector */}
       <FieldLabel>Sport</FieldLabel>
       <ScrollView
         horizontal
@@ -791,7 +736,6 @@ function EditMode({
         })}
       </ScrollView>
 
-      {/* Date */}
       <FieldLabel style={{ marginTop: 18 }}>Date</FieldLabel>
       <Pressable
         onPress={() => {
@@ -818,7 +762,6 @@ function EditMode({
         </Text>
       </Pressable>
 
-      {/* Duration */}
       <FieldLabel style={{ marginTop: 18 }}>Duration (minutes)</FieldLabel>
       <View
         style={{
@@ -839,7 +782,6 @@ function EditMode({
         />
       </View>
 
-      {/* Distance (conditional) */}
       {showDistance ? (
         <Reanimated.View entering={FadeIn.duration(160)}>
           <FieldLabel style={{ marginTop: 18 }}>Distance (km)</FieldLabel>
@@ -868,7 +810,6 @@ function EditMode({
         </Reanimated.View>
       ) : null}
 
-      {/* RPE */}
       <View
         style={{
           marginTop: 18,
@@ -902,7 +843,6 @@ function EditMode({
         />
       </View>
 
-      {/* Live recompute preview */}
       {estimates && (parseInt(duration, 10) || 0) > 0 ? (
         <View
           style={{
@@ -926,7 +866,6 @@ function EditMode({
         </View>
       ) : null}
 
-      {/* Notes */}
       <FieldLabel style={{ marginTop: 18 }}>Notes</FieldLabel>
       <View
         style={{
@@ -955,7 +894,6 @@ function EditMode({
         />
       </View>
 
-      {/* Advanced (avg BPM) */}
       <Pressable
         onPress={() => {
           haptics.light()
@@ -996,7 +934,6 @@ function EditMode({
         </View>
       ) : null}
 
-      {/* Actions */}
       <View style={{ marginTop: 22 }}>
         <PrimaryButton label="Save Changes" onPress={onSave} loading={saving} disabled={!canSave} />
         <Pressable

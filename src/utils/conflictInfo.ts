@@ -1,6 +1,5 @@
-// Presentation helpers shared by every conflict surface — resolving the two
-// sessions a conflict involves into a friendly "Combat (yesterday, RPE 8) →
-// Running (today, RPE 7)" pairing, and reading a conflict's timestamp safely.
+// Presentation helpers shared by every conflict surface.
+
 import type { Conflict } from '../types/conflict'
 import type { Session } from '../types/session'
 import { SPORT_META } from './sportMeta'
@@ -8,19 +7,15 @@ import { SPORT_META } from './sportMeta'
 export interface InvolvedSession {
   sportLabel: string
   icon: string
-  /** Relative day label: "today" / "yesterday" / "Mon". */
   when: string
   rpe: number
 }
 
 export interface InvolvedPair {
-  /** The earlier session that was clashed with (null for budget conflicts). */
   from?: InvolvedSession
-  /** The session that triggered the conflict (the one just logged). */
   to?: InvolvedSession
 }
 
-/** "today" / "yesterday" / "tomorrow" / a weekday name, in local time. */
 function relativeDay(date: Date, now = new Date()): string {
   const d0 = new Date(date)
   d0.setHours(0, 0, 0, 0)
@@ -43,11 +38,6 @@ function describe(session: Session, now?: Date): InvolvedSession {
   }
 }
 
-/**
- * Resolve the trigger + clashing sessions a conflict references out of a session
- * list. Either side may be missing (session outside the window, or a whole-week
- * budget conflict with no counterpart) — callers should render gracefully.
- */
 export function involvedSessions(
   conflict: Conflict,
   sessions: Session[],
@@ -64,17 +54,12 @@ export function involvedSessions(
   }
 }
 
-/**
- * A conflict's detection time as a Date. Stored as a Firestore Timestamp; guard
- * for the brief window before the server value round-trips (falls back to now).
- */
 export function detectedAtDate(conflict: Conflict): Date {
   const ts = conflict.detectedAt
   if (ts && typeof ts.toDate === 'function') return ts.toDate()
   return new Date()
 }
 
-/** Human sport list for a conflict, e.g. "Combat Sports + Running". */
 export function conflictSportsLabel(conflict: Conflict): string {
   if (conflict.sports.length === 0) return 'Weekly volume'
   return conflict.sports.map((s) => SPORT_META[s as keyof typeof SPORT_META]?.label ?? s).join(' + ')

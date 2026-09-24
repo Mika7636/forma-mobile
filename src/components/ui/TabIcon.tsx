@@ -1,37 +1,7 @@
+// The tab bar's icons, drawn as SVG.
+
 import Svg, { Circle, Path, Rect } from 'react-native-svg'
 
-/**
- * The tab bar's icons.
- *
- * ## Why these are drawn here rather than pulled from an icon package
- *
- * The tabs used to be emoji — 📊 ➕ 🗓️ 📈 ⚙️ — rendered as `<Text>` at 20pt.
- * Emoji are the fastest way to get an icon on screen and the worst way to keep
- * one: they are full-colour bitmaps supplied by the OS, so they cannot take the
- * active/inactive tint (the old code faked it with `opacity: 0.55`), they are
- * drawn in a different style by every Android version, and at tab-bar size on a
- * dim 720p panel they turn to mush. They were the single most obvious "this is
- * a prototype" tell left in the UI.
- *
- * The usual fix is `@expo/vector-icons`, but it is not a dependency of this
- * project and adding an icon font to ship five glyphs is a poor trade.
- * `react-native-svg` *is* already here — the progress charts are built on it —
- * so these are drawn directly: one consistent 24×24 grid, one 2pt stroke, round
- * caps and joins, and `currentColor` semantics via the `color` prop so the
- * navigator's active/inactive tints drive them properly instead of an opacity
- * hack.
- *
- * Geometry follows Feather's, which is a 24×24 grid with a 2px stroke — a
- * well-proportioned open-source set, and matching it keeps the glyphs
- * consistent with each other and with anything added later.
- *
- * It has since outgrown the tab bar — `more` is the overflow button on the
- * workout summary and the session detail sheet, and `info` / `alert-triangle` /
- * `check-circle` / `trending-down` / `chevron-right` carry the Progress screen's
- * state cues where it used to reach for emoji — but the rule is unchanged:
- * anywhere the UI wants an icon, it is drawn here rather than reached for as an
- * emoji, so it can take a colour and hold its shape at small sizes.
- */
 export type TabIconName =
   | 'activity'
   | 'plus'
@@ -48,15 +18,8 @@ export type TabIconName =
 
 interface TabIconProps {
   name: TabIconName
-  /** Comes from the navigator's active/inactive tint. */
   color: string
   size?: number
-  /**
-   * The focused tab draws a touch heavier. A colour change alone is a weak
-   * signal on a dim display in daylight, and weight is the cheapest way to add
-   * a second, non-colour channel to it — which also keeps the active tab
-   * identifiable without relying on hue.
-   */
   focused?: boolean
 }
 
@@ -135,16 +98,10 @@ export default function TabIcon({ name, color, size = 24, focused = false }: Tab
 
       {name === 'chevron-right' ? <Path d="M9 18l6-6-6-6" {...common} /> : null}
 
-      {/* Feather's `shield`. The admin tab: a boundary you are inside of rather
-          than a key or a cog, both of which read as "settings" — and there is
-          already a `sliders` tab that genuinely is. */}
       {name === 'shield' ? (
         <Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" {...common} />
       ) : null}
 
-      {/* Feather's `more-vertical`. Filled rather than stroked: at r=1 a hollow
-          ring is mush on a 720p panel, and dots are the one glyph where the
-          shape carries no meaning beyond "there is a menu here". */}
       {name === 'more' ? (
         <>
           <Circle cx={12} cy={5} r={1.6} fill={color} stroke="none" />

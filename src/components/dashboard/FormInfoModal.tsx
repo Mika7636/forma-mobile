@@ -1,3 +1,5 @@
+// Explainer modal for the Form Score card.
+
 import { Modal, Pressable, Text, View } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 import { haptics } from '../../utils/haptics'
@@ -5,23 +7,9 @@ import { useTheme } from '../../theme/ThemeProvider'
 interface FormInfoModalProps {
   visible: boolean
   onClose: () => void
-  /**
-   * Opened from the calibrating hero rather than the real one.
-   *
-   * Swaps in the short explanation of *why* there is no number yet, and the one
-   * action that skips the wait. It replaces the general explainer rather than
-   * appending to it: someone who has just tapped a card with no score on it is
-   * asking one question, and two stacked paragraphs answer it worse than one.
-   */
   building?: boolean
 }
 
-/**
- * Explainer for the Form Score card. Reachable from the ℹ️ on both the normal
- * and the calibrating hero, so a new user understands why their score reads
- * "estimated" — or is missing entirely — during the first weeks. Scaffold
- * forked from ConflictModal.
- */
 export default function FormInfoModal({ visible, onClose, building }: FormInfoModalProps) {
   const { colors } = useTheme()
 
@@ -111,8 +99,6 @@ export default function FormInfoModal({ visible, onClose, building }: FormInfoMo
               haptics.light()
               onClose()
             }}
-            // Plain object, not a function: NativeWind's interop never invokes
-            // the function form, which would render this button unstyled.
             style={{
               height: 50,
               borderRadius: 12,

@@ -1,8 +1,9 @@
+// Admin screen first-load placeholder.
+
 import { View } from 'react-native'
 import { Skeleton, SkeletonCard } from '../ui/Skeleton'
 import { RADIUS, SPACING } from '../../theme/tokens'
 
-/** One borderless stat column: its label, then the figure. */
 function StatSkeleton() {
   return (
     <View style={{ flex: 1, paddingRight: SPACING.sm }}>
@@ -12,7 +13,6 @@ function StatSkeleton() {
   )
 }
 
-/** A section's heading and its one line of window. */
 function HeadingSkeleton() {
   return (
     <View style={{ marginTop: SPACING.sm }}>
@@ -22,7 +22,6 @@ function HeadingSkeleton() {
   )
 }
 
-/** A chart card: title, subtitle, the plot, then the caption under it. */
 function ChartSkeleton({ height }: { height: number }) {
   return (
     <SkeletonCard>
@@ -34,7 +33,6 @@ function ChartSkeleton({ height }: { height: number }) {
   )
 }
 
-/** One user row: name, email, then the two-line last-active stack. */
 function UserSkeleton() {
   return (
     <SkeletonCard>
@@ -52,23 +50,9 @@ function UserSkeleton() {
   )
 }
 
-/**
- * First-load placeholder for the Admin screen.
- *
- * Mirrors the real page's stack in order — the KPI block, then each labelled
- * section's charts, then the user cards — at the real boxes' sizes, so data
- * landing doesn't reflow the page under the reader's thumb. Same rule, and the
- * same primitives, as `ProgressSkeleton`.
- *
- * It stops after the third section rather than mirroring all seven. Below that
- * point nothing is on screen on any handset, and a skeleton for content the
- * reader has not scrolled to is a few hundred views animating out of sight —
- * the loading state's job is to hold the shape of the *first* screenful.
- */
 export default function AdminSkeleton() {
   return (
     <View style={{ gap: SPACING.base }}>
-      {/* Section 1 — the KPI block: a row of four, a rule, then a row of three. */}
       <HeadingSkeleton />
       <SkeletonCard>
         <View style={{ flexDirection: 'row' }}>
@@ -85,12 +69,10 @@ export default function AdminSkeleton() {
         </View>
       </SkeletonCard>
 
-      {/* Section 2 — the weekly line at 204pt, then the daily bars at 164pt. */}
       <HeadingSkeleton />
       <ChartSkeleton height={204} />
       <ChartSkeleton height={164} />
 
-      {/* Section 3 — the donut, which is square and centred, and its legend. */}
       <HeadingSkeleton />
       <SkeletonCard>
         <Skeleton width="40%" height={16} />

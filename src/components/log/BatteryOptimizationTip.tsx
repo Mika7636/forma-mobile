@@ -1,27 +1,5 @@
-/**
- * A one-time, dismissible nudge to exempt FORMA from battery optimisation.
- *
- * ## Why this exists at all
- *
- * A foreground service is supposed to be enough to keep location updates coming
- * with the screen off. On stock Android it is. On Samsung (and Xiaomi, Oppo,
- * OnePlus, Huawei) it frequently is not: those OEMs layer their own "deep
- * sleep" / "adaptive battery" policies on top, and an app they decide is idle
- * stops receiving fixes even with a live foreground service and every permission
- * granted. From inside the app this is indistinguishable from a phone that has
- * simply lost signal, and it is the single most common reason a background-
- * tracked run comes back short.
- *
- * There is no API to detect or fix it. The only remedy is the user putting FORMA
- * on the battery-optimisation allowlist themselves, so the honest thing is to
- * ask once, explain why, and take them to the right screen.
- *
- * ## Why once
- *
- * A tip that reappears every session is an ad. The dismissal is persisted in
- * AsyncStorage so it survives restarts; tapping through to Settings dismisses it
- * too, because at that point the user has either fixed it or decided not to.
- */
+// Dismissible nudge to exempt FORMA from battery optimisation.
+
 import { useEffect, useState } from 'react'
 import { Platform, Pressable, Text, View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -33,9 +11,6 @@ const STORAGE_KEY = 'forma.tip.batteryOptimization.dismissed'
 export default function BatteryOptimizationTip() {
   const { colors } = useTheme()
 
-  // Starts hidden and is revealed only once the stored flag has been read.
-  // The other order flashes the tip on every mount for users who dismissed it
-  // months ago, which is worse than showing it a beat late.
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -46,9 +21,6 @@ export default function BatteryOptimizationTip() {
         if (!cancelled && seen == null) setVisible(true)
       })
       .catch((err) => {
-        // Storage unavailable: show the tip. Over-showing a dismissible hint is
-        // a much cheaper mistake than swallowing the one thing that fixes
-        // screen-off tracking on a Samsung.
         console.warn('[BatteryOptimizationTip] read failed', err)
         if (!cancelled) setVisible(true)
       })
@@ -85,8 +57,6 @@ export default function BatteryOptimizationTip() {
         onPress={() => {
           haptics.light()
           openBatteryOptimizationSettings()
-          // Dismiss on the way out: they've been shown the screen, and nagging
-          // afterwards can't tell whether they acted on it.
           dismiss()
         }}
         style={{ flex: 1 }}

@@ -1,15 +1,5 @@
-// The line at the top of the week: what FORMA thinks of the week as planned.
-//
-// This is the first thing a brand-new account ever sees the conflict engine say.
-// It has to work with zero logged sessions, so it is derived entirely from the
-// plans on the calendar and the user's own sport-interaction matrix — nothing in
-// it needs a history to exist.
-//
-// Two states, both of which say something. A week with clashes lists them, one
-// short line per pair, in the severity's hue. A week without says so, which is
-// the more common case and just as much a result: "no clashes" is the answer the
-// athlete came for, and a component that renders nothing would leave them
-// wondering whether the check had run at all.
+// What FORMA thinks of the week as planned, in one line.
+
 import { Pressable, Text, View } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import { plannedSeverityStyle, worstSeverity } from '../../constants/conflictColors'
@@ -18,15 +8,11 @@ import type { PlannedConflict } from '../../types/conflict'
 import { RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/** Lines listed before the rest collapse into a "+N more". */
 const MAX_LINES = 2
 
 interface PlannedConflictSummaryProps {
-  /** Clashes among the plans in the week on screen. */
   conflicts: PlannedConflict[]
-  /** Plans in that week, so an empty week can be told apart from a clean one. */
   plannedCount: number
-  /** Opens the detail for one clash — the same sheet the day card uses. */
   onPress: (conflicts: PlannedConflict[]) => void
 }
 
@@ -37,8 +23,6 @@ export default function PlannedConflictSummary({
 }: PlannedConflictSummaryProps) {
   const { colors } = useTheme()
 
-  // Nothing planned yet: the Planner's own empty state is doing the teaching,
-  // and a second "no conflicts" panel above it would be noise about nothing.
   if (plannedCount === 0) return null
 
   if (conflicts.length === 0) {
@@ -91,9 +75,6 @@ export default function PlannedConflictSummary({
         backgroundColor: worst.softBg,
         borderWidth: 1,
         borderColor: worst.softBorder,
-        // Dashed rails are for solid, already-logged conflicts; a planned one
-        // gets a hairline and the calendar glyph instead, so the two never read
-        // as the same object at a glance across the app.
         borderLeftWidth: 4,
         borderLeftColor: worst.solid,
       }}

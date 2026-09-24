@@ -1,7 +1,5 @@
-// Zustand metrics store. Derives FORMA's training-state numbers (CTL / ATL /
-// Form + the current week's aggregates) from a session list. Ported from the
-// web app; `recalculate` is driven by the sessions store so every snapshot from
-// Firestore refreshes the dashboard with no manual wiring at the screen level.
+// Derives CTL, ATL, Form and this week's totals from sessions.
+
 import { create } from 'zustand'
 import { buildDailyLoads, calculateATL, calculateCTL } from '../algorithms/ctlAtl'
 import { calculateForm } from '../algorithms/formScore'
@@ -9,23 +7,17 @@ import { useAuthStore } from './authStore'
 import { daysSince } from '../utils/dates'
 import type { Session } from '../types/session'
 
-/** Matches the session-history window; CTL is a 42-day chronic average. */
 const DAILY_LOAD_WINDOW_DAYS = 42
 const WEEKLY_WINDOW_DAYS = 7
 
 interface MetricsState {
-  /** Chronic training load — "fitness". */
   ctl: number
-  /** Acute training load — "fatigue". */
   atl: number
-  /** CTL − ATL. Positive = fresh, negative = fatigued. */
   form: number
   weeklyLoad: number
   weeklyHours: number
   weeklyCalories: number
-  /** Load per ISO day over the CTL window, used by the chart + CTL/ATL maths. */
   dailyLoads: Record<string, number>
-  /** False until the first recalculate() — lets the UI tell "empty" from "not yet loaded". */
   computed: boolean
   recalculate: (sessions: Session[]) => void
   reset: () => void
@@ -48,17 +40,9 @@ export const useMetricsStore = create<MetricsState>((set) => ({
   recalculate: (sessions) => {
     const dailyLoads = buildDailyLoads(sessions, DAILY_LOAD_WINDOW_DAYS)
 
-    // Seed CTL *and* ATL from the onboarding baseline during the cold-start
-    // window so a new user isn't shown a false "Overreaching" Form. Blending
-    // only fitness (CTL) but not fatigue (ATL) still leaves Form deeply negative
-    // for someone who logs a full week up front, so both sides are seeded and
-    // fade to real data in step. Read straight from the auth store (no import
-    // cycle: authStore never imports this store).
     const profile = useAuthStore.getState().profile
     const daysSinceRegistration = profile ? daysSince(profile.createdAt) : undefined
     const baselineCTL = profile?.baselineCTL
-    // Fatigue baseline sits slightly below fitness — a body that's used to this
-    // training carries some normal residual fatigue, but less than its fitness.
     const baselineATL = baselineCTL != null ? baselineCTL * 0.9 : undefined
     const ctl = calculateCTL(dailyLoads, { baselineCTL, daysSinceRegistration })
     const atl = calculateATL(dailyLoads, { baselineATL, daysSinceRegistration })

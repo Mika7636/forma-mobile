@@ -1,14 +1,5 @@
-// The labelled band each Admin section sits under, and the two primitives its
-// cards share.
-//
-// The screen is seven sections now rather than one stat row and a chart, and at
-// that length a reader arriving at a grid of squares has no way to tell what
-// question it answers. A heading and one line of window ("All users, last 84
-// days") is the difference between a chart and a chart you can quote.
-//
-// The window belongs in the heading rather than inside each card because it is
-// the same window for almost everything on the page — saying it once, above,
-// stops seven cards each repeating a slightly different phrasing of it.
+// Admin section band, plus its Stat and ChartEmpty primitives.
+
 import type { ReactNode } from 'react'
 import { Text, View } from 'react-native'
 import { SPACING, TYPE, WEIGHT } from '../../theme/tokens'
@@ -43,15 +34,6 @@ export default function AdminSection({
   )
 }
 
-/**
- * One borderless figure in a stat row: small grey label on a shared upper line,
- * the value on the row's common baseline, an optional caption under it.
- *
- * The Progress screen's treatment, kept because the reader wants the whole row
- * at once — boxing each figure would put three borders between four numbers
- * that are meant to be compared. See the note in `ThisWeekBlock`, where it is
- * defined and argued.
- */
 export function Stat({
   label,
   value,
@@ -60,7 +42,6 @@ export function Stat({
 }: {
   label: string
   value: string
-  /** Drop the value a size, for a word rather than a numeral. */
   small?: boolean
   hint?: string
 }) {
@@ -94,15 +75,6 @@ export function Stat({
   )
 }
 
-/**
- * What a chart renders instead of itself when the window holds no data.
- *
- * A sentence, at the height the plot would have taken, so the page does not jump
- * when a database goes from empty to populated. Every section has one: an admin
- * looking at a brand-new deployment should read "nobody has logged anything yet"
- * and not an axis with a single zero on it, which looks like a chart that failed
- * rather than a database that is empty.
- */
 export function ChartEmpty({ message, height = 132 }: { message: string; height?: number }) {
   const { colors } = useTheme()
 

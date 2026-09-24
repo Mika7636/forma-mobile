@@ -1,11 +1,5 @@
-// One-time notification permission ask, shown immediately after onboarding.
-//
-// Deliberately NOT a step inside OnboardingScreen: that flow's step indices and
-// its "You're all set!" → setProfile handoff are load-bearing, and the OS
-// permission dialog is an interruption we don't want mid-wizard. Instead
-// RootNavigator renders this whenever a logged-in, onboarded user has no
-// `notificationPreferences` yet — which also means existing accounts get asked
-// exactly once, rather than the feature being invisible to them.
+// One-time notification permission ask, straight after onboarding.
+
 import { useState } from 'react'
 import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -56,16 +50,6 @@ export default function NotificationPermissionScreen() {
   const [busy, setBusy] = useState(false)
   const [denied, setDenied] = useState(false)
 
-  /**
-   * Record the choice and let RootNavigator fall through to the app.
-   *
-   * The in-memory commit goes FIRST and the Firestore write is deliberately not
-   * awaited. `setDoc` only settles once the server acks (this project runs
-   * Firestore with `memoryLocalCache`, so there's no offline queue to resolve
-   * against), and on a flaky emulator connection that await can hang — which
-   * would strand the user on this screen with no way forward. Persistence is
-   * best-effort; Settings can re-save later.
-   */
   const commit = (enabled: boolean) => {
     const prefs = enabled
       ? DEFAULT_NOTIFICATION_PREFERENCES
@@ -86,16 +70,11 @@ export default function NotificationPermissionScreen() {
         commit(true)
         return
       }
-      // Denied at the OS level — keep prefs off and offer the settings escape
-      // hatch. The user can still skip; Settings can enable it later.
       haptics.warning()
       setDenied(true)
     } catch {
       setDenied(true)
     } finally {
-      // Always clear, including the success path: if `commit` can't unmount this
-      // screen for any reason, leaving `busy` true would dead-end every
-      // subsequent tap.
       setBusy(false)
     }
   }
@@ -244,10 +223,6 @@ export default function NotificationPermissionScreen() {
             </Text>
           </Pressable>
 
-          {/*
-            Local notifications work on emulators, so this is a heads-up about
-            muted system sound, not a blocker — the demo still fires.
-          */}
           {!Device.isDevice && Platform.OS === 'android' ? (
             <Text
               style={{

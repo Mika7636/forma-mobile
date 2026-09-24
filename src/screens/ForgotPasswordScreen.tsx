@@ -1,3 +1,5 @@
+// Password-reset request screen.
+
 import { useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,
@@ -25,16 +27,12 @@ import { useTheme } from '../theme/ThemeProvider'
 export default function ForgotPasswordScreen({ navigation, route }: ForgotPasswordScreenProps) {
   const { colors } = useTheme()
 
-  // Carried over from Login so nobody has to type their address twice.
   const [email, setEmail] = useState(route.params?.email ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [sentAt, setSentAt] = useState<number | null>(null)
   const [errorText, setErrorText] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
 
-  // Countdown for "Send again". Recomputed from `sentAt` on every tick rather
-  // than decremented, so an app that was backgrounded for 40 seconds comes back
-  // reading 20, not whatever it said when it was suspended.
   useEffect(() => {
     if (sentAt == null) return
     setSecondsLeft(resetCooldownRemaining(sentAt))
@@ -57,8 +55,6 @@ export default function ForgotPasswordScreen({ navigation, route }: ForgotPasswo
       return
     }
 
-    // The button is already disabled during the countdown; this catches the
-    // tap that lands in the same frame the timer is still settling.
     const remaining = resetCooldownRemaining(sentAt)
     let outcome: ResetOutcome
     if (remaining > 0) {
@@ -121,9 +117,6 @@ export default function ForgotPasswordScreen({ navigation, route }: ForgotPasswo
 
           {sentAt != null ? (
             <>
-              {/* Worded conditionally on purpose: the service reports "sent"
-                  for unknown addresses too, and this copy must not undo that
-                  by confirming an account exists. */}
               <View
                 style={{
                   backgroundColor: colors.accentSoft,

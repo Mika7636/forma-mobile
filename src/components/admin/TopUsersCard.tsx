@@ -1,21 +1,5 @@
-// Section 7 — the most active athletes.
-//
-// ## No email addresses here
-//
-// The user list further down the page already carries contact detail, and it is
-// the right place for it: that list exists to look somebody up. This one exists
-// to answer "who is actually using this", and a leaderboard is the part of an
-// admin screen most likely to be read over a shoulder or put on a slide.
-// Repeating an address in it would spread personal data across the page for no
-// gain — the rank, the name and the two figures are the whole of what this
-// answers.
-//
-// ## Why the rank number is set the way it is
-//
-// A plain ordinal in muted type rather than a medal, a badge or a tinted chip.
-// The ranking is real but it is not an achievement — nobody opted into it — and
-// dressing the top three up as winners would turn an operational figure into a
-// scoreboard about people who cannot see it.
+// Admin section 7: the most active athletes.
+
 import { Text, View } from 'react-native'
 import { ChartEmpty } from './AdminSection'
 import type { TopUser } from '../../utils/adminMetrics'
@@ -29,7 +13,6 @@ export default function TopUsersCard({
   profilesTruncated,
 }: {
   users: TopUser[]
-  /** The profile page was capped, so some names may be missing. */
   profilesTruncated: boolean
 }) {
   const { colors } = useTheme()
@@ -85,8 +68,6 @@ function Row({ user, rank, first }: { user: TopUser; rank: number; first: boolea
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: SPACING.md - 2,
-        // A hairline between rows rather than around each: this is a table, and
-        // ten bordered boxes would be ten objects where there is one list.
         borderTopWidth: first ? 0 : 1,
         borderTopColor: colors.border,
       }}
@@ -115,8 +96,6 @@ function Row({ user, rank, first }: { user: TopUser; rank: number; first: boolea
         {user.displayName}
       </Text>
 
-      {/* Sessions and load, right-aligned in a fixed column so ten rows of
-          figures form one edge the eye can run down. */}
       <View style={{ alignItems: 'flex-end', marginLeft: SPACING.sm }}>
         <Text style={{ fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: colors.text }}>
           {user.sessions} {user.sessions === 1 ? 'session' : 'sessions'}

@@ -1,8 +1,9 @@
+// Progress screen first-load placeholder.
+
 import { View } from 'react-native'
 import { Skeleton, SkeletonCard } from '../ui/Skeleton'
 import { RADIUS, SPACING } from '../../theme/tokens'
 
-/** One borderless stat column: its label, then the figure. */
 function StatSkeleton() {
   return (
     <View style={{ flex: 1, paddingRight: SPACING.sm }}>
@@ -12,7 +13,6 @@ function StatSkeleton() {
   )
 }
 
-/** One Fitness/Fatigue/Form column under the chart — smaller than a stat tile. */
 function MiniStatSkeleton() {
   return (
     <View style={{ flex: 1, paddingRight: SPACING.sm }}>
@@ -22,20 +22,9 @@ function MiniStatSkeleton() {
   )
 }
 
-/**
- * First-load placeholder while `computeProgress` and the first Firestore snapshot
- * settle.
- *
- * Mirrors the real screen's stack in order — this week, the chart, consistency,
- * sport balance — so unlocking to live data doesn't reflow the page under the
- * reader's thumb. The conflict timeline has no placeholder on purpose: it is
- * absent far more often than not, and a block that usually resolves to nothing
- * is a page that jumps.
- */
 export default function ProgressSkeleton() {
   return (
     <View style={{ gap: SPACING.base }}>
-      {/* This week */}
       <SkeletonCard>
         <Skeleton width="35%" height={16} />
         <View style={{ flexDirection: 'row', marginTop: SPACING.base }}>
@@ -45,14 +34,11 @@ export default function ProgressSkeleton() {
         </View>
       </SkeletonCard>
 
-      {/* The Daily / Weekly tabs, which sit outside the chart's card. */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
         <Skeleton width={78} height={33} radius={RADIUS.pill} />
         <Skeleton width={86} height={33} radius={RADIUS.pill} />
       </View>
 
-      {/* The chart: one-line legend, the 236pt plot, the window caption, the
-          verdict, then the Fitness/Fatigue/Form row the Weekly default shows. */}
       <SkeletonCard>
         <Skeleton width="55%" height={12} />
         <Skeleton height={236} radius={RADIUS.md} style={{ marginTop: SPACING.md }} />
@@ -65,7 +51,6 @@ export default function ProgressSkeleton() {
         </View>
       </SkeletonCard>
 
-      {/* Consistency: the big numeral beside the dot grid */}
       <SkeletonCard>
         <Skeleton width="35%" height={16} />
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.base }}>
@@ -79,7 +64,6 @@ export default function ProgressSkeleton() {
         </View>
       </SkeletonCard>
 
-      {/* Sport balance: the stacked bar plus a few sport rows */}
       <SkeletonCard>
         <Skeleton width="40%" height={16} />
         <Skeleton height={26} radius={RADIUS.sm} style={{ marginTop: SPACING.base }} />

@@ -1,6 +1,5 @@
-// Full history of every training conflict FORMA has flagged — active and
-// dismissed — reachable from Settings. Filterable, tap a card for the full
-// explanation and the sessions involved, dismiss the ones still active.
+// Full history of every conflict FORMA has flagged.
+
 import { useMemo, useState } from 'react'
 import { FlatList, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -58,7 +57,6 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <ThemedStatusBar />
 
-      {/* Header */}
       <View
         style={{
           flexDirection: 'row',
@@ -81,7 +79,6 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
         </Text>
       </View>
 
-      {/* Filter tabs */}
       <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 }}>
         {FILTERS.map((f) => {
           const active = filter === f.value
@@ -136,9 +133,6 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
       ) : visible.length === 0 ? (
         <HistoryEmptyState filter={filter} />
       ) : (
-        // FlatList, not a ScrollView + map: this list is unbounded (the "All"
-        // filter includes every conflict ever recorded), so mapping it would
-        // mount every card at once and grow steadily heavier with account age.
         <FlatList
           data={visible}
           keyExtractor={(conflict) => conflict.conflictId}
@@ -149,9 +143,6 @@ export default function ConflictHistoryScreen({ navigation }: ConflictHistoryScr
           removeClippedSubviews
           renderItem={({ item, index }) => (
             <Animated.View
-              // Cap the stagger: uncapped, the 40th card would wait 1.6s to
-              // appear, and a card scrolled back into view would re-animate
-              // after an ever-longer delay.
               entering={FadeInDown.delay(Math.min(index, 8) * 40).duration(280)}
             >
               <HistoryCard
@@ -206,7 +197,6 @@ function HistoryCard({
         opacity: active ? 1 : 0.82,
       }}
     >
-      {/* Severity accent rail */}
       <View
         style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: style.solid }}
       />
@@ -277,9 +267,6 @@ function StatusBadge({ active }: { active: boolean }) {
 }
 
 function HistoryEmptyState({ filter }: { filter: Filter }) {
-  // No conflicts is the *good* outcome here, so all three read as reassurance
-  // rather than as an error — and none of them offers a CTA, because there's
-  // genuinely nothing the user should go and do about it.
   const copy =
     filter === 'active'
       ? {

@@ -1,3 +1,5 @@
+// Dashboard hero while the account is still building its baseline.
+
 import { useEffect, useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import Animated, {
@@ -13,46 +15,9 @@ import { useTheme } from '../../theme/ThemeProvider'
 
 interface CalibratingFormCardProps {
   baseline: BaselineState
-  /** Opens the Log tab — the only thing that moves this card forward. */
   onLogSession: () => void
 }
 
-/**
- * The dashboard hero for an account that has not yet cleared the baseline gate.
- *
- * ## Why the numbers are gone
- *
- * This card used to show the Form Score anyway — demoted, labelled "estimated",
- * under a "Building Your Baseline" heading, with CTL and CATL beside it marked
- * CALIBRATING. That was a compromise between two incompatible messages, and the
- * number won: a "+72" set in 40pt type is the thing a reader takes away, and no
- * amount of qualifying caption beside it changes that. On a two-day-old account
- * that figure is an artefact of the CTL/ATL ramp rather than a measurement, and
- * publishing it — hedged or not — spends credibility the app cannot yet afford.
- *
- * So the readouts are not shown at all until the gate opens. What replaces them
- * is not an empty state: it is a progress state that says exactly where the
- * athlete is, and what makes it move. The meter counts the one thing the gate
- * asks for — days they actually trained, out of the 42 the fitness average
- * needs — so the only way to move it is the thing the button below does.
- *
- * It used to count calendar days since the first session, which meant it crept
- * forward on rest weeks and promised a score on a date that had nothing to do
- * with training. Rest days are no longer progress, so the bar no longer fills on
- * its own.
- *
- * ## Why it is one flat card
- *
- * It was a tinted gradient — teal wash into `surface` — and on light that read
- * as two mismatched panels fused down the middle rather than as one object,
- * with the pill, the numeral and the bar each reaching for a slightly different
- * green. Now: one surface, one border, one shadow, and exactly one accent tone
- * on it. Nothing else here is coloured, because nothing else here is data.
- *
- * The explanation of *why* the score is withheld lives behind the ℹ️, not on
- * the card. A paragraph of hedging under a progress bar is the thing a reader
- * skips, and it was crowding out the one control that moves the bar.
- */
 export default function CalibratingFormCard({
   baseline,
   onLogSession,
@@ -62,7 +27,6 @@ export default function CalibratingFormCard({
   const [infoOpen, setInfoOpen] = useState(false)
   const { sessionsLogged, daysCovered, target, daysRemaining, fraction } = baseline
 
-  // Settle-in scale, matching FormScoreCard so swapping heroes isn't jarring.
   const scale = useSharedValue(0.96)
   useEffect(() => {
     scale.value = withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) })
@@ -78,16 +42,11 @@ export default function CalibratingFormCard({
           borderWidth: 1,
           borderColor: colors.border,
           padding: 22,
-          // The palette's own elevation rather than a hardcoded black at 45%,
-          // which on a light page is a smudge rather than a lift.
           ...colors.shadowCard,
         },
         cardStyle,
       ]}
     >
-      {/* Info affordance, top-right. It carries the full explanation of what
-          the Form Score is and why it is being held back — see FormInfoModal's
-          `building` branch. */}
       <Pressable
         onPress={() => setInfoOpen(true)}
         hitSlop={12}
@@ -98,8 +57,6 @@ export default function CalibratingFormCard({
         <Text style={{ fontSize: 18 }}>ℹ️</Text>
       </Pressable>
 
-      {/* The one accent tone on this card: the brand green at low alpha, with
-          the type-safe variant of the same hue as its label. */}
       <View
         style={{
           alignSelf: 'flex-start',
@@ -116,16 +73,11 @@ export default function CalibratingFormCard({
         </Text>
       </View>
 
-      {/* The figure this card *can* stand behind: how far in you are. It takes
-          the hero slot the Form Score will take once it is real, so the card
-          doesn't change shape when the gate opens. */}
       <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 14 }}>
         <Text
           style={{
             fontSize: 40,
             fontWeight: WEIGHT.heavy,
-            // `accentText`, not `accent`: same green, but `accent` is 1.85:1 on
-            // a white card — below the 3:1 floor even at this size.
             color: colors.accentText,
             lineHeight: 46,
           }}
@@ -163,11 +115,6 @@ export default function CalibratingFormCard({
         />
       </View>
 
-      {/* What has been logged, and what is left to earn. The countdown says
-          "training days" rather than "days" because those are not the same
-          thing any more, and the difference is the whole point of the meter
-          above it. It drops off at zero rather than reading "0 to go", which
-          looks like a bug beside a bar that has just filled. */}
       <Text style={{ marginTop: SPACING.sm, fontSize: TYPE.micro, color: colors.textMuted }}>
         {sessionsLogged} session{sessionsLogged === 1 ? '' : 's'} logged
         {daysRemaining > 0

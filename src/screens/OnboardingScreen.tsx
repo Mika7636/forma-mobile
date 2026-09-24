@@ -1,3 +1,5 @@
+// The onboarding wizard that builds an athlete's profile.
+
 import { useMemo, useState } from 'react'
 import {
   KeyboardAvoidingView,
@@ -44,20 +46,9 @@ import { useTheme } from '../theme/ThemeProvider'
 import { onColor } from '../theme/tokens'
 import { sportVisual } from '../utils/sportMeta'
 
-/**
- * Six steps, the last of which gives something back.
- *
- * The wizard used to end on "Experience → Finish", which meant every screen took
- * something from the athlete and none gave anything in return until the
- * dashboard — where the headline numbers need 42 days of logged training to
- * mean anything. Step 6 closes that: their own sports, run through their own
- * interaction matrix, as advice they can use today. See `ConflictMatrixPayoff`.
- */
 const TOTAL_STEPS = 6
 const LB_PER_KG = 2.20462
 
-// Step 2 offers the six headline sports; standalone "strength" is folded into
-// "Gym / Strength" here.
 const ONBOARDING_SPORTS = SPORT_OPTIONS.filter((s) =>
   ['running', 'swimming', 'combat', 'football', 'cycling', 'gym'].includes(s.value),
 )
@@ -77,7 +68,6 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0)
   const [forward, setForward] = useState(true)
 
-  // Collected answers.
   const [sports, setSports] = useState<SportType[]>([])
   const [budgetHours, setBudgetHours] = useState(DEFAULT_BUDGET_HOURS)
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>('kg')
@@ -125,15 +115,6 @@ export default function OnboardingScreen() {
     return Math.round(weightUnit === 'lb' ? num / LB_PER_KG : num)
   }
 
-  /**
-   * Write the profile, then send the athlete to the Planner.
-   *
-   * The Planner rather than the Dashboard because it is the one screen that is
-   * useful with nothing logged: the conflict engine runs forward over planned
-   * sessions, so the advice they just read on the previous step is immediately
-   * actionable there. `requestLandingTab` is how that survives the navigator
-   * swap — this screen is unmounted the instant `onboardingCompleted` flips.
-   */
   const handleFinish = async () => {
     if (!user || !experience || saving) return
     setError(null)
@@ -153,13 +134,6 @@ export default function OnboardingScreen() {
       onboardingCompleted: true,
     }
 
-    // Merge onto the loaded profile when we have one; otherwise construct a
-    // complete base profile. RootNavigator shows onboarding for BOTH a normal
-    // first run AND a null profile (doc failed to load — e.g. the emulator
-    // WebChannel error). If we only committed when `profile` was truthy, the
-    // null case would write to Firestore but never flip the navigator, leaving
-    // the user stuck on "You're all set!" forever. Building a full User here
-    // means both the write and the in-memory commit always have a valid profile.
     const base: User = profile ?? {
       uid: user.uid,
       displayName: user.displayName ?? firstName,
@@ -185,8 +159,6 @@ export default function OnboardingScreen() {
       haptics.success()
       requestLandingTab('Planner')
       setDone(true)
-      // Show the "You're all set!" beat, then commit the profile —
-      // RootNavigator flips to MainTabs once onboardingCompleted is true.
       schedule(() => {
         console.log('[Onboarding] Committing profile → RootNavigator → MainTabs')
         setProfile(nextProfile)
@@ -261,13 +233,11 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* White page — dark status-bar content is what stays legible. */}
       <ThemedStatusBar />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
       >
-        {/* Persistent header: back affordance + progress bar. */}
         <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 4 }}>
           <View style={{ height: 28, justifyContent: 'center' }}>
             {step > 0 ? (
@@ -333,9 +303,6 @@ export default function OnboardingScreen() {
               {step === 5 ? (
                 <ConflictMatrixPayoff
                   sports={sports}
-                  // The matrix that is about to be written to the profile: the
-                  // athlete's own if they already have one (a re-run of the
-                  // wizard), otherwise the seeded default this account will get.
                   interactions={profile?.sportInteractions ?? DEFAULT_SPORT_INTERACTIONS}
                   ctaLabel="Plan your first week"
                   onContinue={handleFinish}
@@ -351,9 +318,6 @@ export default function OnboardingScreen() {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 1 — Welcome                                                     */
-/* ------------------------------------------------------------------ */
 function WelcomeStep({ name, onNext }: { name: string; onNext: () => void }) {
   const { colors } = useTheme()
 
@@ -392,9 +356,6 @@ function WelcomeStep({ name, onNext }: { name: string; onNext: () => void }) {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 2 — Select sports                                              */
-/* ------------------------------------------------------------------ */
 function SportsStep({
   selected,
   onToggle,
@@ -469,9 +430,6 @@ function SportsStep({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 3 — Weekly budget                                             */
-/* ------------------------------------------------------------------ */
 function BudgetStep({
   hours,
   onChange,
@@ -544,9 +502,6 @@ function BudgetStep({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 4 — Body metrics                                              */
-/* ------------------------------------------------------------------ */
 function MetricsStep({
   unit,
   value,
@@ -601,7 +556,6 @@ function MetricsStep({
           />
         </View>
 
-        {/* kg / lb segmented toggle */}
         <View
           style={{
             flexDirection: 'row',
@@ -654,9 +608,6 @@ function MetricsStep({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 5 — Experience level                                          */
-/* ------------------------------------------------------------------ */
 function ExperienceStep({
   selected,
   onSelect,
@@ -728,9 +679,6 @@ function ExperienceStep({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Shared step heading                                                */
-/* ------------------------------------------------------------------ */
 function StepHeading({ title, subtitle }: { title: string; subtitle?: string }) {
   const { colors } = useTheme()
 

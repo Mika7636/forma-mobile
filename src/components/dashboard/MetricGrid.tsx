@@ -1,3 +1,5 @@
+// The stat grid of this week's training figures, under the hero.
+
 import { type ReactNode } from 'react'
 import { Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
@@ -15,28 +17,16 @@ interface MetricGridProps {
   weeklyCalories: number
   weeklyDistanceKm: number
   streak: number
-  /** Ms before the first card animates in; each subsequent card follows by 50ms. */
   baseDelay?: number
 }
 
 
-/**
- * Progress-bar colour: accent under budget, amber from 80%, red once over.
- *
- * The *fill* tokens, not the `*Text` ones. This is a bar, not a caption — a
- * 100px block of colour, which is what the vibrant end of the palette is for.
- * It read as olive while it was borrowing the type colours.
- */
 function budgetColor(ratio: number, colors: Palette): string {
   if (ratio > 1) return colors.danger
   if (ratio >= 0.8) return colors.warn
   return colors.accent
 }
 
-/**
- * The 2×3 stat grid under the Form hero: load, budget, sessions, calories,
- * streak and distance for the current week. Cards fade in on a stagger.
- */
 export default function MetricGrid({
   weeklyLoad,
   previousWeeklyLoad,
@@ -50,8 +40,6 @@ export default function MetricGrid({
 }: MetricGridProps) {
   const { colors } = useTheme()
 
-  // No prior week logged → there's nothing to compare against, so show the bare
-  // number rather than a misleading "up 100%" against an empty baseline.
   const hasBaseline = previousWeeklyLoad > 0
   const loadDelta = weeklyLoad - previousWeeklyLoad
 
@@ -104,8 +92,6 @@ export default function MetricGrid({
               height: '100%',
               borderRadius: 3,
               backgroundColor: barColor,
-              // Clamp the fill: over-budget is signalled by the red colour, and
-              // a bar can't render past its track anyway.
               width: `${Math.min(100, budgetRatio * 100)}%`,
             }}
           />
@@ -143,16 +129,11 @@ export default function MetricGrid({
   )
 }
 
-/** "6.5h" / "8h" — trims a pointless ".0". */
 function formatHours(hours: number): string {
   const rounded = Math.round(hours * 10) / 10
   return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`
 }
 
-/**
- * One stat tile. Lays out as: value block (supplied by the caller, so cards can
- * add a progress bar or trend arrow under the number), then the caption.
- */
 function MetricCard({
   label,
   delay,
@@ -168,19 +149,11 @@ function MetricCard({
     <Animated.View
       entering={FadeInDown.delay(delay).duration(340)}
       style={{
-        // Two per row; `basis` + `grow` lets the pair share the 12px gap and
-        // keeps a lone trailing card from stretching oddly on wide screens.
         flexBasis: '47%',
         flexGrow: 1,
         backgroundColor: colors.surface,
         borderRadius: RADIUS.lg,
         padding: SPACING.base,
-        // The shadow does the separating now that the page is tinted, so the
-        // hairline drops to the softer `border` and mostly disappears —
-        // it is there to define the edge on a display with the contrast turned
-        // down, not to draw the card. The elevation itself comes from the
-        // palette rather than from numbers inlined here, so light and dark each
-        // get the treatment that works on their own ground.
         borderWidth: 1,
         borderColor: colors.border,
         ...colors.shadowCard,
@@ -194,7 +167,6 @@ function MetricCard({
   )
 }
 
-/** Icon + big number on one line — the common shape of most tiles. */
 function ValueRow({ icon, children }: { icon?: string; children: ReactNode }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -204,14 +176,6 @@ function ValueRow({ icon, children }: { icon?: string; children: ReactNode }) {
   )
 }
 
-/**
- * Built from the palette rather than declared at module scope.
- *
- * A `const styles = { bigNumber: { color: … } }` next to the component would
- * capture whichever palette was active when this module was first imported and
- * then never change — the exact way a single screen ends up keeping its old
- * colour after a theme switch.
- */
 function makeStyles(colors: Palette) {
   return {
     bigNumber: {

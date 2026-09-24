@@ -1,11 +1,5 @@
 // The Notifications section of Settings.
-//
-// Owns the toggles and time pickers; persistence is the parent's job (it merges
-// into the debounced profile write). Actual (re)scheduling is deliberately NOT
-// done here — `useNotificationSync` in RootNavigator watches
-// profile.notificationPreferences and reconciles the OS schedule whenever it
-// changes, so there is exactly one place that talks to the scheduler and no way
-// for a toggle to leave a stale notification behind.
+
 import { useState } from 'react'
 import { Alert, Linking, Pressable, Switch, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
@@ -25,7 +19,6 @@ interface NotificationSettingsProps {
   onToast: (message: string) => void
 }
 
-/** 18, 0 → "6:00 PM", using the device's locale conventions. */
 function formatTime(hour: number, minute: number): string {
   const d = new Date()
   d.setHours(hour, minute, 0, 0)
@@ -48,7 +41,6 @@ export default function NotificationSettings({
   const [picker, setPicker] = useState<'daily' | 'weekly' | null>(null)
   const [testing, setTesting] = useState(false)
 
-  /** Master switch. Turning it on may need the OS permission first. */
   const handleMaster = async (next: boolean) => {
     haptics.light()
     if (!next) {
@@ -59,8 +51,6 @@ export default function NotificationSettings({
 
     const granted = await requestPermissions()
     if (!granted) {
-      // Android only shows its dialog once; after that the only route is the
-      // system settings page, so say so rather than silently failing.
       Alert.alert(
         'Notifications are blocked',
         'FORMA needs notification permission from your device settings before it can remind you.',
@@ -132,7 +122,6 @@ export default function NotificationSettings({
 
   return (
     <View>
-      {/* Master */}
       <Row
         title="Enable Notifications"
         subtitle="Reminders, conflict alerts, streaks and weekly reviews"
@@ -214,7 +203,6 @@ export default function NotificationSettings({
         </Animated.View>
       ) : null}
 
-      {/* Test — instant proof the whole pipeline works. */}
       <Pressable
         onPress={() => void handleTest()}
         disabled={testing}
@@ -262,8 +250,6 @@ export default function NotificationSettings({
     </View>
   )
 }
-
-/* ------------------------------------------------------------------ */
 
 function Row({
   title,

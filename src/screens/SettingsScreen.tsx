@@ -1,3 +1,5 @@
+// Settings: profile, training, notifications, appearance and account.
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -66,14 +68,12 @@ import { useTabContentPadding } from '../hooks/useTabContentPadding'
 const LB_PER_KG = 2.20462
 const SAVE_DEBOUNCE_MS = 500
 
-/** Canonical alphabetical pair key — matches conflictDetector's pairKey(). */
 function pairKey(a: string, b: string): string {
   return [a, b].sort().join('_')
 }
 
 export default function SettingsScreen() {
   const { colors } = useTheme()
-  // Reserve room for the tab bar, which is drawn over the end of this list.
   const tabPadding = useTabContentPadding()
 
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
@@ -86,7 +86,6 @@ export default function SettingsScreen() {
 
   const email = profile?.email ?? user?.email ?? ''
 
-  // --- Editable local state (seeded once from the profile) ---
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '')
   const [sports, setSports] = useState<SportType[]>(profile?.sports ?? [])
   const [budget, setBudget] = useState(profile?.weeklyBudgetHours ?? DEFAULT_BUDGET_HOURS)
@@ -120,9 +119,6 @@ export default function SettingsScreen() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isMounted = useIsMounted()
 
-  // Debounced Firestore write. Accumulates partial updates, flushes after a
-  // quiet period, and mirrors the result into the store so every other screen
-  // (Log's sport list, Dashboard's budget, the conflict engine) reflects it.
   const flush = useCallback(async () => {
     const uid = user?.uid
     const base = useAuthStore.getState().profile
@@ -134,11 +130,7 @@ export default function SettingsScreen() {
     }
     try {
       await updateUserProfile(uid, updates)
-      // setProfile and toast are global stores, so they are safe to call after
-      // unmount — that's what makes the flush-on-unmount below work. Only the
-      // local `saving` flag needs the guard.
       setProfile({ ...base, ...updates })
-      // The toast fires the success haptic itself — see toastStore.
       toast.success('Settings saved')
     } catch {
       toast.error('Could not save settings', {
@@ -159,27 +151,12 @@ export default function SettingsScreen() {
     [flush],
   )
 
-  /**
-   * Refuse a settings change while the demo account is signed in, and say why.
-   *
-   * Returns `true` when the caller should stop. Every handler that writes to the
-   * profile calls this first — see `config/demo` for why the line is drawn at
-   * profile writes specifically, and why logging and editing sessions is
-   * deliberately still allowed.
-   *
-   * A toast rather than an alert: a stranger poking at a settings screen should
-   * be told what happened and left where they are, not made to dismiss a modal
-   * for something they were only exploring.
-   */
   const blockedInDemo = useCallback((): boolean => {
     if (!isDemo) return false
     toast.info(DEMO_BLOCKED_TITLE, { description: DEMO_BLOCKED_DESCRIPTION })
     return true
   }, [isDemo])
 
-  // Unmounting mid-debounce (log out right after typing a name) would drop the
-  // pending write, so flush it on the way out. The write is fire-and-forget:
-  // Firestore queues it locally and sends it once the tree is already gone.
   const flushRef = useRef(flush)
   flushRef.current = flush
   useEffect(
@@ -192,7 +169,6 @@ export default function SettingsScreen() {
     [],
   )
 
-  // --- Field handlers ---
   const onChangeName = (text: string) => {
     if (blockedInDemo()) return
     setDisplayName(text)
@@ -205,7 +181,6 @@ export default function SettingsScreen() {
       ? sports.filter((s) => s !== value)
       : [...sports, value]
     if (next.length === 0) {
-      // Must keep at least one active sport.
       toast.warning('Keep at least one sport', {
         description: 'FORMA needs a sport to plan and score your training.',
       })
@@ -265,8 +240,6 @@ export default function SettingsScreen() {
     setWeightUnit(unit)
   }
 
-  // Haptics for these two live in the child components (ConflictSensitivity /
-  // SportInteractionMatrix), so the handlers just persist.
   const onSelectSensitivity = (value: SensitivityLevel) => {
     if (blockedInDemo()) return
     setSensitivity(value)
@@ -280,16 +253,12 @@ export default function SettingsScreen() {
     queueSave({ sportInteractions: next })
   }
 
-  // Persisting is all we do here: `useNotificationSync` (RootNavigator) watches
-  // the saved preferences and reconciles the OS schedule, so a toggle can't
-  // leave an orphaned notification behind. Haptics live in the child.
   const onChangeNotifications = (next: NotificationPreferences) => {
     if (blockedInDemo()) return
     setNotifications(next)
     queueSave({ notificationPreferences: next })
   }
 
-  // Pull-to-refresh: re-read the profile from Firestore and reseed the form.
   const onRefresh = useCallback(async () => {
     const uid = user?.uid
     if (!uid) return
@@ -314,13 +283,8 @@ export default function SettingsScreen() {
     }
   }, [user?.uid, setProfile])
 
-  // --- Destructive actions ---
   const handleLogout = () => {
     haptics.warning()
-    // Same action, different words. On the demo handset "log out" describes
-    // nothing the person holding it did — they never logged in — and the useful
-    // reassurance is that the sample data survives, which is not what a
-    // destructive-styled "are you sure you want to log out" conveys.
     if (isDemo) {
       Alert.alert(
         'Leave the demo?',
@@ -341,17 +305,12 @@ export default function SettingsScreen() {
   const handleClearData = async () => {
     const uid = user?.uid
     if (!uid) return
-    // Belt and braces: the button is already hidden in demo mode, but this is
-    // the one action that would destroy the seeded story outright.
     if (blockedInDemo()) return
     try {
       await clearTrainingData(uid)
       setClearOpen(false)
       toast.warning('All training data cleared')
     } catch {
-      // Previously an unhandled rejection: the confirm modal simply stayed open
-      // with no explanation, and the user had no idea whether the wipe had
-      // partially happened.
       setClearOpen(false)
       toast.error('Could not clear data', {
         description: isOffline()
@@ -365,7 +324,6 @@ export default function SettingsScreen() {
     if (blockedInDemo()) return
     try {
       await deleteAccount()
-      // On success RootNavigator swaps to the auth stack automatically.
     } catch (err) {
       setDeleteOpen(false)
       const code = (err as { code?: string })?.code
@@ -380,19 +338,6 @@ export default function SettingsScreen() {
     }
   }
 
-  /**
-   * Put the demo account back the way it was seeded.
-   *
-   * Runs the same generator the seed script runs, re-anchored to now — so a
-   * reset on the afternoon of the pitch produces a twelve-week story ending that
-   * afternoon, not a replay of whatever window existed when the script was run.
-   * See `services/demoService`.
-   *
-   * The rebuilt profile is pushed into the auth store and back into this
-   * screen's own form state, because the reset rewrites the profile too: leaving
-   * the sliders showing the previous tester's values while Firestore held the
-   * seeded ones would make the next edit write the stale figures back.
-   */
   const handleResetDemo = async () => {
     const uid = user?.uid
     if (!uid || resettingDemo) return
@@ -411,9 +356,6 @@ export default function SettingsScreen() {
       setNotifications(withPreferenceDefaults(result.profile.notificationPreferences))
       setResetOpen(false)
 
-      // Named failures rather than a bare "done": the operator is about to hand
-      // the phone to a stranger, and "which screen should I check first" is the
-      // only useful thing to say when a condition did not come back.
       if (result.failedChecks.length > 0) {
         toast.warning('Demo data reset, with warnings', {
           description: `Check: ${result.failedChecks.join('; ')}`,
@@ -459,7 +401,6 @@ export default function SettingsScreen() {
             />
           }
         >
-          {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: TYPE.display, fontWeight: '800', color: colors.text }}>
@@ -493,15 +434,12 @@ export default function SettingsScreen() {
             ) : null}
           </View>
 
-          {/* Until the profile resolves, show its shape rather than a screen
-              full of `?? default` values that look exactly like real settings. */}
           {!profile ? (
             <View style={{ marginTop: SPACING.lg }}>
               <SettingsSkeleton />
             </View>
           ) : (
             <>
-            {/* Profile */}
             <Card title="Profile">
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
                 <View
@@ -523,12 +461,6 @@ export default function SettingsScreen() {
                   <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMuted }}>
                     DISPLAY NAME
                   </Text>
-                  {/* In demo mode the field is locked rather than merely
-                      unsaved. Leaving it editable and silently discarding the
-                      write would let a tester rename the athlete on screen and
-                      watch the name revert on the next render, which reads as a
-                      bug; `pointerEvents="none"` hands the tap to the wrapper,
-                      which explains instead. */}
                   <DemoLock active={isDemo} onBlocked={blockedInDemo}>
                     <TextInput
                       value={displayName}
@@ -565,7 +497,6 @@ export default function SettingsScreen() {
               </Text>
             </Card>
 
-            {/* Training */}
             <Card title="Training">
               <FieldTitle>Active Sports</FieldTitle>
               <View
@@ -627,9 +558,6 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               </View>
-              {/* Disabled as well as guarded: the handler alone would let the
-                  thumb be dragged the length of the track and snap back, which
-                  looks like the control is broken rather than locked. */}
               <DemoLock active={isDemo} onBlocked={blockedInDemo}>
                 <Slider
                   style={{ width: '100%', height: 40, marginTop: 12 }}
@@ -693,7 +621,6 @@ export default function SettingsScreen() {
               })}
             </Card>
 
-            {/* Body metrics */}
             <Card title="Body Metrics">
               <FieldTitle>Weight</FieldTitle>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -762,7 +689,6 @@ export default function SettingsScreen() {
               </Text>
             </Card>
 
-            {/* Conflict detection */}
             <Card title="Conflict Detection">
               <FieldTitle>Conflict Sensitivity</FieldTitle>
               <ConflictSensitivity value={sensitivity} onChange={onSelectSensitivity} />
@@ -793,7 +719,6 @@ export default function SettingsScreen() {
               </Pressable>
             </Card>
 
-            {/* Sport interaction matrix (collapsible) */}
             <Card>
               <Pressable
                 onPress={() => {
@@ -823,12 +748,10 @@ export default function SettingsScreen() {
               ) : null}
             </Card>
 
-            {/* Appearance */}
             <Card title="Appearance">
               <AppearanceSetting />
             </Card>
 
-            {/* Notifications */}
             <Card title="Notifications">
               <NotificationSettings
                 value={notifications}
@@ -837,7 +760,6 @@ export default function SettingsScreen() {
               />
             </Card>
 
-            {/* Demo — only ever rendered on the demo account. */}
             {isDemo ? (
               <Card title="Demo">
                 <Text
@@ -889,7 +811,6 @@ export default function SettingsScreen() {
               </Card>
             ) : null}
 
-            {/* Data */}
             <Card title="Data">
               <Pressable
                 onPress={() => Alert.alert('Export Data', 'Data export is coming soon.')}
@@ -899,10 +820,6 @@ export default function SettingsScreen() {
                   Export Data
                 </Text>
               </Pressable>
-              {/* Hidden rather than disabled on the demo account: "Reset Demo
-                  Data" above already covers the only reason anybody would reach
-                  for it here, and a greyed-out destructive control invites the
-                  one tester who wants to find out what it does. */}
               {isDemo ? null : (
                 <>
                   <View style={{ height: 1, backgroundColor: colors.border }} />
@@ -921,7 +838,6 @@ export default function SettingsScreen() {
               )}
             </Card>
 
-            {/* Account */}
             <Card title="Account">
               <EmailVerificationRow />
               <Pressable
@@ -940,9 +856,6 @@ export default function SettingsScreen() {
                   {isDemo ? 'Exit Demo' : 'Log Out'}
                 </Text>
               </Pressable>
-              {/* Deleting the demo account would end the demo permanently, and
-                  no amount of type-to-confirm makes that a risk worth leaving on
-                  a phone in a stranger's hands. */}
               {isDemo ? null : (
                 <Pressable
                   onPress={() => {
@@ -964,7 +877,6 @@ export default function SettingsScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Type-to-confirm: clear data */}
       <ConfirmTypeModal
         visible={clearOpen}
         title="Clear all training data?"
@@ -975,10 +887,6 @@ export default function SettingsScreen() {
         onClose={() => setClearOpen(false)}
       />
 
-      {/* Reset the demo. A plain confirm rather than type-to-confirm: it is run
-          repeatedly, by the person running the pitch, and it restores rather
-          than destroys — the friction the other two modals exist to add would
-          only be in the way here. */}
       <Modal
         visible={resetOpen}
         transparent
@@ -1049,7 +957,6 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
-      {/* Type-to-confirm: delete account */}
       <ConfirmTypeModal
         visible={deleteOpen}
         title="Delete your account?"
@@ -1064,9 +971,6 @@ export default function SettingsScreen() {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Reusable pieces                                                     */
-/* ------------------------------------------------------------------ */
 function Card({ title, children }: { title?: string; children: React.ReactNode }) {
   const { colors } = useTheme()
 
@@ -1090,21 +994,6 @@ function Card({ title, children }: { title?: string; children: React.ReactNode }
   )
 }
 
-/**
- * Makes a control inert and turns a tap on it into an explanation.
- *
- * Only for the controls that would otherwise *appear* to accept input — a text
- * field, a slider. The tile-style controls (sports, experience, sensitivity) are
- * all fully controlled by props, so a guarded handler is enough: nothing moves
- * and the toast is the only response. These three move on their own before any
- * handler runs, which is why they need the touches intercepted rather than the
- * writes refused.
- *
- * `pointerEvents="none"` on the inner view rather than `disabled` on the control
- * itself, because a disabled `TextInput` on Android still swallows the touch and
- * the wrapper would never hear it — the tap would do nothing at all, which is
- * the outcome this exists to avoid.
- */
 function DemoLock({
   active,
   onBlocked,
@@ -1147,11 +1036,6 @@ function FieldTitle({ children, style }: { children: React.ReactNode; style?: ob
   )
 }
 
-/**
- * Destructive-action guard: the confirm button stays disabled until the user
- * types the exact `confirmWord` (e.g. "DELETE" or their email). Used for
- * clearing data and deleting the account.
- */
 function ConfirmTypeModal({
   visible,
   title,

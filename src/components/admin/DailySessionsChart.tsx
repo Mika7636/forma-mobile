@@ -1,3 +1,5 @@
+// Admin bar chart of sessions per day across a week.
+
 import { useMemo } from 'react'
 import { Text, View } from 'react-native'
 import Svg, { G, Line, Path, Text as SvgText } from 'react-native-svg'
@@ -7,12 +9,6 @@ import type { AdminDay } from '../../services/adminService'
 import { SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
-/**
- * Plot geometry, matching `TrainingLoadChart`'s conventions — y-axis gutter on
- * the left, weekday ticks in the bottom band — at two thirds the height, because
- * this is seven columns rather than twelve and a 200pt plot for seven small
- * integers is mostly air.
- */
 const PAD_T = 12
 const PAD_B = 20
 const PLOT_H = 132 + PAD_T + PAD_B
@@ -21,24 +17,9 @@ const PAD_R = 8
 
 interface DailySessionsChartProps {
   days: AdminDay[]
-  /** Sum of `days`, shown in the caption. */
   total: number
 }
 
-/**
- * Sessions logged per day across every account, for the last seven days.
- *
- * Built on the Progress screen's `ChartCard` and its chart maths — same card
- * chrome, same measured-width contract, the same `paddedScale` that fits the
- * axis to the window rather than rounding up past it, and the same
- * `roundedTopBar` geometry. The Admin screen is a back-office page and the least
- * useful thing it could do is invent a second visual language for a bar chart
- * the app already has one of.
- *
- * The bars are the plain accent rather than the load chart's three-colour
- * standing scale: there is no band to be above or below here, and colour that
- * doesn't encode anything is just decoration pretending to be data.
- */
 export default function DailySessionsChart({ days, total }: DailySessionsChartProps) {
   const { colors } = useTheme()
 
@@ -71,9 +52,6 @@ function DailyPlot({ days, width }: { days: AdminDay[]; width: number }) {
 
   const geom = useMemo(() => {
     const max = days.reduce((m, day) => Math.max(m, day.count), 0)
-    // Whole sessions only: a "0.5 sessions" gridline is nonsense, and with a
-    // quiet week the padded scale will happily produce one. Asking for at most
-    // `max` ticks keeps the step at 1 until there is enough range to need more.
     const scale = paddedScale(max, 1.2, Math.max(1, Math.min(4, max)))
     const span = scale.max - scale.min || 1
     const yAt = (v: number) => PAD_T + plotH - ((v - scale.min) / span) * plotH
@@ -92,8 +70,6 @@ function DailyPlot({ days, width }: { days: AdminDay[]; width: number }) {
     }
   }, [days, plotW, plotH])
 
-  // Seven empty days is a real answer, not a failure — but an axis whose only
-  // gridline is zero says it better than seven invisible bars would.
   if (geom.max === 0) {
     return (
       <View style={{ height: PLOT_H, alignItems: 'center', justifyContent: 'center' }}>
@@ -104,8 +80,6 @@ function DailyPlot({ days, width }: { days: AdminDay[]; width: number }) {
     )
   }
 
-  // The plot is one graphic to a screen reader, described in full: seven bars
-  // are seven unlabelled shapes otherwise, and there is no tooltip here to tap.
   const description = days.map((day) => `${day.label}: ${day.count}`).join(', ')
 
   return (
@@ -141,9 +115,6 @@ function DailyPlot({ days, width }: { days: AdminDay[]; width: number }) {
                 fill={colors.accent}
               />
             ) : null}
-            {/* Weekday initials. Duplicated letters (two Ts, two Ss) are fine on a
-                seven-day axis where the order does the disambiguating; the full
-                date is in the plot's accessible description above. */}
             <SvgText
               x={bar.cx}
               y={PLOT_H - 5}

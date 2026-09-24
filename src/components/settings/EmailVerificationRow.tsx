@@ -1,15 +1,5 @@
-// Where the verification state lives permanently.
-//
-// The Dashboard banner is a nudge that can be dismissed and that disappears the
-// moment the address is confirmed; this is the answer to "is my email actually
-// verified?" asked at any point afterwards, which is a question with a home in
-// Settings and nowhere else. It is also the only route back to a resend for
-// somebody who dismissed the banner earlier in the session.
-//
-// Shares every piece of state with the banner through `useEmailVerification`,
-// including the cooldown — tapping Resend here and then walking to the Dashboard
-// shows a countdown already running, not a second button offering an email
-// Firebase would refuse to send.
+// Settings row showing and resending email verification.
+
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import TabIcon from '../ui/TabIcon'
 import { useEmailVerification } from '../../hooks/useEmailVerification'
@@ -62,10 +52,6 @@ export default function EmailVerificationRow() {
           </View>
         ) : (
           <>
-            {/* Stated in the `info` family, not in `warn`. An unverified address
-                is a thing still to do, not a fault — and a Settings screen that
-                puts an amber chip next to somebody's email on day one is telling
-                them their account is broken when it is working perfectly. */}
             <View
               style={{
                 flexDirection: 'row',
@@ -87,11 +73,6 @@ export default function EmailVerificationRow() {
               </Text>
             </View>
 
-            {/* No resend on the demo handset. The demo account's inbox belongs
-                to whoever is running the pitch, not to the stranger holding the
-                phone, and a button that mails a third party is not something to
-                leave within reach. The state itself is left visible — reading it
-                costs nothing and hiding it would be its own small mystery. */}
             {isDemo ? null : (
               <Pressable
                 onPress={() => {

@@ -1,3 +1,5 @@
+// Picker for how aggressively conflicts are flagged.
+
 import { Pressable, Text, View } from 'react-native'
 import { haptics } from '../../utils/haptics'
 import type { ConflictSensitivity as Sensitivity } from '../../types/user'
@@ -29,11 +31,6 @@ const CARDS: { value: Sensitivity; emoji: string; label: string; description: st
   },
 ]
 
-/**
- * Radio-style picker for how aggressively FORMA flags training conflicts. Tunes
- * the detector's RPE thresholds and (for "relaxed") suppresses warning-level
- * conflicts entirely. Selected card gets a teal border, tint, and checkmark.
- */
 export default function ConflictSensitivity({ value, onChange }: ConflictSensitivityProps) {
   const { colors } = useTheme()
 

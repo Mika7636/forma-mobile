@@ -1,24 +1,5 @@
-// The Dashboard with nothing logged.
-//
-// ## What changed and why
-//
-// This used to be one card: an emoji, "Welcome to FORMA!", and a Log button. It
-// was honest about having no data and useless about everything else — a new user
-// learned neither what the screen would eventually show nor that FORMA already
-// had something to tell them. "No data yet" is a statement about the app's
-// state; what a first-run screen owes the reader is a statement about *theirs*.
-//
-// So it does three jobs instead of one:
-//
-//  1. Says what the Form Score is, in a sentence, and that it takes about two
-//     weeks — which sets the expectation *before* the number appears, rather
-//     than leaving the athlete to wonder why the hero looks unfinished.
-//  2. Shows what is genuinely available right now: today's plan and any planned
-//     conflicts. This is real content on a zero-session account, not a mockup.
-//  3. Offers both next steps — log one, or plan the week — because on day one
-//     the second is often the more useful of the two.
-//
-// Nothing here renders a zero or a dash as its primary content.
+// The Dashboard with nothing logged yet.
+
 import { Pressable, Text, View } from 'react-native'
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 import PrimaryButton from '../ui/PrimaryButton'
@@ -31,9 +12,7 @@ import { MOTION, RADIUS, SPACING, TYPE, WEIGHT } from '../../theme/tokens'
 import { useTheme } from '../../theme/ThemeProvider'
 
 interface EmptyDashboardStateProps {
-  /** Sessions planned for today, hardest first. */
   todayPlanned: PlannedSession[]
-  /** Planned clashes touching today or tomorrow. */
   plannedConflicts: PlannedConflict[]
   onLogSession: () => void
   onPlanWeek: () => void
@@ -49,8 +28,6 @@ export default function EmptyDashboardState({
 
   return (
     <Animated.View entering={FadeIn.duration(MOTION.base)} style={{ gap: SPACING.base }}>
-      {/* What the hero will become, and when. Stated as a promise with a date
-          attached rather than as an absence. */}
       <View
         style={{
           backgroundColor: colors.surface,
@@ -100,7 +77,6 @@ export default function EmptyDashboardState({
         </View>
       </View>
 
-      {/* The half of the app that already works. */}
       <AvailableNow
         todayPlanned={todayPlanned}
         plannedConflicts={plannedConflicts}
@@ -110,14 +86,6 @@ export default function EmptyDashboardState({
   )
 }
 
-/**
- * "Available now" — the honest inventory of what FORMA can do on day one.
- *
- * It is deliberately concrete. A generic "plan your week!" card would be
- * marketing; this shows the athlete's actual plan for today, or says plainly
- * that there isn't one, and surfaces any clash the engine has already found in
- * it. Every state here is real output, never a placeholder.
- */
 function AvailableNow({
   todayPlanned,
   plannedConflicts,
@@ -156,7 +124,6 @@ function AvailableNow({
         AVAILABLE NOW
       </Text>
 
-      {/* --- Today's plan ------------------------------------------------ */}
       <Text
         style={{
           marginTop: SPACING.md,
@@ -202,7 +169,6 @@ function AvailableNow({
         </View>
       )}
 
-      {/* --- Conflicts ---------------------------------------------------- */}
       <Text
         style={{
           marginTop: SPACING.base,
