@@ -107,7 +107,7 @@ export default function MainTabs() {
       }}
     >
       <Tab.Screen name="Dashboard" component={DashboardTab} />
-      <Tab.Screen name="Log" component={LogTab} />
+      <Tab.Screen name="Log" component={LogTab} /> 
       <Tab.Screen name="Planner" component={PlannerTab} />
       <Tab.Screen name="Progress" component={ProgressTab} />
       <Tab.Screen name="Settings" component={SettingsTab} />
@@ -115,3 +115,5 @@ export default function MainTabs() {
     </Tab.Navigator>
   )
 }
+
+//<Tab.Screen name="Log" component={LogTab} options={{ tabBarLabel: 'Record' }} /> to change the label of the Log tab to "Record"
